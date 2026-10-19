@@ -1,6 +1,6 @@
 // Lanvia 桌面客户端：菜单栏 / 托盘常驻，不依赖浏览器。
 //
-//   - 点托盘图标（或按 ⌘⇧Y / Ctrl+Shift+Y）弹出快捷面板：输入即搜索，↑↓ 选择，回车写入剪贴板
+//   - 点托盘图标弹出快捷面板：输入即搜索，↑↓ 选择，回车写入剪贴板（不注册全局快捷键，避免和其他应用冲突）
 //   - 右键托盘图标：最近内容一键复制、同步开关、开机启动、退出
 //   - 预览：面板里按空格或 ⌘Y，长内容在独立的悬浮窗口里查看和复制；⌘E 编辑，可查看历史版本
 //   - 主窗口：配对二维码、设置、完整历史
@@ -27,19 +27,6 @@ import (
 
 //go:embed assets
 var assets embed.FS
-
-// ⌘⇧V / Ctrl+Shift+V 在很多应用里是“粘贴为纯文本”，不抢；Y 在两个平台上都基本空闲。
-const (
-	hotkey     = "CmdOrCtrl+Shift+Y" // 快捷面板
-	sendHotkey = "CmdOrCtrl+Shift+U" // 发送当前剪贴板（被动模式下最常用）
-)
-
-func hotkeyLabel(accel string) string {
-	if runtime.GOOS == "darwin" {
-		return map[string]string{hotkey: "⌘⇧Y", sendHotkey: "⌘⇧U"}[accel]
-	}
-	return strings.TrimPrefix(accel, "CmdOr") // Ctrl+Shift+Y
-}
 
 type desktop struct {
 	node    *core.App
@@ -156,13 +143,6 @@ func (d *desktop) build() {
 	d.menu = d.app.NewMenu()
 	d.fillMenu()
 	d.tray.SetMenu(d.menu)
-
-	if err := d.app.GlobalShortcut.Register(hotkey, d.togglePanel); err != nil {
-		log.Printf("无法注册快捷键 %s: %v", hotkey, err)
-	}
-	if err := d.app.GlobalShortcut.Register(sendHotkey, d.sendClipboard); err != nil {
-		log.Printf("无法注册快捷键 %s: %v", sendHotkey, err)
-	}
 
 	// 网页里的“收起”“打开主窗口”“预览”
 	d.node.SetDesktopHook(func(action, id string) bool {
@@ -286,7 +266,7 @@ func (d *desktop) fillMenu() {
 	s := d.node.Settings()
 	m.AddRadio("主动模式 · 复制即发送", s.Watch).OnClick(func(*application.Context) { d.node.SetWatch(true) })
 	m.AddRadio("被动模式 · 手动发送", !s.Watch).OnClick(func(*application.Context) { d.node.SetWatch(false) })
-	m.Add("发送当前剪贴板    " + hotkeyLabel(sendHotkey)).OnClick(func(*application.Context) { d.sendClipboard() })
+	m.Add("发送当前剪贴板").OnClick(func(*application.Context) { d.sendClipboard() })
 	m.AddSeparator()
 	m.AddCheckbox("自动写入本机剪贴板", s.AutoApply).OnClick(func(c *application.Context) {
 		d.node.SetAutoApply(c.IsChecked())
@@ -305,7 +285,7 @@ func (d *desktop) fillMenu() {
 	})
 	m.AddSeparator()
 
-	m.Add("快捷面板    " + hotkeyLabel(hotkey)).OnClick(func(*application.Context) { d.togglePanel() })
+	m.Add("打开快捷面板").OnClick(func(*application.Context) { d.togglePanel() })
 	m.Add("打开主窗口…").OnClick(func(*application.Context) { d.showMain() })
 	m.Add("配对码  " + d.node.Code()).SetEnabled(false)
 	m.AddSeparator()

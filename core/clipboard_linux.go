@@ -45,3 +45,5 @@ func writeClipboard(s string) error {
 	cmd.Stdin = strings.NewReader(s)
 	return cmd.Run()
 }
+
+func skipClipboardChange() bool { return false }

@@ -126,3 +126,6 @@ func writeClipboard(s string) error {
 	}
 	return nil
 }
+
+// Windows 复制文件时剪贴板里没有文字，敏感内容在 readClipboard 里已经跳过。
+func skipClipboardChange() bool { return false }

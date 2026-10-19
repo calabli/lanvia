@@ -340,3 +340,12 @@ body.panel .item.sel { border-color: var(--accent); background: color-mix(in srg
 .manual-list li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: var(--surface-2); font-size: 13px; }
 .manual-list li .muted { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ok-text { color: var(--ok); }
+
+/* ---- 文件占用 ---- */
+.storage-usage { display: grid; gap: 6px; }
+.storage-bar { display: flex; height: 6px; border-radius: 6px; overflow: hidden; background: var(--surface-2); }
+.storage-bar i { display: block; height: 100%; transition: width .3s; }
+#stOwn { background: var(--accent); }
+#stRep { background: color-mix(in srgb, var(--accent) 40%, transparent); }
+.storage-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--muted); }
+.storage-row b { color: var(--text); font-weight: 600; }

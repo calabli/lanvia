@@ -19,11 +19,14 @@ type Settings struct {
 	HistoryDays int `json:"historyDays"`
 	// 自动下载其他设备发来的文件（MB 上限）：0 关闭，-1 不限。发送方关机后本机仍保有一份。
 	AutoFetchMB int `json:"autoFetchMB"`
+	// 文件占用上限（MB），0 不限。超出时只删其他设备文件的副本，本机的原件不删。
+	StorageMB int `json:"storageMB"`
 }
 
 const (
 	defaultHistoryDays = 30
 	defaultAutoFetchMB = 100
+	defaultStorageMB   = 2048
 )
 
 type Config struct {
@@ -66,9 +69,12 @@ func loadConfig(dir string) (*Config, error) {
 			if _, ok := raw["autoFetchMB"]; !ok {
 				c.AutoFetchMB = defaultAutoFetchMB
 			}
+			if _, ok := raw["storageMB"]; !ok {
+				c.StorageMB = defaultStorageMB
+			}
 		}
 	case errors.Is(err, fs.ErrNotExist):
-		c.Settings = Settings{AutoApply: true, Watch: true, HistoryDays: defaultHistoryDays, AutoFetchMB: defaultAutoFetchMB}
+		c.Settings = Settings{AutoApply: true, Watch: true, HistoryDays: defaultHistoryDays, AutoFetchMB: defaultAutoFetchMB, StorageMB: defaultStorageMB}
 	default:
 		return nil, err
 	}

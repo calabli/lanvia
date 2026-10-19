@@ -210,6 +210,7 @@ func (a *App) pruneLoop() {
 	for i := 0; ; i++ {
 		a.prune()
 		if i%5 == 4 {
+			a.enforceQuota() // 顺便清理残留文件
 			a.fetchMissing() // 每 5 分钟重试一次没下载成功的文件
 		}
 		time.Sleep(time.Minute)

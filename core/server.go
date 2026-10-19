@@ -32,16 +32,17 @@ type Info struct {
 	Clients []ClientInfo `json:"clients"`
 
 	// 以下字段只返回给本机仪表盘
-	Local     bool         `json:"local,omitempty"`
-	Code      string       `json:"code,omitempty"`
-	Token     string       `json:"token,omitempty"`
-	URLs      []string     `json:"urls,omitempty"`
-	Settings  *Settings    `json:"settings,omitempty"`
-	Clipboard bool         `json:"clipboard,omitempty"`
-	Peers     []*Peer      `json:"peers,omitempty"`
-	Nearby    []Nearby     `json:"nearby,omitempty"`
-	Manual    []ManualPeer `json:"manual,omitempty"`
-	DataDir   string       `json:"dataDir,omitempty"`
+	Local     bool          `json:"local,omitempty"`
+	Code      string        `json:"code,omitempty"`
+	Token     string        `json:"token,omitempty"`
+	URLs      []string      `json:"urls,omitempty"`
+	Settings  *Settings     `json:"settings,omitempty"`
+	Clipboard bool          `json:"clipboard,omitempty"`
+	Peers     []*Peer       `json:"peers,omitempty"`
+	Nearby    []Nearby      `json:"nearby,omitempty"`
+	Manual    []ManualPeer  `json:"manual,omitempty"`
+	Storage   *StorageUsage `json:"storage,omitempty"`
+	DataDir   string        `json:"dataDir,omitempty"`
 }
 
 func (a *App) routes(web fs.FS) http.Handler {
@@ -114,6 +115,10 @@ func (a *App) routes(web fs.FS) http.Handler {
 			res["error"] = manualErrText(err)
 		}
 		writeJSON(w, 200, res)
+	}))
+	m.HandleFunc("POST /api/storage/clear-replicas", local(func(w http.ResponseWriter, r *http.Request) {
+		n, freed := a.ClearReplicas()
+		writeJSON(w, 200, map[string]any{"count": n, "freed": freed, "info": a.info(true)})
 	}))
 	m.HandleFunc("GET /api/clipboard", local(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, a.ClipboardState())
@@ -242,6 +247,8 @@ func (a *App) info(local bool) *Info {
 		in.Local, in.Code, in.Token, in.Settings = true, formatCode(c.Code), a.creds().token, &s
 		in.Clipboard, in.Peers, in.Nearby, in.DataDir = a.clip.ok, a.peers.List(), a.peers.NearbyList(), a.dir
 		in.Manual = a.peers.ManualList()
+		u := a.StorageUsage()
+		in.Storage = &u
 		for _, l := range lanAddrs() {
 			in.URLs = append(in.URLs, "http://"+net.JoinHostPort(l.IP.String(), strconv.Itoa(c.Port)))
 		}
@@ -370,6 +377,7 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	it := &Item{ID: id, Kind: "file", Name: name, Mime: ct, Size: n, From: from, Origin: a.cfgSnapshot().ID, TS: nowMs()}
 	a.ingest(it, "", false)
+	go a.enforceQuota() // 原件不删，必要时给它腾出副本占的空间
 	writeJSON(w, 200, it)
 }
 
@@ -408,6 +416,13 @@ func (a *App) handleBlob(w http.ResponseWriter, r *http.Request) {
 	blobHeaders(w, it, dl)
 	w.WriteHeader(resp.StatusCode)
 	if resp.StatusCode != 200 || rg != "" {
+		io.Copy(w, resp.Body)
+		return
+	}
+	quotaMu.Lock()
+	fits := a.makeRoom(it.Size)
+	quotaMu.Unlock()
+	if !fits { // 超出文件占用上限：只转发，不缓存
 		io.Copy(w, resp.Body)
 		return
 	}
@@ -498,12 +513,17 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		AutoApply   *bool   `json:"autoApply"`
 		AutoFetchMB *int    `json:"autoFetchMB"`
+		StorageMB   *int    `json:"storageMB"`
 		Watch       *bool   `json:"watch"`
 		Name        *string `json:"name"`
 		HistoryDays *int    `json:"historyDays"`
 	}
 	if json.NewDecoder(r.Body).Decode(&req) != nil {
 		errJSON(w, 400, "bad json")
+		return
+	}
+	if m := req.StorageMB; m != nil && (*m < 0 || *m > 1<<24) {
+		errJSON(w, 400, "文件占用上限无效")
 		return
 	}
 	if m := req.AutoFetchMB; m != nil && (*m < -1 || *m > 1<<20) {
@@ -524,6 +544,9 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		if req.AutoFetchMB != nil {
 			c.AutoFetchMB = *req.AutoFetchMB
 		}
+		if req.StorageMB != nil {
+			c.StorageMB = *req.StorageMB
+		}
 		if req.AutoApply != nil {
 			c.AutoApply = *req.AutoApply
 		}
@@ -538,7 +561,8 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		a.store.setRetention(*req.HistoryDays)
 		a.prune()
 	}
-	if req.AutoFetchMB != nil {
+	if req.AutoFetchMB != nil || req.StorageMB != nil {
+		a.enforceQuota()
 		go a.fetchMissing() // 上限调大了，补下之前跳过的
 	}
 	writeJSON(w, 200, a.info(true))

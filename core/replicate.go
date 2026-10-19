@@ -61,9 +61,12 @@ func newFetcher() *fetcher {
 	return &fetcher{queued: map[string]bool{}, lastTry: map[string]time.Time{}, q: make(chan string, 512)}
 }
 
-// wantFetch 判断这个文件是否需要下载到本机。
+// 后台只补最近几天的文件；更早的需要时再从其他设备取（也避免清理掉的副本重启后又被下载回来）。
+const autoFetchWindow = 3 * 24 * time.Hour
+
+// wantFetch 判断这个文件是否需要在后台下载到本机。
 func (a *App) wantFetch(it *Item) bool {
-	if it == nil || it.Kind != "file" || a.store.hasBlob(it.ID) {
+	if it == nil || it.Kind != "file" || a.store.hasBlob(it.ID) || it.TS < nowMs()-autoFetchWindow.Milliseconds() {
 		return false
 	}
 	switch limit := a.cfgSnapshot().AutoFetchMB; {
@@ -116,6 +119,12 @@ func (a *App) fetchLoop() {
 func (a *App) fetchOne(id string) {
 	it := a.store.Get(id)
 	if !a.wantFetch(it) {
+		return
+	}
+	quotaMu.Lock()
+	fits := a.makeRoom(it.Size) // 放不下就不备份，需要时再去取
+	quotaMu.Unlock()
+	if !fits {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)

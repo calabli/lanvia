@@ -25,6 +25,7 @@ func main() {
 	flag.StringVar(&o.Name, "name", "", "设备名称")
 	flag.StringVar(&o.Join, "join", "", "使用另一台设备的配对码，加入它的空间")
 	flag.BoolVar(&o.NoWatch, "no-watch", false, "启动时不监听本机剪贴板")
+	flag.BoolVar(&o.NoDiscovery, "no-discovery", false, "不使用局域网广播，只连接手动添加的设备")
 	flag.Var((*listFlag)(&o.Peers), "peer", "手动指定对端地址 host:port，可重复（广播被路由器屏蔽时使用）")
 	flag.Parse()
 	log.SetFlags(log.Ltime)

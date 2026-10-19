@@ -195,6 +195,16 @@
     <p class="muted small">两台电脑使用同一个配对码后会自动同步。加入后，本机原来的配对码失效。</p>
   </div>
   <div class="sheet-section">
+    <h3>手动添加设备</h3>
+    <p class="muted small">配对码相同却一直找不到对方时使用，例如路由器屏蔽了广播、两台电脑不在同一网段。只需在一台电脑上添加，对方的地址可以在它的主窗口里看到。</p>
+    <ul id="manualList" class="manual-list"></ul>
+    <form id="manualForm" class="row">
+      <input id="manualInput" placeholder="例如 192.168.1.20 或 192.168.1.20:8686" spellcheck="false" autocapitalize="off" inputmode="url">
+      <button class="btn">添加</button>
+    </form>
+    <p id="manualMsg" class="small" role="status"></p>
+  </div>
+  <div class="sheet-section">
     <h3>自动化</h3>
     <p class="muted small">iOS 快捷指令、安卓 HTTP Shortcuts、脚本可用这个令牌调用接口：</p>
     <code id="token" class="mono block"></code>

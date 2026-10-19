@@ -31,6 +31,8 @@ type Config struct {
 	Name string `json:"name"`
 	Code string `json:"code"` // 配对码（规范化后，不含分隔符）
 	Port int    `json:"port"`
+	// 手动添加的设备地址（host:port），自动发现失效时使用
+	Peers []string `json:"peers,omitempty"`
 	Settings
 }
 

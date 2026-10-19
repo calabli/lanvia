@@ -17,9 +17,14 @@ type Settings struct {
 	Watch     bool `json:"watch"`     // 主动模式：复制即发送；false 为被动模式，手动发送
 	// 历史保留天数，0 表示永久。只对本机生效：过期内容会被删除，也不会再从其他设备同步回来。
 	HistoryDays int `json:"historyDays"`
+	// 自动下载其他设备发来的文件（MB 上限）：0 关闭，-1 不限。发送方关机后本机仍保有一份。
+	AutoFetchMB int `json:"autoFetchMB"`
 }
 
-const defaultHistoryDays = 30
+const (
+	defaultHistoryDays = 30
+	defaultAutoFetchMB = 100
+)
 
 type Config struct {
 	ID   string `json:"id"`
@@ -56,9 +61,12 @@ func loadConfig(dir string) (*Config, error) {
 			if _, ok := raw["historyDays"]; !ok {
 				c.HistoryDays = defaultHistoryDays
 			}
+			if _, ok := raw["autoFetchMB"]; !ok {
+				c.AutoFetchMB = defaultAutoFetchMB
+			}
 		}
 	case errors.Is(err, fs.ErrNotExist):
-		c.Settings = Settings{AutoApply: true, Watch: true, HistoryDays: defaultHistoryDays}
+		c.Settings = Settings{AutoApply: true, Watch: true, HistoryDays: defaultHistoryDays, AutoFetchMB: defaultAutoFetchMB}
 	default:
 		return nil, err
 	}

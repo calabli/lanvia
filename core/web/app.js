@@ -361,6 +361,7 @@ function connect() {
     S.info.settings = JSON.parse(e.data);
     $('#optApply').checked = S.info.settings.autoApply;
     $('#optKeep').value = String(S.info.settings.historyDays);
+    $('#optFetch').value = String(S.info.settings.autoFetchMB);
     renderMode();
   });
   es.addEventListener('delete', e => {
@@ -962,6 +963,9 @@ async function loadInfo() {
   const keep = String(i.settings.historyDays ?? 30), ks = $('#optKeep');
   if (![...ks.options].some(o => o.value === keep)) ks.add(new Option(`${keep} 天`, keep)); // 手动改过配置文件的情况
   ks.value = keep;
+  const fetchMB = String(i.settings.autoFetchMB ?? 100), fs = $('#optFetch');
+  if (![...fs.options].some(o => o.value === fetchMB)) fs.add(new Option(`${fetchMB} MB 以下`, fetchMB));
+  fs.value = fetchMB;
   $('#clipWarn').hidden = !!i.clipboard;
   $('#token').textContent = i.token;
   const base = (i.urls || [])[0] || `http://localhost:${i.port}`;
@@ -1148,6 +1152,7 @@ function bind() {
   addEventListener('focus', refreshClip);
   setInterval(() => { if (!document.hidden) refreshClip(); }, 2000);
   $('#optApply').onchange = e => saveSettings({ autoApply: e.target.checked });
+  $('#optFetch').onchange = e => saveSettings({ autoFetchMB: +e.target.value });
   $('#optKeep').onchange = e => {
     const days = +e.target.value;
     const n = days && S.items.filter(it => it.ts < Date.now() + S.offset - days * 864e5).length;

@@ -353,23 +353,13 @@ func (a *App) handleBlob(w http.ResponseWriter, r *http.Request) {
 		http.ServeContent(w, r, it.Name, st.ModTime(), f)
 		return
 	}
-	// 本机没有文件内容：从持有者那里取，同时缓存一份
+	// 本机没有文件内容：从发送方或其他有这个文件的电脑取，同时缓存一份
 	if r.Header.Get("X-Lanvia-Hop") != "" {
 		errJSON(w, 404, "not found")
 		return
 	}
-	p := a.peers.Get(it.Origin)
-	if p == nil {
-		errJSON(w, 502, "来源设备不在线")
-		return
-	}
-	req := a.peers.newReq(r.Context(), "GET", p.Addr, "/api/blob/"+id, nil)
-	req.Header.Set("X-Lanvia-Hop", "1")
 	rg := r.Header.Get("Range")
-	if rg != "" {
-		req.Header.Set("Range", rg)
-	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := a.fetchFromPeers(r.Context(), it, rg)
 	if err != nil {
 		errJSON(w, 502, err.Error())
 		return
@@ -472,12 +462,17 @@ func (a *App) handleRelay(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		AutoApply   *bool   `json:"autoApply"`
+		AutoFetchMB *int    `json:"autoFetchMB"`
 		Watch       *bool   `json:"watch"`
 		Name        *string `json:"name"`
 		HistoryDays *int    `json:"historyDays"`
 	}
 	if json.NewDecoder(r.Body).Decode(&req) != nil {
 		errJSON(w, 400, "bad json")
+		return
+	}
+	if m := req.AutoFetchMB; m != nil && (*m < -1 || *m > 1<<20) {
+		errJSON(w, 400, "自动下载上限无效")
 		return
 	}
 	if d := req.HistoryDays; d != nil && (*d < 0 || *d > 3650) {
@@ -490,6 +485,9 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	a.updateCfg(func(c *Config) {
 		if req.HistoryDays != nil {
 			c.HistoryDays = *req.HistoryDays
+		}
+		if req.AutoFetchMB != nil {
+			c.AutoFetchMB = *req.AutoFetchMB
 		}
 		if req.AutoApply != nil {
 			c.AutoApply = *req.AutoApply
@@ -504,6 +502,9 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	if req.HistoryDays != nil {
 		a.store.setRetention(*req.HistoryDays)
 		a.prune()
+	}
+	if req.AutoFetchMB != nil {
+		go a.fetchMissing() // 上限调大了，补下之前跳过的
 	}
 	writeJSON(w, 200, a.info(true))
 }

@@ -72,7 +72,7 @@ const PREVIEW = DESKTOP === 'preview'; // 桌面端的悬浮预览窗口
 const PREVIEW_ID = QS.get('id');
 const S = {
   key: null, offset: 0, items: [], devices: [], you: null, node: null, local: false,
-  info: null, filter: '', es: null, connected: false, retry: 0, unseen: 0,
+  info: null, filter: '', kind: 'all', es: null, connected: false, retry: 0, unseen: 0,
   view: [], sel: 0, // 当前显示的列表和键盘选中项（快捷面板）
 };
 const desktop = (action, id) => api('POST', '/api/desktop/' + action + (id ? '?id=' + id : '')).catch(() => {});
@@ -149,8 +149,23 @@ const ICON = {
   history: I('<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 4.5V9H8M12 7.5V12l3 2"/>'),
   pin: I('<path d="M9 4h6l-1 6 4 3v2H6v-2l4-3z"/><path d="M12 15v5"/>'),
   globe: I('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.7 2.5 14.3 0 17M12 3.5c-2.5 2.7-2.5 14.3 0 17"/>'),
+  sun: I('<circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+  moon: I('<path d="M20.5 13.2A8.5 8.5 0 0 1 10.8 3.5a8.5 8.5 0 1 0 9.7 9.7Z"/>'),
+  auto: I('<rect x="3" y="4" width="18" height="13" rx="3"/><path d="M8 21h8M12 17v4M12 4v13"/>'),
 };
 const kindIcon = k => ({ ios: ICON.phone, android: ICON.phone, ipad: ICON.tablet, mac: ICON.laptop, windows: ICON.laptop, linux: ICON.laptop }[k] || ICON.globe);
+
+function applyTheme(theme) {
+  if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+  else { theme = 'system'; delete document.documentElement.dataset.theme; }
+  store.set('theme', theme);
+  const names = { system: '跟随系统', light: '浅色', dark: '深色' };
+  const next = { system: '浅色', light: '深色', dark: '跟随系统' };
+  const button = $('#themeBtn');
+  button.innerHTML = { system: ICON.auto, light: ICON.sun, dark: ICON.moon }[theme];
+  button.setAttribute('aria-label', `外观：${names[theme]}，切换为${next[theme]}`);
+  button.title = `外观：${names[theme]}，点击切换`;
+}
 
 /* ================= 剪贴板 ================= */
 
@@ -252,14 +267,19 @@ const textStats = t => { const n = t.split('\n').length; return (n > 1 ? n + ' �
 
 function renderList() {
   const f = S.filter.trim().toLowerCase();
-  const items = f ? S.items.filter(it => (it.text || it.name || '').toLowerCase().includes(f) || it.from.toLowerCase().includes(f)) : S.items;
+  const items = S.items.filter(it => (S.kind === 'all' || it.kind === S.kind) &&
+    (!f || (it.text || it.name || '').toLowerCase().includes(f) || it.from.toLowerCase().includes(f)));
   const list = $('#list');
   const open = new Set([...list.querySelectorAll('.item.open')].map(li => li.dataset.id));
   S.view = items;
   S.sel = Math.max(0, Math.min(S.sel, items.length - 1));
   list.innerHTML = items.map((it, i) =>
     `<li class="item card${i === 0 && !f ? ' latest' : ''}${open.has(it.id) ? ' open' : ''}${PANEL && i === S.sel ? ' sel' : ''}${isLong(it) ? ' long' : ''}" data-id="${it.id}">${itemHTML(it, i === 0 && !f)}</li>`).join('');
-  $('#empty').hidden = S.items.length > 0;
+  $('#itemCount').textContent = String(items.length);
+  $('#empty').hidden = items.length > 0;
+  const filtered = !!f || S.kind !== 'all';
+  $('#emptyTitle').textContent = filtered ? '还没有找到这份灵感。' : '好想法，从这里开始。';
+  $('#emptyDescription').textContent = filtered ? '试试其他关键词，或切换内容类型。' : '在已连接的设备上复制文字，或发送你的第一条内容。';
 }
 
 function renderDevices() {
@@ -267,6 +287,13 @@ function renderDevices() {
   const n = S.devices.length;
   $('#devCount').textContent = S.connected ? (others.length ? `${others.length + 1} 台设备` : '仅本机') : '重新连接中';
   $('#connDot').classList.toggle('on', S.connected);
+  document.body.dataset.connected = String(S.connected);
+  $('#spaceStatus').textContent = S.connected ? '你的空间，已连接' : '正在重新连接';
+  $('#nodeLabel').textContent = S.node?.name || 'Lanvia';
+  const preview = S.devices.filter(d => d.id !== S.you);
+  $('#devicePreview').innerHTML = preview.slice(0, 4).map(d =>
+    `<span class="preview-device${d.host ? ' host' : ''}" title="${esc(d.name)}">${kindIcon(d.kind)}</span>`).join('') +
+    (preview.length > 4 ? `<span class="preview-device">+${preview.length - 4}</span>` : '');
   $('#deviceList').innerHTML = S.devices.map(d => {
     const me = d.id === S.you || (S.local && d.host);
     const sub = d.node ? (d.host && !S.local ? '你正通过它连接 · 运行 Lanvia' : '运行 Lanvia') : `浏览器 · 经由 ${esc(d.via || '')}`;
@@ -279,6 +306,7 @@ function renderDevices() {
       const pref = store.get('pairCollapsed');
       card.classList.toggle('collapsed', pref ? pref === '1' : n > 1);
     }
+    $('#pairCollapse').setAttribute('aria-expanded', String(!card.classList.contains('collapsed')));
   }
 }
 
@@ -872,6 +900,11 @@ function startApp() {
 /* ================= 事件绑定 ================= */
 
 function bind() {
+  applyTheme(store.get('theme') || 'system');
+  $('#themeBtn').onclick = () => {
+    const current = document.documentElement.dataset.theme || 'system';
+    applyTheme({ system: 'light', light: 'dark', dark: 'system' }[current]);
+  };
   $('#settingsBtn').innerHTML = ICON.gear;
   $('#pairCollapse').innerHTML = ICON.chevron;
   document.querySelectorAll('[data-close]').forEach(b => { b.innerHTML = ICON.close; b.onclick = () => b.closest('dialog').close(); });
@@ -896,6 +929,7 @@ function bind() {
   }
 
   $('#fileInput').onchange = e => { [...e.target.files].forEach(uploadFile); e.target.value = ''; };
+  $('#filePicker').onclick = () => $('#fileInput').click();
 
   // 粘贴截图/文件直接上传；在输入框之外按 ⌘V 直接发送文字
   document.addEventListener('paste', e => {
@@ -945,8 +979,27 @@ function bind() {
     if (it && !e.target.closest('a, button, video')) { getSelection()?.removeAllRanges(); openPreview(it); }
   });
   bindPreview();
+  $('#kindFilters').addEventListener('click', e => {
+    const button = e.target.closest('[data-kind]');
+    if (!button) return;
+    S.kind = button.dataset.kind;
+    $('#kindFilters').querySelectorAll('[data-kind]').forEach(b => {
+      const active = b.dataset.kind === S.kind;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-pressed', String(active));
+    });
+    S.sel = 0;
+    renderList();
+  });
+  $('.search-shortcut').textContent = KIND === 'mac' || KIND === 'ipad' || KIND === 'ios' ? '⌘ K' : 'Ctrl K';
+  document.addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && !$('#app').hidden && !document.querySelector('dialog[open]')) {
+      e.preventDefault(); $('#search').focus();
+    }
+  });
 
   $('#devicesBtn').onclick = () => { $('#myName').value = myName(); $('#devicesDlg').showModal(); };
+  $('#devicesPeek').onclick = () => $('#devicesBtn').click();
   $('#myName').addEventListener('change', e => {
     const v = e.target.value.trim();
     v ? store.set('name', v) : store.del('name');
@@ -958,6 +1011,7 @@ function bind() {
   $('#pairCollapse').onclick = () => {
     const c = $('#pairCard').classList.toggle('collapsed');
     store.set('pairCollapsed', c ? '1' : '0');
+    $('#pairCollapse').setAttribute('aria-expanded', String(!c));
   };
   $('#urlSelect').onchange = drawQR;
   $('#nodeName').addEventListener('change', e => e.target.value.trim() && saveSettings({ name: e.target.value.trim() }));

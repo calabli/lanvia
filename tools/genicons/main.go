@@ -39,18 +39,34 @@ type layer struct {
 	s     shape
 	c     color.NRGBA
 	erase bool // 抠掉下面的像素（模板图标里的线条）
+	paint func(x, y float64) color.NRGBA
 }
 
 var (
-	teal  = color.NRGBA{0x0f, 0x76, 0x6e, 255}
+	blue  = color.NRGBA{0x39, 0x7e, 0xe4, 255}
 	white = color.NRGBA{255, 255, 255, 255}
 	black = color.NRGBA{0, 0, 0, 255}
 
-	back  = roundRect(14, 20, 22, 28, 6)
-	front = roundRect(28, 14, 22, 28, 6)
-	line1 = capsule(34, 26, 44, 26, 3.5)
-	line2 = capsule(34, 32, 41, 32, 3.5)
+	back  = roundRect(14, 22, 23, 27, 6)
+	front = roundRect(27, 14, 23, 29, 6)
+	line1 = capsule(33, 25, 44, 25, 3)
+	line2 = capsule(33, 31, 40, 31, 3)
 )
+
+func mix(a, b color.NRGBA, t float64) color.NRGBA {
+	t = math.Max(0, math.Min(1, t))
+	channel := func(x, y uint8) uint8 { return uint8(float64(x)*(1-t) + float64(y)*t) }
+	return color.NRGBA{channel(a.R, b.R), channel(a.G, b.G), channel(a.B, b.B), 255}
+}
+
+func shellColor(x, y float64) color.NRGBA {
+	t := (x + y) / 128
+	top, middle, bottom := color.NRGBA{0x70, 0xb5, 0xff, 255}, color.NRGBA{0x34, 0x7d, 0xeb, 255}, color.NRGBA{0x20, 0x57, 0xc6, 255}
+	if t < .52 {
+		return mix(top, middle, t/.52)
+	}
+	return mix(middle, bottom, (t-.52)/.48)
+}
 
 // render 把 64×64 设计稿中 [vx, vx+vw] 的区域画到 size×size 的图上，4×4 超采样抗锯齿。
 func render(size int, vx, vy, vw float64, layers []layer) *image.NRGBA {
@@ -71,7 +87,11 @@ func render(size int, vx, vy, vw float64, layers []layer) *image.NRGBA {
 						if l.erase {
 							cr, cg, cb, ca = 0, 0, 0, 0
 						} else {
-							cr, cg, cb, ca = float64(l.c.R), float64(l.c.G), float64(l.c.B), 255
+							c := l.c
+							if l.paint != nil {
+								c = l.paint(x, y)
+							}
+							cr, cg, cb, ca = float64(c.R), float64(c.G), float64(c.B), 255
 						}
 					}
 					r, g, b, a = r+cr*ca, g+cg*ca, b+cb*ca, a+ca
@@ -99,11 +119,11 @@ func save(path string, img image.Image) {
 
 func main() {
 	full := []layer{
-		{s: roundRect(0, 0, 64, 64, 16), c: teal},
-		{s: stroke(back, 4), c: white},
-		{s: front, c: white},
-		{s: line1, c: teal},
-		{s: line2, c: teal},
+		{s: roundRect(1, 1, 62, 62, 18), paint: shellColor},
+		{s: stroke(back, 3), c: white},
+		{s: front, paint: func(x, y float64) color.NRGBA { return mix(white, color.NRGBA{0xdc, 0xea, 0xff, 255}, (y-14)/29) }},
+		{s: line1, c: blue},
+		{s: line2, c: blue},
 	}
 	// macOS 菜单栏模板图标：只用 alpha，系统会按浅色/深色模式着色
 	glyph := []layer{

@@ -127,6 +127,14 @@ func (a *App) SetWatch(on bool) {
 }
 func (a *App) SetAutoApply(on bool) { a.updateCfg(func(c *Config) { c.AutoApply = on }) }
 
+// PausedUntil 返回暂停到什么时候：0 没有暂停，-1 直到手动恢复。
+func (a *App) PausedUntil() int64 {
+	if !a.Paused() {
+		return 0
+	}
+	return a.cfgSnapshot().PausedUntil
+}
+
 // Recent 返回最近的 n 条内容。
 func (a *App) Recent(n int) []Item {
 	var out []Item
@@ -155,6 +163,13 @@ func (a *App) CopyToClipboard(id string) error {
 func (a *App) OnChange(fn func()) {
 	a.mu.Lock()
 	a.onChange = fn
+	a.mu.Unlock()
+}
+
+// OnIncoming 注册其他设备实时发来新内容时的回调（在独立的 goroutine 中调用）。
+func (a *App) OnIncoming(fn func(Item)) {
+	a.mu.Lock()
+	a.onIncoming = fn
 	a.mu.Unlock()
 }
 

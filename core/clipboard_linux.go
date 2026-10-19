@@ -47,3 +47,5 @@ func writeClipboard(s string) error {
 }
 
 func skipClipboardChange() bool { return false }
+
+func frontApp() (id, name string) { return "", "" }

@@ -68,3 +68,30 @@ func skipClipboardChange() bool {
 	}
 	return false
 }
+
+// frontApp 没有 cgo 时用系统自带的 lsappinfo 查询（只在剪贴板变化时调用一次）。
+func frontApp() (id, name string) {
+	asn, err := exec.Command("lsappinfo", "front").Output()
+	if err != nil {
+		return "", ""
+	}
+	out, err := exec.Command("lsappinfo", "info", "-only", "bundleid", "-only", "name", strings.TrimSpace(string(asn))).Output()
+	if err != nil {
+		return "", ""
+	}
+	// 输出形如：
+	//   "Google Chrome" ASN:0x0-0x1234: (in front)
+	//       bundleID="com.google.Chrome"
+	for i, line := range strings.Split(string(out), "\n") {
+		if i == 0 {
+			if f := strings.Split(line, `"`); len(f) >= 3 {
+				name = f[1]
+			}
+			continue
+		}
+		if k, v, ok := strings.Cut(line, "="); ok && strings.TrimSpace(k) == "bundleID" {
+			id = strings.Trim(strings.TrimSpace(v), `"`)
+		}
+	}
+	return id, name
+}

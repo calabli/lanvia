@@ -33,17 +33,18 @@ type Info struct {
 	Enc     bool         `json:"enc"` // 支持节点间加密
 
 	// 以下字段只返回给本机仪表盘
-	Local     bool          `json:"local,omitempty"`
-	Code      string        `json:"code,omitempty"`
-	Token     string        `json:"token,omitempty"`
-	URLs      []string      `json:"urls,omitempty"`
-	Settings  *Settings     `json:"settings,omitempty"`
-	Clipboard bool          `json:"clipboard,omitempty"`
-	Peers     []*Peer       `json:"peers,omitempty"`
-	Nearby    []Nearby      `json:"nearby,omitempty"`
-	Manual    []ManualPeer  `json:"manual,omitempty"`
-	Storage   *StorageUsage `json:"storage,omitempty"`
-	DataDir   string        `json:"dataDir,omitempty"`
+	Local      bool          `json:"local,omitempty"`
+	Code       string        `json:"code,omitempty"`
+	Token      string        `json:"token,omitempty"`
+	URLs       []string      `json:"urls,omitempty"`
+	Settings   *Settings     `json:"settings,omitempty"`
+	Clipboard  bool          `json:"clipboard,omitempty"`
+	Peers      []*Peer       `json:"peers,omitempty"`
+	Nearby     []Nearby      `json:"nearby,omitempty"`
+	Manual     []ManualPeer  `json:"manual,omitempty"`
+	Storage    *StorageUsage `json:"storage,omitempty"`
+	RecentApps []SourceApp   `json:"recentApps,omitempty"`
+	DataDir    string        `json:"dataDir,omitempty"`
 }
 
 func (a *App) routes(web fs.FS) http.Handler {
@@ -136,6 +137,16 @@ func (a *App) routes(web fs.FS) http.Handler {
 	m.HandleFunc("POST /api/storage/clear-replicas", local(func(w http.ResponseWriter, r *http.Request) {
 		n, freed := a.ClearReplicas()
 		writeJSON(w, 200, map[string]any{"count": n, "freed": freed, "info": a.info(true)})
+	}))
+	// 暂停同步：minutes > 0 暂停若干分钟，-1 直到手动恢复，0 恢复
+	m.HandleFunc("POST /api/pause", local(func(w http.ResponseWriter, r *http.Request) {
+		var req struct{ Minutes int }
+		if json.NewDecoder(r.Body).Decode(&req) != nil || req.Minutes < -1 || req.Minutes > 7*24*60 {
+			errJSON(w, 400, "bad request")
+			return
+		}
+		a.Pause(time.Duration(req.Minutes) * time.Minute)
+		writeJSON(w, 200, a.info(true))
 	}))
 	m.HandleFunc("GET /api/clipboard", local(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, a.ClipboardState())
@@ -282,6 +293,7 @@ func (a *App) info(local bool) *Info {
 		in.Manual = a.peers.ManualList()
 		u := a.StorageUsage()
 		in.Storage = &u
+		in.RecentApps = a.RecentApps()
 		for _, l := range lanAddrs() {
 			in.URLs = append(in.URLs, "http://"+net.JoinHostPort(l.IP.String(), strconv.Itoa(c.Port)))
 		}
@@ -554,14 +566,16 @@ func (a *App) handleRelay(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		AutoApply   *bool   `json:"autoApply"`
-		AutoFetchMB *int    `json:"autoFetchMB"`
-		StorageMB   *int    `json:"storageMB"`
-		Watch       *bool   `json:"watch"`
-		Name        *string `json:"name"`
-		HistoryDays *int    `json:"historyDays"`
-		StrictEnc   *bool   `json:"strictEnc"`
-		Lang        *string `json:"lang"`
+		AutoApply   *bool     `json:"autoApply"`
+		AutoFetchMB *int      `json:"autoFetchMB"`
+		StorageMB   *int      `json:"storageMB"`
+		Watch       *bool     `json:"watch"`
+		Name        *string   `json:"name"`
+		HistoryDays *int      `json:"historyDays"`
+		StrictEnc   *bool     `json:"strictEnc"`
+		Lang        *string   `json:"lang"`
+		Notify      *bool     `json:"notify"`
+		BlockApps   *[]string `json:"blockApps"`
 	}
 	if json.NewDecoder(r.Body).Decode(&req) != nil {
 		errJSON(w, 400, "bad json")
@@ -595,6 +609,18 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.Lang != nil {
 			c.Lang = *req.Lang
+		}
+		if req.Notify != nil {
+			c.Notify = *req.Notify
+		}
+		if req.BlockApps != nil {
+			var list []string
+			for _, b := range *req.BlockApps {
+				if b = strings.TrimSpace(b); b != "" && !contains(list, b) && len(list) < 100 {
+					list = append(list, trimRunes(b, 100))
+				}
+			}
+			c.BlockApps = list
 		}
 		if req.AutoFetchMB != nil {
 			c.AutoFetchMB = *req.AutoFetchMB

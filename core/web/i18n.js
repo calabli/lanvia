@@ -163,6 +163,16 @@ const I18N = (() => {
     '文件不存在': "File doesn't exist", '来源设备不在线': 'The source device is offline',
     '发送方和其他设备都不在线，或都没有这个文件': "Neither the sender nor any other device is online with this file",
     '快捷指令': 'Shortcuts',
+    // ---- 暂停、黑名单、通知 ----
+    '暂停同步': 'Pause syncing', '15 分钟': '15 minutes', '1 小时': '1 hour', '直到手动恢复': 'Until I resume',
+    '暂停期间本机复制的不发送，收到的不写入剪贴板（仍会出现在列表里）。': "While paused, copies here aren't sent and incoming items aren't written to the clipboard (they still appear in the list).",
+    '已暂停到 {0}': 'Paused until {0}', '已暂停，直到手动恢复': 'Paused until you resume', '恢复同步': 'Resume syncing',
+    '已暂停': 'Paused', '· 到 {0}': '· until {0}', '同步已暂停，点击恢复': 'Syncing is paused. Click to resume',
+    '已恢复同步': 'Syncing resumed', '已暂停同步': 'Syncing paused',
+    '不同步这些应用里复制的内容': "Don't sync content copied in these apps",
+    '应用名或 ID，例如 1Password、com.apple.keychainaccess、chrome.exe': 'App name or ID, e.g. 1Password, com.apple.keychainaccess, chrome.exe',
+    '还没有添加': 'None yet', '最近复制来源：': 'Recently copied from:',
+    '收到内容时弹出通知': 'Show a notification for new items', '仅桌面版；有 Lanvia 窗口在前台时不弹': 'Desktop app only; not shown while a Lanvia window is in front',
   };
 
   // 带占位符的条目编译成正则

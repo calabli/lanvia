@@ -46,11 +46,21 @@ static int lanviaShouldSkip(void) {
 		return 0;
 	}
 }
+// 当前位于最前面的应用（复制内容的来源）
+static char *lanviaFrontApp(void) {
+	@autoreleasepool {
+		NSRunningApplication *app = [[NSWorkspace sharedWorkspace] frontmostApplication];
+		if (app == nil) return NULL;
+		NSString *s = [NSString stringWithFormat:@"%@\n%@", app.bundleIdentifier ?: @"", app.localizedName ?: @""];
+		return strdup([s UTF8String]);
+	}
+}
 */
 import "C"
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"unsafe"
 )
@@ -91,3 +101,13 @@ func writeClipboard(s string) error {
 }
 
 func skipClipboardChange() bool { return C.lanviaShouldSkip() == 1 }
+
+func frontApp() (id, name string) {
+	p := C.lanviaFrontApp()
+	if p == nil {
+		return "", ""
+	}
+	defer C.free(unsafe.Pointer(p))
+	id, name, _ = strings.Cut(C.GoString(p), "\n")
+	return id, name
+}

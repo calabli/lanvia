@@ -181,6 +181,16 @@
       </div>
     </div>
     <p id="modeHint" class="muted small"></p>
+    <div class="field"><span>暂停同步</span>
+      <div id="pauseRow" class="row wrap pause-row"></div>
+      <small class="muted">暂停期间本机复制的不发送，收到的不写入剪贴板（仍会出现在列表里）。</small>
+    </div>
+    <div class="field"><span>不同步这些应用里复制的内容</span>
+      <div id="blockList" class="chips"></div>
+      <form id="blockForm" class="row"><input id="blockInput" placeholder="应用名或 ID，例如 1Password、com.apple.keychainaccess、chrome.exe" spellcheck="false" autocapitalize="off"><button class="btn">添加</button></form>
+      <div id="recentApps" class="chips recent"></div>
+    </div>
+    <label class="switch"><input type="checkbox" id="optNotify"><span><b>收到内容时弹出通知</b><small>仅桌面版；有 Lanvia 窗口在前台时不弹</small></span></label>
     <label class="switch"><input type="checkbox" id="optApply"><span><b>自动写入本机剪贴板</b><small>其他设备发来的文字直接可以 ⌘V / Ctrl+V 粘贴</small></span></label>
     <p id="clipWarn" class="warn small" hidden>未找到系统剪贴板工具，只能通过网页手动复制。</p>
     <label class="field"><span>历史保留时间</span>

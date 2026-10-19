@@ -20,6 +20,8 @@ async function loadInfo() {
   drawQR();
   $('#nodeName').value = i.name;
   renderMode();
+  renderBlock();
+  $('#optNotify').checked = i.settings.notify !== false;
   $('#optApply').checked = i.settings.autoApply;
   $('#optStrict').checked = !!i.settings.strictEnc;
   if ((i.settings.lang || '') !== (store.get('lang') || '')) applyLang(i.settings.lang || '');

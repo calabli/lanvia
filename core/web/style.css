@@ -386,3 +386,14 @@ body.panel .filter-selects { display: none; }
 }
 .badge.lang { font-family: var(--mono); }
 #pvFmt.on { color: var(--accent); background: var(--accent-soft); }
+
+/* ---- 暂停与黑名单 ---- */
+.pause-row { align-items: center; }
+.paused-text { font-size: 13px; color: var(--text); margin-right: 4px; }
+.mode-chip.paused .mode-dot { background: #f2b01e; box-shadow: 0 0 0 3px color-mix(in srgb, #f2b01e 22%, transparent); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip-item { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 4px 0 10px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--border); font-size: 12.5px; color: var(--text); }
+.chip-item .icon-btn { width: 22px; height: 22px; }
+.chip-item .icon-btn svg { width: 12px; height: 12px; }
+button.chip-item.add { padding: 0 10px; cursor: pointer; color: var(--accent); }
+button.chip-item.add:hover { background: var(--accent-soft); }

@@ -23,6 +23,7 @@ type App struct {
 	clip  *ClipWatcher
 
 	onChange    func()
+	onIncoming  func(Item) // 其他设备实时发来新内容（桌面通知用）
 	desktopHook func(action, id string) bool
 	saved       map[string]string // 已保存到“下载”的文件：id -> 路径
 	fetch       *fetcher          // 后台下载其他设备的文件
@@ -74,7 +75,7 @@ func (a *App) ingest(it *Item, fromPeer string, apply bool) bool {
 		return false
 	}
 	a.hub.Broadcast("item", it)
-	if apply && it.Kind == "text" && a.cfgSnapshot().AutoApply {
+	if apply && it.Kind == "text" && a.cfgSnapshot().AutoApply && !a.Paused() {
 		if err := a.clip.Apply(it.Text); err != nil && a.clip.ok {
 			log.Printf("写入剪贴板失败: %v", err)
 		}
@@ -84,6 +85,15 @@ func (a *App) ingest(it *Item, fromPeer string, apply bool) bool {
 		a.enqueueFetch(it.ID)
 	}
 	a.changed()
+	// 其他设备或手机发来的（不含本机剪贴板和本机仪表盘发出的，也不含历史同步）
+	if c := a.cfgSnapshot(); it.From != c.Name {
+		a.mu.RLock()
+		fn := a.onIncoming
+		a.mu.RUnlock()
+		if fn != nil {
+			go fn(*it)
+		}
+	}
 	log.Printf("%s  %s", it.From, preview(it))
 	return true
 }
@@ -259,6 +269,7 @@ func (a *App) devices() []Device {
 func (a *App) pruneLoop() {
 	for i := 0; ; i++ {
 		a.prune()
+		a.autoResume()
 		if i%5 == 4 {
 			a.enforceQuota() // 顺便清理残留文件
 			a.fetchMissing() // 每 5 分钟重试一次没下载成功的文件

@@ -249,6 +249,8 @@ function connect() {
     $('#optKeep').value = String(S.info.settings.historyDays);
     $('#optFetch').value = String(S.info.settings.autoFetchMB);
     $('#optStrict').checked = !!S.info.settings.strictEnc;
+    $('#optNotify').checked = S.info.settings.notify !== false;
+    renderBlock();
     if ((S.info.settings.lang || '') !== (store.get('lang') || '')) applyLang(S.info.settings.lang || '');
     renderMode();
   });

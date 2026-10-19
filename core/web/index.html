@@ -159,6 +159,9 @@
   <ul id="deviceList" class="device-list"></ul>
   <div id="remoteOnly" class="sheet-section">
     <label class="field"><span>这台设备的名称</span><input id="myName" maxlength="40"></label>
+    <label class="field"><span>语言</span>
+      <select id="myLang"><option value="">跟随系统</option><option value="zh" data-raw>中文</option><option value="en" data-raw>English</option></select>
+    </label>
     <button id="forgetBtn" class="btn danger-ghost">退出配对</button>
   </div>
 </dialog>
@@ -168,6 +171,9 @@
   <div class="sheet-head"><h2>设置</h2><button class="icon-btn close" data-close aria-label="关闭"></button></div>
   <div class="sheet-section">
     <label class="field"><span>本机名称</span><input id="nodeName" maxlength="40"></label>
+    <label class="field"><span>语言</span>
+      <select id="optLang"><option value="">跟随系统</option><option value="zh" data-raw>中文</option><option value="en" data-raw>English</option></select>
+    </label>
     <div class="field"><span>发送模式</span>
       <div class="segmented" role="radiogroup" aria-label="发送模式">
         <label><input type="radio" name="sendMode" value="active"><span><b>主动</b><small>复制即发送</small></span></label>
@@ -289,6 +295,7 @@
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <div id="drop" class="drop" hidden><div>松开即可分享文件</div></div>
 
+<script src="i18n.js"></script>
 <script src="highlight.js"></script>
 <script src="zip.js"></script>
 <script src="app.js"></script>

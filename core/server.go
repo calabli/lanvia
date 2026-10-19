@@ -561,9 +561,14 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		Name        *string `json:"name"`
 		HistoryDays *int    `json:"historyDays"`
 		StrictEnc   *bool   `json:"strictEnc"`
+		Lang        *string `json:"lang"`
 	}
 	if json.NewDecoder(r.Body).Decode(&req) != nil {
 		errJSON(w, 400, "bad json")
+		return
+	}
+	if l := req.Lang; l != nil && *l != "" && *l != "zh" && *l != "en" {
+		errJSON(w, 400, "bad lang")
 		return
 	}
 	if m := req.StorageMB; m != nil && (*m < 0 || *m > 1<<24) {
@@ -587,6 +592,9 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.StrictEnc != nil {
 			c.StrictEnc = *req.StrictEnc
+		}
+		if req.Lang != nil {
+			c.Lang = *req.Lang
 		}
 		if req.AutoFetchMB != nil {
 			c.AutoFetchMB = *req.AutoFetchMB

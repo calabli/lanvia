@@ -23,6 +23,8 @@ type Settings struct {
 	StorageMB int `json:"storageMB"`
 	// 只允许加密连接：拒绝不支持加密的旧版本节点，也防止中间人去掉加密
 	StrictEnc bool `json:"strictEnc"`
+	// 界面语言：空为跟随系统，"zh" 或 "en"。本机的网页窗口和托盘菜单共用
+	Lang string `json:"lang"`
 }
 
 const (

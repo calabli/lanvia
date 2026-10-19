@@ -229,7 +229,7 @@ function findCode(text) {
 
 function itemHTML(it, latest) {
   const fromDev = S.devices.find(d => d.name === it.from);
-  const meta = `<div class="meta">${kindIcon(fromDev?.kind)}<span class="from">${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${latest ? '<span class="badge">最新</span>' : ''}${it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改">已编辑</span>` : ''}${it.fav ? '' : expiryBadge(it)}</div>${it.fav ? `<div class="fav-title">${ICON.starOn}<span>${it.title ? esc(it.title) : '已收藏'}</span></div>` : ''}`;
+  const meta = `<div class="meta">${kindIcon(fromDev?.kind)}<span class="from" data-raw>${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${latest ? '<span class="badge">最新</span>' : ''}${it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改">已编辑</span>` : ''}${it.fav ? '' : expiryBadge(it)}</div>${it.fav ? `<div class="fav-title">${ICON.starOn}${it.title ? `<span data-raw>${esc(it.title)}</span>` : '<span>已收藏</span>'}</div>` : ''}`;
   if (it.kind === 'file') {
     const isImg = /^image\/(png|jpe?g|gif|webp|heic|avif|bmp)$/i.test(it.mime || '');
     const isVid = /^video\//.test(it.mime || '');
@@ -237,7 +237,7 @@ function itemHTML(it, latest) {
       ? `<img class="thumb" loading="lazy" alt="${esc(it.name)}" src="${esc(signedURL('/api/blob/' + it.id))}" data-act="view">`
       : isVid ? `<video class="thumb" controls preload="metadata" src="${esc(signedURL('/api/blob/' + it.id))}"></video>` : '';
     return `${meta}${media}
-      <div class="file"><div class="file-icon">${ICON.file}</div><div><div class="file-name">${esc(it.name)}</div><div class="muted small">${fmtSize(it.size || 0)}</div></div></div>
+      <div class="file"><div class="file-icon">${ICON.file}</div><div><div class="file-name" data-raw>${esc(it.name)}</div><div class="muted small">${fmtSize(it.size || 0)}</div></div></div>
       <div class="actions">
         <button class="btn sm" data-act="download">${ICON.download}下载</button>
         <span class="spacer"></span>
@@ -254,7 +254,7 @@ function itemHTML(it, latest) {
     code ? `<button class="btn sm" data-act="code" data-v="${esc(code)}">${ICON.key}复制验证码 ${esc(code)}</button>` : '',
     url && url.length < it.text.length + 1 ? `<a class="btn sm" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${ICON.link}打开链接</a>` : '',
   ].join('');
-  return `${meta}<div class="text" data-act="copy">${linkify(it.text)}</div>
+  return `${meta}<div class="text" data-act="copy" data-raw>${linkify(it.text)}</div>
     ${long && !PANEL ? '<button class="more" data-act="expand">展开全部</button>' : ''}
     <div class="actions">
       <button class="btn sm" data-act="copy">${ICON.copy}<span>复制</span></button>
@@ -339,7 +339,7 @@ function renderFromFilter() {
   const key = names.join('\u0000');
   if (sel.dataset.key === key) return;
   sel.dataset.key = key;
-  sel.innerHTML = '<option value="">所有设备</option>' + names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  sel.innerHTML = '<option value="">所有设备</option>' + names.map(n => `<option value="${esc(n)}" data-raw>${esc(n)}</option>`).join('');
   if (!names.includes(S.from)) S.from = '';
   sel.value = S.from;
 }
@@ -357,7 +357,7 @@ function renderList() {
   if (!S.fuzzy) markTerms(list, S.terms || []);
   $('#itemCount').textContent = String(items.length);
   const cap = $('.history-caption');
-  if (cap) { cap.dataset.text ??= cap.textContent; cap.textContent = S.fuzzy ? '没有完全匹配的内容，以下是相近的结果' : cap.dataset.text; cap.classList.toggle('fuzzy', S.fuzzy); }
+  if (cap) { cap.textContent = S.fuzzy ? '没有完全匹配的内容，以下是相近的结果' : '每一份灵感，都有迹可循。'; cap.classList.toggle('fuzzy', S.fuzzy); }
   $('#empty').hidden = items.length > 0;
   const filtered = !!f || S.kind !== 'all';
   $('#emptyTitle').textContent = filtered ? '还没有找到这份灵感。' : '好想法，从这里开始。';
@@ -380,7 +380,7 @@ function renderDevices() {
     const me = d.id === S.you || (S.local && d.host);
     const enc = d.node && !d.host ? (d.enc ? ' · 已加密' : ' · 未加密（旧版本）') : '';
     const sub = d.node ? (d.host && !S.local ? '你正通过它连接 · 运行 Lanvia' : '运行 Lanvia' + enc) : `浏览器 · 经由 ${esc(d.via || '')}`;
-    return `<li><div class="dev-ic">${kindIcon(d.kind)}</div><div><div class="dev-name">${esc(d.name)} ${me ? '<span class="badge">本机</span>' : ''}</div><div class="dev-sub">${sub}</div></div></li>`;
+    return `<li><div class="dev-ic">${kindIcon(d.kind)}</div><div><div class="dev-name"><span data-raw>${esc(d.name)}</span> ${me ? '<span class="badge">本机</span>' : ''}</div><div class="dev-sub">${sub}</div></div></li>`;
   }).join('') || '<li class="muted">暂无</li>';
   if (S.local) {
     const card = $('#pairCard');
@@ -443,6 +443,7 @@ function connect() {
     $('#optKeep').value = String(S.info.settings.historyDays);
     $('#optFetch').value = String(S.info.settings.autoFetchMB);
     $('#optStrict').checked = !!S.info.settings.strictEnc;
+    if ((S.info.settings.lang || '') !== (store.get('lang') || '')) applyLang(S.info.settings.lang || '');
     renderMode();
   });
   es.addEventListener('delete', e => {
@@ -625,8 +626,8 @@ function showPreview(it, mode = 'view') {
 function renderPreview() {
   const it = PV, isText = it.kind === 'text', m = PVS.mode;
   const fromDev = S.devices.find(x => x.name === it.from);
-  const edited = it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改于 ${relTime(it.editedAt)}">已编辑 · ${esc(it.editedBy || '')} ${relTime(it.editedAt)}</span>` : '';
-  $('#pvMeta').innerHTML = `${kindIcon(fromDev?.kind)}<span class="from">${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${edited}${expiryBadge(it)}
+  const edited = it.rev ? `<span class="badge soft"><span>已编辑</span> · <span data-raw>${esc(it.editedBy || '')}</span> <span>${relTime(it.editedAt)}</span></span>` : '';
+  $('#pvMeta').innerHTML = `${kindIcon(fromDev?.kind)}<span class="from" data-raw>${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${edited}${expiryBadge(it)}
     ${PVS.lang ? `<span class="badge soft lang">${esc(HL.name(PVS.lang))}</span>` : ''}
     <span class="pv-stat">${isText ? textStats(it.text) : esc(it.name) + ' · ' + fmtSize(it.size || 0)}</span>`;
   const show = (id, on) => { $(id).hidden = !on; };
@@ -661,10 +662,10 @@ function textHTML(text) {
   if (PVS.mono && lines.length <= 20000) {
     // 识别出语言时按语法着色，否则只加行号和链接
     const rows = PVS.lang ? HL.lines(text, PVS.lang) : lines.map(linkify);
-    return `<div class="pv-code${PVS.wrap ? ' wrap' : ''}" style="--gutter:${String(lines.length).length + 1}ch">${
+    return `<div class="pv-code${PVS.wrap ? ' wrap' : ''}" data-raw style="--gutter:${String(lines.length).length + 1}ch">${
       rows.map(l => `<div class="ln">${l || ' '}</div>`).join('')}</div>`;
   }
-  return `<div class="pv-text${PVS.mono ? ' mono' : ''}${PVS.wrap ? '' : ' nowrap'}">${linkify(text)}</div>`;
+  return `<div class="pv-text${PVS.mono ? ' mono' : ''}${PVS.wrap ? '' : ' nowrap'}" data-raw>${linkify(text)}</div>`;
 }
 
 function renderPreviewBody() {
@@ -675,7 +676,7 @@ function renderPreviewBody() {
     const src = esc(signedURL('/api/blob/' + it.id));
     if (/^image\//.test(it.mime || '') && it.mime !== 'image/svg+xml') body.innerHTML = `<div class="pv-media"><img src="${src}" alt="${esc(it.name)}"></div>`;
     else if (/^video\//.test(it.mime || '')) body.innerHTML = `<div class="pv-media"><video src="${src}" controls autoplay></video></div>`;
-    else body.innerHTML = `<div class="pv-file"><div class="file-icon">${ICON.file}</div><div class="file-name">${esc(it.name)}</div><div class="muted">${fmtSize(it.size || 0)} · ${esc(it.mime || '')}</div></div>`;
+    else body.innerHTML = `<div class="pv-file"><div class="file-icon">${ICON.file}</div><div class="file-name" data-raw>${esc(it.name)}</div><div class="muted">${fmtSize(it.size || 0)} · ${esc(it.mime || '')}</div></div>`;
     return;
   }
   if (PVS.mode === 'history') return renderHistory();
@@ -784,7 +785,7 @@ function renderHistory() {
     const label = i === n - 1 ? '原始内容' : `第 ${n - i} 版`;
     return `<button class="hv${v.id === PVS.sel ? ' on' : ''}" data-vid="${v.id}">
       <span class="hv-top"><b>${label}</b>${i === 0 ? '<span class="badge">当前</span>' : ''}</span>
-      <span class="hv-sub">${esc(v.by)} · ${relTime(v.ts)}</span>
+      <span class="hv-sub"><span data-raw>${esc(v.by)}</span> · <span>${relTime(v.ts)}</span></span>
       ${st ? `<span class="hv-delta"><i class="add">+${st.add}</i> <i class="del">−${st.del}</i> 行</span>` : `<span class="hv-delta">${v.text.length} 字</span>`}
     </button>`;
   }).join('');
@@ -866,7 +867,7 @@ function diffHTML(ops) {
     if (!keep[i]) { skipped++; return; }
     flush();
     const cls = o[0] === '+' ? 'add' : o[0] === '-' ? 'del' : '';
-    out += `<div class="df ${cls}"><span class="sign">${o[0] === '=' ? ' ' : o[0] === '-' ? '−' : '+'}</span>${esc(o[1]) || ' '}</div>`;
+    out += `<div class="df ${cls}" data-raw><span class="sign">${o[0] === '=' ? ' ' : o[0] === '-' ? '−' : '+'}</span>${esc(o[1]) || ' '}</div>`;
   });
   flush();
   return `<div class="pv-diff${PVS.mono ? ' mono' : ''}">${out}</div>`;
@@ -995,9 +996,11 @@ async function refreshClip() {
     const c = await api('GET', '/api/clipboard');
     const box = $('#clipText');
     if (c.reason) {
+      delete box.dataset.raw; // 提示文字需要翻译
       box.textContent = c.reason;
       box.classList.add('empty');
     } else {
+      box.dataset.raw = ''; // 剪贴板内容原样显示
       box.textContent = c.text + (c.length > [...c.text].length ? '…' : '');
       box.classList.remove('empty');
     }
@@ -1141,7 +1144,9 @@ function renderStorage(u, quotaMB) {
   const base = quota || Math.max(total, 1);
   $('#stOwn').style.width = Math.min(100, u.own / base * 100) + '%';
   $('#stRep').style.width = Math.min(100, u.replicas / base * 100) + '%';
-  $('#stText').innerHTML = `已用 <b>${fmtSize(total)}</b>${quota ? ' / ' + fmtSize(quota) : ''} · 原件 ${fmtSize(u.own)} · 副本 ${fmtSize(u.replicas)}（${u.count} 个）`;
+  $('#stText').textContent = quota
+    ? `已用 ${fmtSize(total)} / ${fmtSize(quota)} · 原件 ${fmtSize(u.own)} · 副本 ${fmtSize(u.replicas)}（${u.count} 个）`
+    : `已用 ${fmtSize(total)} · 原件 ${fmtSize(u.own)} · 副本 ${fmtSize(u.replicas)}（${u.count} 个）`;
   $('#clearReplicas').disabled = !u.count;
 }
 
@@ -1149,7 +1154,7 @@ function renderManual(list) {
   $('#manualList').innerHTML = list.map(m => `<li>
     <span class="dot${m.connected ? ' on' : ''}"></span>
     <span class="mono">${esc(m.addr)}</span>
-    <span class="muted small">${m.connected ? '已连接 · ' + esc(m.name) : '未连接，会自动重试'}</span>
+    <span class="muted small">${m.connected ? `<span>已连接</span> · <span data-raw>${esc(m.name)}</span>` : '未连接，会自动重试'}</span>
     <button class="btn ghost sm" data-remove="${esc(m.addr)}">移除</button>
   </li>`).join('');
 }
@@ -1174,6 +1179,7 @@ async function loadInfo() {
   renderMode();
   $('#optApply').checked = i.settings.autoApply;
   $('#optStrict').checked = !!i.settings.strictEnc;
+  if ((i.settings.lang || '') !== (store.get('lang') || '')) applyLang(i.settings.lang || '');
   const keep = String(i.settings.historyDays ?? 30), ks = $('#optKeep');
   if (![...ks.options].some(o => o.value === keep)) ks.add(new Option(`${keep} 天`, keep)); // 手动改过配置文件的情况
   ks.value = keep;
@@ -1197,7 +1203,7 @@ curl -H "Authorization: Bearer ${i.token}" --data-binary @photo.jpg "${base}/api
   $('#dataDir').textContent = '数据目录：' + i.dataDir;
   renderManual(i.manual || []);
   $('#nearby').innerHTML = (i.nearby || []).map(n =>
-    `<div class="nearby"><span>${kindIcon(osKind(n.os))} <b>${esc(n.name)}</b> 在同一网络，但配对码不同</span><span class="muted">${esc(n.addr.split(':')[0])}</span></div>`).join('');
+    `<div class="nearby"><span>${kindIcon(osKind(n.os))} <b data-raw>${esc(n.name)}</b> 在同一网络，但配对码不同</span><span class="muted">${esc(n.addr.split(':')[0])}</span></div>`).join('');
 }
 const osKind = os => ({ darwin: 'mac', windows: 'windows', linux: 'linux' }[os] || 'web');
 
@@ -1393,6 +1399,8 @@ function bind() {
   setInterval(() => { if (!document.hidden) refreshClip(); }, 2000);
   $('#optApply').onchange = e => saveSettings({ autoApply: e.target.checked });
   $('#optFetch').onchange = e => saveSettings({ autoFetchMB: +e.target.value });
+  $('#optLang').onchange = e => { applyLang(e.target.value); saveSettings({ lang: e.target.value }); };
+  $('#myLang').onchange = e => applyLang(e.target.value);
   $('#optStrict').onchange = async e => {
     const old = (S.devices || []).filter(d => d.node && !d.host && !d.enc);
     if (e.target.checked && old.length && !(await uiConfirm(`${old.map(d => d.name).join('、')} 是旧版本，不支持加密。开启后将断开与它们的同步，确定吗？`, { ok: '开启', danger: true }))) {
@@ -1518,7 +1526,16 @@ function bindPanel() {
   });
 }
 
+// 语言：手动选择的优先，否则跟随系统。本机的设置保存在电脑上（托盘菜单也跟着变），手机记在本地。
+function applyLang(pref) {
+  pref ? store.set('lang', pref) : store.del('lang');
+  I18N.setLang(pref || I18N.auto());
+  ['#optLang', '#myLang'].forEach(s => { const el = $(s); if (el) el.value = pref || ''; });
+}
+
 async function boot() {
+  I18N.start(store.get('lang') || I18N.auto());
+  ['#optLang', '#myLang'].forEach(s => { $(s).value = store.get('lang') || ''; });
   bind();
   const m = location.hash.match(/k=([A-Za-z0-9-]+)/);
   if (m) {

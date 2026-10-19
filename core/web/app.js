@@ -332,6 +332,7 @@ function connect() {
   es.addEventListener('hello', e => {
     const d = JSON.parse(e.data);
     S.you = d.you; S.node = d.node; S.local = d.local; S.items = d.items || [];
+    if (d.devices) S.devices = d.devices;
     S.connected = true; S.retry = 0;
     document.body.classList.toggle('is-local', S.local);
     $('#settingsBtn').hidden = !S.local;

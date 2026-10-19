@@ -242,8 +242,10 @@ func (a *App) handleEvents(w http.ResponseWriter, r *http.Request) {
 		"you":   c.ID,
 		"node":  map[string]string{"id": self.ID, "name": self.Name, "os": runtime.GOOS},
 		"items": a.store.List(),
-		"local": c.Local,
-		"now":   nowMs(),
+		// 设备列表只在变化时推送；本机窗口连上时列表不变，所以首次连接必须带上当前列表
+		"devices": a.devices(),
+		"local":   c.Local,
+		"now":     nowMs(),
 	}))
 	fl.Flush()
 	a.hub.Add(c)

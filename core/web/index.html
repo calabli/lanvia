@@ -184,6 +184,21 @@
       </select>
     </label>
     <p class="muted small">在本机留一份副本，发送方关机后仍能打开。删除或过期时副本一起清理。</p>
+    <label class="field"><span>文件占用上限</span>
+      <select id="optStorage">
+        <option value="500">500 MB</option>
+        <option value="1024">1 GB</option>
+        <option value="2048">2 GB</option>
+        <option value="5120">5 GB</option>
+        <option value="10240">10 GB</option>
+        <option value="0">不限</option>
+      </select>
+    </label>
+    <div class="storage-usage">
+      <div class="storage-bar" aria-hidden="true"><i id="stOwn"></i><i id="stRep"></i></div>
+      <div class="storage-row"><span id="stText" class="small"></span><button id="clearReplicas" class="btn ghost sm">清理全部副本</button></div>
+    </div>
+    <p class="muted small">超出上限时只清理其他设备文件的副本（从最旧的开始），本机发出的原件不会删除；条目都会保留，需要时再从其他设备获取。</p>
   </div>
   <div class="sheet-section">
     <h3>加入另一台电脑</h3>

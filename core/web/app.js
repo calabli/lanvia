@@ -941,6 +941,16 @@ function bindExpiryMenu() {
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !m.hidden) { e.stopPropagation(); m.hidden = true; } }, true);
 }
 
+function renderStorage(u, quotaMB) {
+  if (!u) return;
+  const total = u.own + u.replicas, quota = quotaMB * 1048576;
+  const base = quota || Math.max(total, 1);
+  $('#stOwn').style.width = Math.min(100, u.own / base * 100) + '%';
+  $('#stRep').style.width = Math.min(100, u.replicas / base * 100) + '%';
+  $('#stText').innerHTML = `已用 <b>${fmtSize(total)}</b>${quota ? ' / ' + fmtSize(quota) : ''} · 原件 ${fmtSize(u.own)} · 副本 ${fmtSize(u.replicas)}（${u.count} 个）`;
+  $('#clearReplicas').disabled = !u.count;
+}
+
 function renderManual(list) {
   $('#manualList').innerHTML = list.map(m => `<li>
     <span class="dot${m.connected ? ' on' : ''}"></span>
@@ -975,6 +985,10 @@ async function loadInfo() {
   const fetchMB = String(i.settings.autoFetchMB ?? 100), fs = $('#optFetch');
   if (![...fs.options].some(o => o.value === fetchMB)) fs.add(new Option(`${fetchMB} MB 以下`, fetchMB));
   fs.value = fetchMB;
+  const st = String(i.settings.storageMB ?? 2048), ss = $('#optStorage');
+  if (![...ss.options].some(o => o.value === st)) ss.add(new Option(`${st} MB`, st));
+  ss.value = st;
+  renderStorage(i.storage, i.settings.storageMB);
   $('#clipWarn').hidden = !!i.clipboard;
   $('#token').textContent = i.token;
   const base = (i.urls || [])[0] || `http://localhost:${i.port}`;
@@ -1163,6 +1177,22 @@ function bind() {
   setInterval(() => { if (!document.hidden) refreshClip(); }, 2000);
   $('#optApply').onchange = e => saveSettings({ autoApply: e.target.checked });
   $('#optFetch').onchange = e => saveSettings({ autoFetchMB: +e.target.value });
+  $('#optStorage').onchange = async e => {
+    const mb = +e.target.value, u = S.info?.storage;
+    if (mb && u && u.own + u.replicas > mb * 1048576 && !confirm(`当前文件占用 ${fmtSize(u.own + u.replicas)}，超过新上限，将清理较旧的副本。确定吗？`)) {
+      e.target.value = String(S.info.settings.storageMB); return;
+    }
+    await saveSettings({ storageMB: mb });
+    renderStorage(S.info.storage, S.info.settings.storageMB);
+  };
+  $('#clearReplicas').onclick = async () => {
+    const u = S.info?.storage;
+    if (!u?.count) return toast('没有副本需要清理');
+    if (!confirm(`删除 ${u.count} 个副本，释放 ${fmtSize(u.replicas)}？条目会保留，需要时再从其他设备获取。`)) return;
+    const r = await api('POST', '/api/storage/clear-replicas');
+    S.info = r.info; renderStorage(r.info.storage, r.info.settings.storageMB);
+    toast(`已清理 ${r.count} 个副本，释放 ${fmtSize(r.freed)}`);
+  };
   $('#optKeep').onchange = e => {
     const days = +e.target.value;
     const n = days && S.items.filter(it => it.ts < Date.now() + S.offset - days * 864e5).length;

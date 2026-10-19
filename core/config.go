@@ -14,7 +14,7 @@ import (
 // Settings 是可在仪表盘里实时切换的选项。
 type Settings struct {
 	AutoApply bool `json:"autoApply"` // 收到其他设备的文本时写入本机剪贴板
-	Watch     bool `json:"watch"`     // 监听本机剪贴板并自动分享
+	Watch     bool `json:"watch"`     // 主动模式：复制即发送；false 为被动模式，手动发送
 	// 历史保留天数，0 表示永久。只对本机生效：过期内容会被删除，也不会再从其他设备同步回来。
 	HistoryDays int `json:"historyDays"`
 }

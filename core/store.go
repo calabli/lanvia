@@ -27,6 +27,23 @@ type Item struct {
 	Rev      int    `json:"rev,omitempty"`      // 被编辑过的次数（版本数 - 1）
 	EditedAt int64  `json:"editedAt,omitempty"` // 当前版本的时间
 	EditedBy string `json:"editedBy,omitempty"` // 当前版本的编辑者
+
+	// 单条保留时长，同步到所有设备（以 MetaTS 较新的为准）。都为空时跟随本机的全局设置。
+	ExpiresAt int64 `json:"expiresAt,omitempty"` // 到期时间（毫秒）
+	Keep      bool  `json:"keep,omitempty"`      // 永久保留：不受全局设置和数量上限影响
+	MetaTS    int64 `json:"metaTs,omitempty"`    // 最近一次修改保留设置的时间
+}
+
+// expired 判断一条内容是否已过期：单条设置优先，否则按本机的全局保留时长。
+func (it *Item) expired(now, keepMs int64) bool {
+	switch {
+	case it.Keep:
+		return false
+	case it.ExpiresAt > 0:
+		return it.ExpiresAt <= now
+	default:
+		return keepMs > 0 && it.TS < now-keepMs
+	}
 }
 
 const (
@@ -98,7 +115,7 @@ func (s *Store) Add(it *Item) bool {
 	if _, dead := s.tomb[it.ID]; dead || it.TS <= s.clearedAt {
 		return false
 	}
-	if k := s.keepMs.Load(); k > 0 && it.TS < nowMs()-k { // 已过期的不再收（包括其他设备同步来的）
+	if it.expired(nowMs(), s.keepMs.Load()) { // 已过期的不再收（包括其他设备同步来的）
 		return false
 	}
 	for _, x := range s.items {
@@ -110,11 +127,13 @@ func (s *Store) Add(it *Item) bool {
 	s.items = append(s.items, nil)
 	copy(s.items[i+1:], s.items[i:])
 	s.items[i] = it
-	for len(s.items) > maxItems {
-		old := s.items[len(s.items)-1]
-		s.items = s.items[:len(s.items)-1]
-		os.Remove(s.blobPath(old.ID))
-		delete(s.versions, old.ID)
+	// 超过上限时从最旧的开始删，跳过“永久保留”的
+	for i := len(s.items) - 1; len(s.items) > maxItems && i >= 0; i-- {
+		if old := s.items[i]; !old.Keep {
+			s.items = append(s.items[:i], s.items[i+1:]...)
+			os.Remove(s.blobPath(old.ID))
+			delete(s.versions, old.ID)
+		}
 	}
 	s.markDirty()
 	return true
@@ -171,17 +190,13 @@ func (s *Store) setRetention(days int) {
 // Prune 删除过期的内容（连同文件和历史版本），返回被删除的 ID。
 // 过期是本机的设置，不写墓碑、不通知其他设备。
 func (s *Store) Prune() []string {
-	k := s.keepMs.Load()
-	if k <= 0 {
-		return nil
-	}
-	cut := nowMs() - k
+	now, k := nowMs(), s.keepMs.Load()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var gone []string
 	kept := s.items[:0]
 	for _, x := range s.items {
-		if x.TS < cut {
+		if x.expired(now, k) {
 			gone = append(gone, x.ID)
 			os.Remove(s.blobPath(x.ID))
 			delete(s.versions, x.ID)
@@ -197,6 +212,41 @@ func (s *Store) Prune() []string {
 		s.markDirty()
 	}
 	return gone
+}
+
+// newerMeta 判断一次保留设置是否比 x 现有的更新。时间相同（多台设备同一毫秒修改）时按固定规则
+// 决胜：永久保留优先，其次到期时间更晚的优先。所有设备用同样的规则，结果一致。
+func newerMeta(ts, expiresAt int64, keep bool, x *Item) bool {
+	if ts != x.MetaTS {
+		return ts > x.MetaTS
+	}
+	if keep != x.Keep {
+		return keep
+	}
+	return !keep && expiresAt > x.ExpiresAt
+}
+
+// applyMeta 更新一条内容的保留设置，只接受比现有设置更新的修改。
+func (s *Store) applyMeta(id string, expiresAt int64, keep bool, metaTS int64) *Item {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, x := range s.items {
+		if x.ID != id {
+			continue
+		}
+		if !newerMeta(metaTS, expiresAt, keep, x) {
+			return nil
+		}
+		n := *x // 写时复制
+		n.ExpiresAt, n.Keep, n.MetaTS = expiresAt, keep, metaTS
+		if keep {
+			n.ExpiresAt = 0
+		}
+		s.items[i] = &n
+		s.markDirty()
+		return &n
+	}
+	return nil
 }
 
 func (s *Store) Get(id string) *Item {

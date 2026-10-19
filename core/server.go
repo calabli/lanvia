@@ -77,6 +77,33 @@ func (a *App) routes(web fs.FS) http.Handler {
 		}
 		writeJSON(w, 200, map[string]any{"item": it, "versions": a.store.Versions(id)})
 	}))
+	m.HandleFunc("POST /api/items/{id}/expiry", auth(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			TTL  int64 `json:"ttl"` // 秒；0 表示跟随全局设置
+			Keep bool  `json:"keep"`
+		}
+		if json.NewDecoder(r.Body).Decode(&req) != nil || req.TTL < 0 || req.TTL > 10*365*86400 {
+			errJSON(w, 400, "bad request")
+			return
+		}
+		it, err := a.SetItemExpiry(r.PathValue("id"), time.Duration(req.TTL)*time.Second, req.Keep)
+		if err != nil {
+			errJSON(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, it)
+	}))
+	m.HandleFunc("GET /api/clipboard", local(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, a.ClipboardState())
+	}))
+	m.HandleFunc("POST /api/send-clipboard", local(func(w http.ResponseWriter, r *http.Request) {
+		it, err := a.SendClipboard()
+		if err != nil {
+			errJSON(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, it)
+	}))
 	m.HandleFunc("POST /api/clear", auth(func(w http.ResponseWriter, r *http.Request) {
 		a.clear(nowMs(), "")
 		writeJSON(w, 200, ok)
@@ -423,6 +450,13 @@ func (a *App) handleRelay(w http.ResponseWriter, r *http.Request) {
 		if idRe.MatchString(env.ID) && validVersion(env.Version) {
 			a.applyRemoteEdit(env.ID, env.Version, from)
 		}
+	case "meta":
+		if idRe.MatchString(env.ID) && env.Item != nil && env.Item.MetaTS > 0 {
+			if it := a.store.applyMeta(env.ID, env.Item.ExpiresAt, env.Item.Keep, env.Item.MetaTS); it != nil {
+				a.afterMeta(it, from)
+				a.prune()
+			}
+		}
 	case "delete":
 		a.remove(env.ID, from)
 	case "clear":
@@ -447,6 +481,9 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	if d := req.HistoryDays; d != nil && (*d < 0 || *d > 3650) {
 		errJSON(w, 400, "保留天数应在 0 到 3650 之间")
 		return
+	}
+	if req.Watch != nil && *req.Watch {
+		a.clip.resync() // 切回主动模式时不补发被动期间复制的内容
 	}
 	a.updateCfg(func(c *Config) {
 		if req.HistoryDays != nil {

@@ -2,7 +2,7 @@
 //
 //   - 点托盘图标（或按 ⌘⇧Y / Ctrl+Shift+Y）弹出快捷面板：输入即搜索，↑↓ 选择，回车写入剪贴板
 //   - 右键托盘图标：最近内容一键复制、同步开关、开机启动、退出
-//   - 预览：面板里按空格或 ⌘Y，长内容在独立的悬浮窗口里查看和复制
+//   - 预览：面板里按空格或 ⌘Y，长内容在独立的悬浮窗口里查看和复制；⌘E 编辑，可查看历史版本
 //   - 主窗口：配对二维码、设置、完整历史
 //
 // 节点（core）运行在同一个进程里，窗口加载的是它在 localhost 上提供的页面。
@@ -112,16 +112,16 @@ func (d *desktop) build() {
 	})
 	// 预览窗口像访达的“快速查看”：可拖动、可调整大小，默认悬浮在最上层
 	d.preview = d.app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:         "preview",
-		Title:        "Lanvia 预览",
-		Width:        760,
-		Height:       620,
-		MinWidth:     360,
-		MinHeight:    240,
-		URL:          base + "/?desktop=preview",
-		Hidden:       true,
-		AlwaysOnTop:  true,
-		HideOnEscape: true,
+		Name:        "preview",
+		Title:       "Lanvia 预览",
+		Width:       760,
+		Height:      620,
+		MinWidth:    360,
+		MinHeight:   240,
+		URL:         base + "/?desktop=preview",
+		Hidden:      true,
+		AlwaysOnTop: true,
+		// 不用 HideOnEscape：编辑时 Esc 是“取消编辑”，由网页自己决定何时关闭
 	})
 	// 关闭窗口只是隐藏，Lanvia 继续在后台同步
 	for _, w := range []*application.WebviewWindow{d.panel, d.main, d.preview} {
@@ -166,12 +166,13 @@ func (d *desktop) build() {
 		case "main":
 			d.panel.Hide()
 			d.showMain()
-		case "preview":
+		case "preview", "edit", "history":
 			if id == "" {
 				return false
 			}
+			mode := map[string]string{"preview": "view", "edit": "edit", "history": "history"}[action]
 			d.panel.Hide()
-			d.preview.SetURL(base + "/?desktop=preview&id=" + id)
+			d.preview.SetURL(base + "/?desktop=preview&id=" + id + "&mode=" + mode)
 			d.preview.SetAlwaysOnTop(true)
 			d.preview.Show()
 			d.preview.Focus()

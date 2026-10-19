@@ -111,6 +111,13 @@ func (a *App) merge(s storeFile) {
 			n++
 		}
 	}
+	// 合并编辑历史。对方的内容里已经是编辑后的文本，所以这里不能把当前文本当成原始版本
+	for id, vs := range s.Versions {
+		if it, added, _ := a.store.applyVersions(id, vs, false); added {
+			a.hub.Broadcast("update", it)
+			n++
+		}
+	}
 	if n > 0 {
 		a.changed()
 		log.Printf("从对端同步了 %d 条历史", n)

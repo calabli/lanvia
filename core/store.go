@@ -21,6 +21,11 @@ type Item struct {
 	From   string `json:"from"`   // 来源设备的显示名
 	Origin string `json:"origin"` // 持有文件内容的节点 ID
 	TS     int64  `json:"ts"`     // 毫秒
+
+	// 编辑信息（见 versions.go）。Text 始终是当前版本的内容。
+	Rev      int    `json:"rev,omitempty"`      // 被编辑过的次数（版本数 - 1）
+	EditedAt int64  `json:"editedAt,omitempty"` // 当前版本的时间
+	EditedBy string `json:"editedBy,omitempty"` // 当前版本的编辑者
 }
 
 const (
@@ -38,21 +43,24 @@ type Store struct {
 	items     []*Item // 新的在前
 	tomb      map[string]int64
 	clearedAt int64
+	versions  map[string][]*TextVersion // 内容 ID -> 历史版本（含原始版本），只有被编辑过的才有
 	dirty     chan struct{}
 }
 
 type storeFile struct {
-	Items     []*Item          `json:"items"`
-	Tomb      map[string]int64 `json:"tomb"`
-	ClearedAt int64            `json:"clearedAt"`
+	Items     []*Item                   `json:"items"`
+	Tomb      map[string]int64          `json:"tomb"`
+	ClearedAt int64                     `json:"clearedAt"`
+	Versions  map[string][]*TextVersion `json:"versions,omitempty"`
 }
 
 func openStore(dir string) *Store {
 	s := &Store{
-		path:    filepath.Join(dir, "history.json"),
-		blobDir: filepath.Join(dir, "blobs"),
-		tomb:    map[string]int64{},
-		dirty:   make(chan struct{}, 1),
+		path:     filepath.Join(dir, "history.json"),
+		blobDir:  filepath.Join(dir, "blobs"),
+		tomb:     map[string]int64{},
+		versions: map[string][]*TextVersion{},
+		dirty:    make(chan struct{}, 1),
 	}
 	os.MkdirAll(s.blobDir, 0o700)
 	if b, err := os.ReadFile(s.path); err == nil {
@@ -61,6 +69,9 @@ func openStore(dir string) *Store {
 			s.items, s.clearedAt = f.Items, f.ClearedAt
 			if f.Tomb != nil {
 				s.tomb = f.Tomb
+			}
+			if f.Versions != nil {
+				s.versions = f.Versions
 			}
 		}
 	}
@@ -98,6 +109,7 @@ func (s *Store) Add(it *Item) bool {
 		old := s.items[len(s.items)-1]
 		s.items = s.items[:len(s.items)-1]
 		os.Remove(s.blobPath(old.ID))
+		delete(s.versions, old.ID)
 	}
 	s.markDirty()
 	return true
@@ -121,6 +133,7 @@ func (s *Store) Delete(id string) bool {
 		}
 	}
 	os.Remove(s.blobPath(id))
+	delete(s.versions, id)
 	s.markDirty()
 	return true
 }
@@ -138,6 +151,7 @@ func (s *Store) Clear(ts int64) bool {
 			kept = append(kept, x)
 		} else {
 			os.Remove(s.blobPath(x.ID))
+			delete(s.versions, x.ID)
 		}
 	}
 	s.items = kept
@@ -181,7 +195,11 @@ func (s *Store) Snapshot() storeFile {
 	for k, v := range s.tomb {
 		t[k] = v
 	}
-	return storeFile{Items: append([]*Item(nil), s.items...), Tomb: t, ClearedAt: s.clearedAt}
+	v := make(map[string][]*TextVersion, len(s.versions))
+	for k, vs := range s.versions {
+		v[k] = append([]*TextVersion(nil), vs...)
+	}
+	return storeFile{Items: append([]*Item(nil), s.items...), Tomb: t, ClearedAt: s.clearedAt, Versions: v}
 }
 
 func (s *Store) markDirty() {
@@ -206,7 +224,7 @@ func (s *Store) Flush() {
 			delete(s.tomb, k)
 		}
 	}
-	b, err := json.Marshal(storeFile{Items: s.items, Tomb: s.tomb, ClearedAt: s.clearedAt})
+	b, err := json.Marshal(storeFile{Items: s.items, Tomb: s.tomb, ClearedAt: s.clearedAt, Versions: s.versions})
 	s.mu.Unlock()
 	if err != nil {
 		return

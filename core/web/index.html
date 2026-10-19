@@ -141,12 +141,22 @@
     <div class="pv-tools">
       <button id="pvWrap" class="icon-btn toggle" title="自动换行" aria-label="自动换行"></button>
       <button id="pvMono" class="icon-btn toggle" title="等宽字体与行号" aria-label="等宽字体与行号"></button>
+      <button id="pvHist" class="icon-btn toggle" title="历史版本" aria-label="历史版本"></button>
+      <button id="pvEdit" class="icon-btn" title="编辑" aria-label="编辑"></button>
       <button id="pvPin" class="icon-btn toggle" title="悬浮在最上层" aria-label="悬浮在最上层" hidden></button>
+      <button id="pvDiff" class="btn ghost sm" hidden></button>
+      <button id="pvRestore" class="btn sm" hidden>恢复此版本</button>
+      <button id="pvCancel" class="btn ghost sm" hidden>取消</button>
+      <button id="pvSave" class="btn primary sm" hidden>保存</button>
       <button id="pvCopy" class="btn primary sm"></button>
       <button class="icon-btn close" data-close aria-label="关闭"></button>
     </div>
   </div>
-  <div id="pvBody" class="pv-body" tabindex="-1"></div>
+  <div id="pvWarn" class="pv-warn" role="alert" hidden></div>
+  <div class="pv-main">
+    <nav id="pvHistList" class="pv-hist" aria-label="历史版本"></nav>
+    <div id="pvBody" class="pv-body" tabindex="-1"></div>
+  </div>
   <div id="pvFoot" class="pv-foot"></div>
 </dialog>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>

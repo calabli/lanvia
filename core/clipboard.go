@@ -49,6 +49,10 @@ func (c *ClipWatcher) run() {
 		if len(txt) > maxTextLen || !utf8.ValidString(txt) {
 			continue
 		}
+		// 只在内容变化时检查一次：复制的是文件（只共享拖拽进来的文件）或被标记为敏感的内容就不发送
+		if skipClipboardChange() {
+			continue
+		}
 		c.a.newText(txt, c.a.cfgSnapshot().Name, false)
 	}
 }

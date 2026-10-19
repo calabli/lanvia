@@ -147,6 +147,8 @@ const ICON = {
   code: I('<path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/>'),
   pencil: I('<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'),
   history: I('<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 4.5V9H8M12 7.5V12l3 2"/>'),
+  star: I('<path d="m12 3.8 2.5 5.1 5.6.8-4 4 .9 5.6-5-2.7-5 2.7.9-5.6-4-4 5.6-.8z"/>'),
+  starOn: I('<path fill="currentColor" d="m12 3.8 2.5 5.1 5.6.8-4 4 .9 5.6-5-2.7-5 2.7.9-5.6-4-4 5.6-.8z"/>'),
   timer: I('<circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 1.5M9.5 3h5"/>'),
   pin: I('<path d="M9 4h6l-1 6 4 3v2H6v-2l4-3z"/><path d="M12 15v5"/>'),
   globe: I('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.7 2.5 14.3 0 17M12 3.5c-2.5 2.7-2.5 14.3 0 17"/>'),
@@ -227,7 +229,7 @@ function findCode(text) {
 
 function itemHTML(it, latest) {
   const fromDev = S.devices.find(d => d.name === it.from);
-  const meta = `<div class="meta">${kindIcon(fromDev?.kind)}<span class="from">${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${latest ? '<span class="badge">最新</span>' : ''}${it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改">已编辑</span>` : ''}${expiryBadge(it)}</div>`;
+  const meta = `<div class="meta">${kindIcon(fromDev?.kind)}<span class="from">${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${latest ? '<span class="badge">最新</span>' : ''}${it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改">已编辑</span>` : ''}${it.fav ? '' : expiryBadge(it)}</div>${it.fav ? `<div class="fav-title">${ICON.starOn}<span>${it.title ? hl(it.title) : '已收藏'}</span></div>` : ''}`;
   if (it.kind === 'file') {
     const isImg = /^image\/(png|jpe?g|gif|webp|heic|avif|bmp)$/i.test(it.mime || '');
     const isVid = /^video\//.test(it.mime || '');
@@ -239,6 +241,7 @@ function itemHTML(it, latest) {
       <div class="actions">
         <button class="btn sm" data-act="download">${ICON.download}下载</button>
         <span class="spacer"></span>
+        <button class="icon-btn${it.fav ? ' on' : ''}" data-act="fav" aria-label="收藏" title="收藏">${it.fav ? ICON.starOn : ICON.star}</button>
         <button class="icon-btn" data-act="expiry" aria-label="保留时长" title="保留时长">${ICON.timer}</button>
         <button class="icon-btn" data-act="delete" aria-label="删除">${ICON.trash}</button>
       </div>`;
@@ -260,18 +263,22 @@ function itemHTML(it, latest) {
       <span class="spacer"></span>
       <span class="muted small">${long ? textStats(it.text) : it.text.length > 60 ? it.text.length + ' 字' : ''}</span>
       <button class="icon-btn" data-act="edit" aria-label="编辑" title="编辑">${ICON.pencil}</button>
+      <button class="icon-btn${it.fav ? ' on' : ''}" data-act="fav" aria-label="收藏" title="收藏">${it.fav ? ICON.starOn : ICON.star}</button>
       <button class="icon-btn" data-act="expiry" aria-label="保留时长" title="保留时长">${ICON.timer}</button>
       <button class="icon-btn" data-act="delete" aria-label="删除">${ICON.trash}</button>
     </div>`;
 }
+
+// 搜索高亮（在“搜索增强”里完善）
+let hl = s => esc(s);
 
 const isLong = it => it.kind === 'text' && (it.text.length > 280 || it.text.split('\n').length > 4);
 const textStats = t => { const n = t.split('\n').length; return (n > 1 ? n + ' 行 · ' : '') + t.length + ' 字'; };
 
 function renderList() {
   const f = S.filter.trim().toLowerCase();
-  const items = S.items.filter(it => (S.kind === 'all' || it.kind === S.kind) &&
-    (!f || (it.text || it.name || '').toLowerCase().includes(f) || it.from.toLowerCase().includes(f)));
+  const items = S.items.filter(it => (S.kind === 'all' || (S.kind === 'fav' ? it.fav : it.kind === S.kind)) &&
+    (!f || (it.text || it.name || '').toLowerCase().includes(f) || it.from.toLowerCase().includes(f) || (it.title || '').toLowerCase().includes(f)));
   const list = $('#list');
   const open = new Set([...list.querySelectorAll('.item.open')].map(li => li.dataset.id));
   S.view = items;
@@ -567,8 +574,8 @@ function showPreviewMissing() {
   if (!d.open) d.show();
 }
 
-function closePreview() {
-  if (PVS.mode === 'edit' && !cancelEdit()) return;
+async function closePreview() {
+  if (PVS.mode === 'edit' && !(await cancelEdit())) return;
   if (PREVIEW) return desktop('hide-preview');
   $('#previewDlg').close();
 }
@@ -599,9 +606,9 @@ function startEdit() {
 }
 
 // 返回 true 表示已退出编辑
-function cancelEdit() {
+async function cancelEdit() {
   const ta = $('#pvEditor');
-  if (ta && ta.value !== PVS.base && !confirm('放弃这次修改吗？')) return false;
+  if (ta && ta.value !== PVS.base && !(await uiConfirm('放弃这次修改吗？', { ok: '放弃修改', danger: true }))) return false;
   PVS.mode = 'view';
   $('#pvWarn').hidden = true;
   renderPreview();
@@ -885,6 +892,68 @@ async function sendClipboard() {
   refreshClip();
 }
 
+/* ================= 页内对话框（不依赖浏览器 / WebView 的 confirm、prompt） ================= */
+
+function uiAsk(message, { input = false, value = '', placeholder = '', ok = '确定', cancel = '取消', danger = false } = {}) {
+  return new Promise(resolve => {
+    const d = $('#askDlg');
+    $('#askMsg').textContent = message;
+    const inp = $('#askInput');
+    inp.hidden = !input; inp.value = value; inp.placeholder = placeholder;
+    $('#askOk').textContent = ok; $('#askCancel').textContent = cancel;
+    $('#askOk').classList.toggle('danger', danger);
+    const done = v => { d.close(); resolve(v); };
+    $('#askOk').onclick = () => done(input ? inp.value : true);
+    $('#askCancel').onclick = () => done(input ? null : false);
+    d.oncancel = e => { e.preventDefault(); done(input ? null : false); };
+    inp.onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); done(inp.value); } };
+    d.showModal();
+    (input ? inp : $('#askOk')).focus();
+    if (input) inp.select();
+  });
+}
+const uiConfirm = (msg, opt) => uiAsk(msg, opt);
+const uiPrompt = (msg, opt) => uiAsk(msg, { ...opt, input: true });
+
+/* ================= 收藏 / 常用片段 ================= */
+
+async function setFav(it, fav, title = '') {
+  try {
+    const n = await api('POST', `/api/items/${it.id}/fav`, { fav, title });
+    upsertItem(n);
+    return n;
+  } catch (e) { toast('设置失败：' + e.message); }
+}
+
+async function renameFav(it) {
+  const title = await uiPrompt('给这条收藏起个名字，方便搜索（例如“家里 WiFi”）', { value: it.title || '', placeholder: '名称（可留空）', ok: '保存' });
+  if (title !== null) { await setFav(it, true, title); }
+}
+
+function toggleFav(it, anchor) {
+  if (!it.fav) {
+    setFav(it, true).then(n => n && toast('已收藏：不会过期，在所有设备上都能找到', { label: '命名', run: () => renameFav(n) }));
+    return;
+  }
+  openMenu(anchor, `收藏${it.title ? ' · ' + it.title : ''}`, [
+    { label: it.title ? '重命名…' : '命名…', run: () => renameFav(it) },
+    { label: '取消收藏', run: () => setFav(it, false).then(n => n && toast('已取消收藏')) },
+  ]);
+}
+
+// 通用的小菜单（与保留时长菜单共用样式）
+function openMenu(anchor, title, options) {
+  const m = $('#expiryMenu');
+  menuItem = null;
+  m.innerHTML = `<div class="pop-title">${esc(title)}</div>` + options.map((o, i) => `<button role="menuitem" data-m="${i}">${esc(o.label)}</button>`).join('');
+  m.onclickMenu = i => options[i].run();
+  m.hidden = false;
+  const r = anchor.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
+  m.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
+  m.style.top = (r.bottom + h + 8 > innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+  $('button', m)?.focus();
+}
+
 /* ================= 单条保留时长 ================= */
 
 const EXPIRY_OPTIONS = [
@@ -927,6 +996,8 @@ function openExpiryMenu(it, anchor) {
 function bindExpiryMenu() {
   const m = $('#expiryMenu');
   m.addEventListener('click', async e => {
+    const g = e.target.closest('[data-m]');
+    if (g) { m.hidden = true; m.onclickMenu?.(+g.dataset.m); return; }
     const b = e.target.closest('[data-i]');
     if (!b || !menuItem) return;
     const o = EXPIRY_OPTIONS[+b.dataset.i];
@@ -937,7 +1008,7 @@ function bindExpiryMenu() {
       toast(o.keep ? '已设为永久保留' : o.ttl ? `已设置：${o.label}` : '已恢复跟随全局设置');
     } catch (err) { toast('设置失败：' + err.message); }
   });
-  document.addEventListener('mousedown', e => { if (!m.hidden && !m.contains(e.target) && !e.target.closest('[data-act="expiry"]')) m.hidden = true; });
+  document.addEventListener('mousedown', e => { if (!m.hidden && !m.contains(e.target) && !e.target.closest('[data-act="expiry"], [data-act="fav"]')) m.hidden = true; });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !m.hidden) { e.stopPropagation(); m.hidden = true; } }, true);
 }
 
@@ -1120,6 +1191,7 @@ function bind() {
       case 'view': case 'preview': openPreview(it); break;
       case 'edit': openPreview(it, 'edit'); break;
       case 'expiry': openExpiryMenu(it, el); break;
+      case 'fav': toggleFav(it, el); break;
       case 'delete':
         api('DELETE', '/api/items/' + it.id).catch(err => toast('删除失败：' + err.message));
         break;
@@ -1159,7 +1231,7 @@ function bind() {
     v ? store.set('name', v) : store.del('name');
     connect();
   });
-  $('#forgetBtn').onclick = () => { if (confirm('退出后需要重新输入配对码。确定吗？')) { $('#devicesDlg').close(); unpair(); } };
+  $('#forgetBtn').onclick = async () => { if (await uiConfirm('退出后需要重新输入配对码。确定吗？', { ok: '退出配对', danger: true })) { $('#devicesDlg').close(); unpair(); } };
 
   $('#settingsBtn').onclick = () => { if (PANEL) return desktop('main'); loadInfo(); $('#settingsDlg').showModal(); };
   $('#pairCollapse').onclick = () => {
@@ -1179,7 +1251,7 @@ function bind() {
   $('#optFetch').onchange = e => saveSettings({ autoFetchMB: +e.target.value });
   $('#optStorage').onchange = async e => {
     const mb = +e.target.value, u = S.info?.storage;
-    if (mb && u && u.own + u.replicas > mb * 1048576 && !confirm(`当前文件占用 ${fmtSize(u.own + u.replicas)}，超过新上限，将清理较旧的副本。确定吗？`)) {
+    if (mb && u && u.own + u.replicas > mb * 1048576 && !(await uiConfirm(`当前文件占用 ${fmtSize(u.own + u.replicas)}，超过新上限，将清理较旧的副本。确定吗？`, { ok: '确定' }))) {
       e.target.value = String(S.info.settings.storageMB); return;
     }
     await saveSettings({ storageMB: mb });
@@ -1188,15 +1260,15 @@ function bind() {
   $('#clearReplicas').onclick = async () => {
     const u = S.info?.storage;
     if (!u?.count) return toast('没有副本需要清理');
-    if (!confirm(`删除 ${u.count} 个副本，释放 ${fmtSize(u.replicas)}？条目会保留，需要时再从其他设备获取。`)) return;
+    if (!(await uiConfirm(`删除 ${u.count} 个副本，释放 ${fmtSize(u.replicas)}？条目会保留，需要时再从其他设备获取。`, { ok: '清理', danger: true }))) return;
     const r = await api('POST', '/api/storage/clear-replicas');
     S.info = r.info; renderStorage(r.info.storage, r.info.settings.storageMB);
     toast(`已清理 ${r.count} 个副本，释放 ${fmtSize(r.freed)}`);
   };
-  $('#optKeep').onchange = e => {
+  $('#optKeep').onchange = async e => {
     const days = +e.target.value;
     const n = days && S.items.filter(it => it.ts < Date.now() + S.offset - days * 864e5).length;
-    if (n && !confirm(`将立即删除这台电脑上 ${n} 条超过 ${days} 天的内容，确定吗？`)) { e.target.value = String(S.info.settings.historyDays); return; }
+    if (n && !(await uiConfirm(`将立即删除这台电脑上 ${n} 条超过 ${days} 天的内容，确定吗？`, { ok: '删除', danger: true }))) { e.target.value = String(S.info.settings.historyDays); return; }
     saveSettings({ historyDays: days });
   };
   $('#manualForm').onsubmit = async e => {
@@ -1227,11 +1299,11 @@ function bind() {
     catch (err) { toast(err.message); }
   };
   $('#resetCode').onclick = async () => {
-    if (!confirm('所有已配对的手机和电脑都需要重新配对。确定重新生成吗？')) return;
+    if (!(await uiConfirm('所有已配对的手机和电脑都需要重新配对。确定重新生成吗？', { ok: '重新生成', danger: true }))) return;
     await api('POST', '/api/join', { reset: true }); loadInfo(); toast('已生成新的配对码');
   };
   $('#clearAll').onclick = async () => {
-    if (!confirm('将清空所有已连接设备上的历史记录和文件。确定吗？')) return;
+    if (!(await uiConfirm('将清空所有已连接设备上的历史记录和文件。确定吗？', { ok: '清空', danger: true }))) return;
     await api('POST', '/api/clear'); $('#settingsDlg').close();
   };
 

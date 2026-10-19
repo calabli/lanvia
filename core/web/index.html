@@ -128,6 +128,7 @@
       <button class="filter-btn active" data-kind="all" aria-pressed="true">全部</button>
       <button class="filter-btn" data-kind="text" aria-pressed="false">文本与链接</button>
       <button class="filter-btn" data-kind="file" aria-pressed="false">文件</button>
+      <button class="filter-btn" data-kind="fav" aria-pressed="false">收藏</button>
       <span class="history-caption">每一份灵感，都有迹可循。</span>
     </div>
     <ul id="list" class="list"></ul>
@@ -263,6 +264,11 @@
   <div id="pvFoot" class="pv-foot"></div>
 </dialog>
 <div id="expiryMenu" class="pop-menu" role="menu" hidden></div>
+<dialog id="askDlg" class="sheet ask">
+  <p id="askMsg"></p>
+  <input id="askInput" class="ask-input" hidden>
+  <div class="ask-bar"><button id="askCancel" class="btn ghost"></button><button id="askOk" class="btn primary"></button></div>
+</dialog>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <div id="drop" class="drop" hidden><div>松开即可分享文件</div></div>
 

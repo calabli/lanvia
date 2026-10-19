@@ -79,6 +79,22 @@ func (a *App) routes(web fs.FS) http.Handler {
 		}
 		writeJSON(w, 200, map[string]any{"item": it, "versions": a.store.Versions(id)})
 	}))
+	m.HandleFunc("POST /api/items/{id}/fav", auth(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Fav   bool   `json:"fav"`
+			Title string `json:"title"`
+		}
+		if json.NewDecoder(r.Body).Decode(&req) != nil {
+			errJSON(w, 400, "bad request")
+			return
+		}
+		it, err := a.SetFavorite(r.PathValue("id"), req.Fav, req.Title)
+		if err != nil {
+			errJSON(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, it)
+	}))
 	m.HandleFunc("POST /api/items/{id}/expiry", auth(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			TTL  int64 `json:"ttl"` // 秒；0 表示跟随全局设置
@@ -491,6 +507,16 @@ func (a *App) handleRelay(w http.ResponseWriter, r *http.Request) {
 	case "edit":
 		if idRe.MatchString(env.ID) && validVersion(env.Version) {
 			a.applyRemoteEdit(env.ID, env.Version, from)
+		}
+	case "sync":
+		if env.Snap != nil {
+			a.merge(storeFile{Items: env.Snap.Items, Versions: env.Snap.Versions}, from)
+		}
+	case "fav":
+		if idRe.MatchString(env.ID) && env.Item != nil && env.Item.FavTS > 0 {
+			if it := a.store.applyFav(env.ID, env.Item.Fav, trimRunes(env.Item.Title, 60), env.Item.FavTS); it != nil {
+				a.afterFav(it, from)
+			}
 		}
 	case "meta":
 		if idRe.MatchString(env.ID) && env.Item != nil && env.Item.MetaTS > 0 {

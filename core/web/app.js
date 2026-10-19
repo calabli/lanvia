@@ -412,6 +412,11 @@ async function loadInfo() {
   const prev = sel.value;
   sel.innerHTML = (i.urls || []).map(u => `<option>${esc(u)}</option>`).join('') || '<option>未检测到局域网地址</option>';
   if (prev && i.urls?.includes(prev)) sel.value = prev;
+  // 只有一个地址时没必要让人选
+  const single = (i.urls || []).length <= 1;
+  sel.hidden = single;
+  $('#urlText').hidden = !single;
+  $('#urlText').textContent = (i.urls || [])[0] || '未检测到局域网地址';
   drawQR();
   $('#nodeName').value = i.name;
   $('#optWatch').checked = i.settings.watch;

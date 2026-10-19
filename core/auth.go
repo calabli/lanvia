@@ -52,6 +52,7 @@ type creds struct {
 	key   []byte // HMAC 密钥
 	space string // 公开的空间 ID，写在广播信标里用于识别同组设备
 	token string // 给快捷指令等自动化用的 Bearer token（派生值，无法反推配对码）
+	enc   []byte // 节点之间内容加密的密钥（与签名密钥分开）
 }
 
 func deriveCreds(code string) creds {
@@ -61,6 +62,7 @@ func deriveCreds(code string) creds {
 		key:   k[:],
 		space: hex.EncodeToString(s[:8]),
 		token: hex.EncodeToString(mac(k[:], "lanvia-api-token"))[:32],
+		enc:   mac(k[:], "lanvia-content-encryption"),
 	}
 }
 

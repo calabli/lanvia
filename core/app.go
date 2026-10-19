@@ -221,8 +221,9 @@ type Device struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Kind string `json:"kind"`
-	Node bool   `json:"node"` // 运行 Lanvia 的电脑
-	Host bool   `json:"host"` // 当前浏览器连接的那台
+	Node bool   `json:"node"`          // 运行 Lanvia 的电脑
+	Host bool   `json:"host"`          // 当前浏览器连接的那台
+	Enc  bool   `json:"enc,omitempty"` // 与本机之间的传输已加密（节点）
 	Via  string `json:"via,omitempty"`
 }
 
@@ -248,7 +249,7 @@ func (a *App) devices() []Device {
 	}
 	addClients(a.hub.List(), c.Name)
 	for _, p := range a.peers.List() {
-		out = append(out, Device{ID: p.ID, Name: p.Name, Kind: osKind(p.OS), Node: true})
+		out = append(out, Device{ID: p.ID, Name: p.Name, Kind: osKind(p.OS), Node: true, Enc: p.Enc})
 		addClients(p.Clients, p.Name)
 	}
 	return out

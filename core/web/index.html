@@ -222,6 +222,11 @@
     <p class="muted small">两台电脑使用同一个配对码后会自动同步。加入后，本机原来的配对码失效。</p>
   </div>
   <div class="sheet-section">
+    <h3>加密</h3>
+    <p class="muted small">电脑之间的内容、历史和文件都用由配对码派生的密钥加密（AES-256-GCM）。手机浏览器与电脑之间仍是明文 http。</p>
+    <label class="switch"><input type="checkbox" id="optStrict"><span><b>只允许加密连接</b><small>拒绝不支持加密的旧版本设备（v0.4 及更早），也防止同一网络里有人截获并去掉加密</small></span></label>
+  </div>
+  <div class="sheet-section">
     <h3>手动添加设备</h3>
     <p class="muted small">配对码相同却一直找不到对方时使用，例如路由器屏蔽了广播、两台电脑不在同一网段。只需在一台电脑上添加，对方的地址可以在它的主窗口里看到。</p>
     <ul id="manualList" class="manual-list"></ul>

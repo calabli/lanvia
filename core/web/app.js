@@ -378,7 +378,8 @@ function renderDevices() {
     (preview.length > 4 ? `<span class="preview-device">+${preview.length - 4}</span>` : '');
   $('#deviceList').innerHTML = S.devices.map(d => {
     const me = d.id === S.you || (S.local && d.host);
-    const sub = d.node ? (d.host && !S.local ? '你正通过它连接 · 运行 Lanvia' : '运行 Lanvia') : `浏览器 · 经由 ${esc(d.via || '')}`;
+    const enc = d.node && !d.host ? (d.enc ? ' · 已加密' : ' · 未加密（旧版本）') : '';
+    const sub = d.node ? (d.host && !S.local ? '你正通过它连接 · 运行 Lanvia' : '运行 Lanvia' + enc) : `浏览器 · 经由 ${esc(d.via || '')}`;
     return `<li><div class="dev-ic">${kindIcon(d.kind)}</div><div><div class="dev-name">${esc(d.name)} ${me ? '<span class="badge">本机</span>' : ''}</div><div class="dev-sub">${sub}</div></div></li>`;
   }).join('') || '<li class="muted">暂无</li>';
   if (S.local) {
@@ -441,6 +442,7 @@ function connect() {
     $('#optApply').checked = S.info.settings.autoApply;
     $('#optKeep').value = String(S.info.settings.historyDays);
     $('#optFetch').value = String(S.info.settings.autoFetchMB);
+    $('#optStrict').checked = !!S.info.settings.strictEnc;
     renderMode();
   });
   es.addEventListener('delete', e => {
@@ -1171,6 +1173,7 @@ async function loadInfo() {
   $('#nodeName').value = i.name;
   renderMode();
   $('#optApply').checked = i.settings.autoApply;
+  $('#optStrict').checked = !!i.settings.strictEnc;
   const keep = String(i.settings.historyDays ?? 30), ks = $('#optKeep');
   if (![...ks.options].some(o => o.value === keep)) ks.add(new Option(`${keep} 天`, keep)); // 手动改过配置文件的情况
   ks.value = keep;
@@ -1390,6 +1393,13 @@ function bind() {
   setInterval(() => { if (!document.hidden) refreshClip(); }, 2000);
   $('#optApply').onchange = e => saveSettings({ autoApply: e.target.checked });
   $('#optFetch').onchange = e => saveSettings({ autoFetchMB: +e.target.value });
+  $('#optStrict').onchange = async e => {
+    const old = (S.devices || []).filter(d => d.node && !d.host && !d.enc);
+    if (e.target.checked && old.length && !(await uiConfirm(`${old.map(d => d.name).join('、')} 是旧版本，不支持加密。开启后将断开与它们的同步，确定吗？`, { ok: '开启', danger: true }))) {
+      e.target.checked = false; return;
+    }
+    saveSettings({ strictEnc: e.target.checked });
+  };
   $('#optStorage').onchange = async e => {
     const mb = +e.target.value, u = S.info?.storage;
     if (mb && u && u.own + u.replicas > mb * 1048576 && !(await uiConfirm(`当前文件占用 ${fmtSize(u.own + u.replicas)}，超过新上限，将清理较旧的副本。确定吗？`, { ok: '确定' }))) {

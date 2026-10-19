@@ -36,7 +36,7 @@ func (a *App) fetchFromPeers(ctx context.Context, it *Item, rangeHdr string) (*h
 		if rangeHdr != "" {
 			req.Header.Set("Range", rangeHdr)
 		}
-		resp, err := blobClient.Do(req)
+		resp, err := a.peers.do(blobClient, req)
 		if err != nil {
 			continue
 		}

@@ -129,6 +129,15 @@
       <button class="filter-btn" data-kind="text" aria-pressed="false">文本与链接</button>
       <button class="filter-btn" data-kind="file" aria-pressed="false">文件</button>
       <button class="filter-btn" data-kind="fav" aria-pressed="false">收藏</button>
+      <span class="filter-selects">
+        <select id="fromFilter" class="mini-select" aria-label="按设备筛选"><option value="">所有设备</option></select>
+        <select id="timeFilter" class="mini-select" aria-label="按时间筛选">
+          <option value="0">全部时间</option>
+          <option value="86400000">今天</option>
+          <option value="604800000">最近 7 天</option>
+          <option value="2592000000">最近 30 天</option>
+        </select>
+      </span>
       <span class="history-caption">每一份灵感，都有迹可循。</span>
     </div>
     <ul id="list" class="list"></ul>

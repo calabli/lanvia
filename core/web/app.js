@@ -72,7 +72,7 @@ const PREVIEW = DESKTOP === 'preview'; // 桌面端的悬浮预览窗口
 const PREVIEW_ID = QS.get('id');
 const S = {
   key: null, offset: 0, items: [], devices: [], you: null, node: null, local: false,
-  info: null, filter: '', kind: 'all', es: null, connected: false, retry: 0, unseen: 0,
+  info: null, filter: '', kind: 'all', from: '', since: 0, fuzzy: false, es: null, connected: false, retry: 0, unseen: 0,
   view: [], sel: 0, // 当前显示的列表和键盘选中项（快捷面板）
 };
 const desktop = (action, id) => api('POST', '/api/desktop/' + action + (id ? '?id=' + id : '')).catch(() => {});
@@ -229,7 +229,7 @@ function findCode(text) {
 
 function itemHTML(it, latest) {
   const fromDev = S.devices.find(d => d.name === it.from);
-  const meta = `<div class="meta">${kindIcon(fromDev?.kind)}<span class="from">${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${latest ? '<span class="badge">最新</span>' : ''}${it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改">已编辑</span>` : ''}${it.fav ? '' : expiryBadge(it)}</div>${it.fav ? `<div class="fav-title">${ICON.starOn}<span>${it.title ? hl(it.title) : '已收藏'}</span></div>` : ''}`;
+  const meta = `<div class="meta">${kindIcon(fromDev?.kind)}<span class="from">${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${latest ? '<span class="badge">最新</span>' : ''}${it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改">已编辑</span>` : ''}${it.fav ? '' : expiryBadge(it)}</div>${it.fav ? `<div class="fav-title">${ICON.starOn}<span>${it.title ? esc(it.title) : '已收藏'}</span></div>` : ''}`;
   if (it.kind === 'file') {
     const isImg = /^image\/(png|jpe?g|gif|webp|heic|avif|bmp)$/i.test(it.mime || '');
     const isVid = /^video\//.test(it.mime || '');
@@ -269,23 +269,95 @@ function itemHTML(it, latest) {
     </div>`;
 }
 
-// 搜索高亮（在“搜索增强”里完善）
-let hl = s => esc(s);
-
 const isLong = it => it.kind === 'text' && (it.text.length > 280 || it.text.split('\n').length > 4);
 const textStats = t => { const n = t.split('\n').length; return (n > 1 ? n + ' 行 · ' : '') + t.length + ' 字'; };
 
+/* ---- 搜索：多个关键词（空格分隔）同时匹配；找不到时退回模糊匹配；按类型、设备、时间筛选 ---- */
+
+const haystack = it => ((it.title || '') + '\n' + (it.text || it.name || '') + '\n' + it.from).toLowerCase();
+
+// 模糊匹配：关键词的字符按顺序出现即可，间隔越小越相关；间隔太大（长文本里碰巧凑齐）不算
+function fuzzyScore(h, q) {
+  let from = 0, last = -1, gaps = 0;
+  for (const c of q) {
+    const j = h.indexOf(c, from);
+    if (j < 0) return -1;
+    if (last >= 0) gaps += j - last - 1;
+    last = j; from = j + 1;
+  }
+  return gaps <= q.length * 6 ? gaps : -1;
+}
+
+function searchItems() {
+  const now = Date.now() + S.offset;
+  const base = S.items.filter(it =>
+    (S.kind === 'all' || (S.kind === 'fav' ? it.fav : it.kind === S.kind)) &&
+    (!S.from || it.from === S.from) &&
+    (!S.since || it.ts >= now - S.since));
+  const terms = S.filter.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  S.terms = terms; S.fuzzy = false;
+  if (!terms.length) return base;
+  const exact = base.filter(it => { const h = haystack(it); return terms.every(t => h.includes(t)); });
+  if (exact.length) return exact;
+  const q = terms.join('');
+  const scored = base.map(it => [fuzzyScore(haystack(it), q), it]).filter(x => x[0] >= 0).sort((a, b) => a[0] - b[0]);
+  S.fuzzy = scored.length > 0;
+  return scored.map(x => x[1]);
+}
+
+// 在已渲染的文字里标出关键词（只处理文本节点，不影响链接等结构）
+function markTerms(root, terms) {
+  if (!terms.length) return;
+  const re = new RegExp(terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi');
+  root.querySelectorAll('.text, .fav-title span, .file-name').forEach(el => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const n of nodes) {
+      const s = n.nodeValue;
+      re.lastIndex = 0;
+      if (!re.test(s)) continue;
+      re.lastIndex = 0;
+      const frag = document.createDocumentFragment();
+      let last = 0, m;
+      while ((m = re.exec(s))) {
+        if (!m[0]) { re.lastIndex++; continue; }
+        frag.append(s.slice(last, m.index));
+        const mk = document.createElement('mark'); mk.textContent = m[0]; frag.append(mk);
+        last = m.index + m[0].length;
+      }
+      frag.append(s.slice(last));
+      n.replaceWith(frag);
+    }
+  });
+}
+
+function renderFromFilter() {
+  const sel = $('#fromFilter');
+  if (!sel) return;
+  const names = [...new Set(S.items.map(it => it.from))].sort();
+  const key = names.join('\u0000');
+  if (sel.dataset.key === key) return;
+  sel.dataset.key = key;
+  sel.innerHTML = '<option value="">所有设备</option>' + names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  if (!names.includes(S.from)) S.from = '';
+  sel.value = S.from;
+}
+
 function renderList() {
-  const f = S.filter.trim().toLowerCase();
-  const items = S.items.filter(it => (S.kind === 'all' || (S.kind === 'fav' ? it.fav : it.kind === S.kind)) &&
-    (!f || (it.text || it.name || '').toLowerCase().includes(f) || it.from.toLowerCase().includes(f) || (it.title || '').toLowerCase().includes(f)));
+  renderFromFilter();
+  const items = searchItems();
+  const f = S.filter.trim() || S.from || S.since;
   const list = $('#list');
   const open = new Set([...list.querySelectorAll('.item.open')].map(li => li.dataset.id));
   S.view = items;
   S.sel = Math.max(0, Math.min(S.sel, items.length - 1));
   list.innerHTML = items.map((it, i) =>
     `<li class="item card${i === 0 && !f ? ' latest' : ''}${open.has(it.id) ? ' open' : ''}${PANEL && i === S.sel ? ' sel' : ''}${isLong(it) ? ' long' : ''}" data-id="${it.id}">${itemHTML(it, i === 0 && !f)}</li>`).join('');
+  if (!S.fuzzy) markTerms(list, S.terms || []);
   $('#itemCount').textContent = String(items.length);
+  const cap = $('.history-caption');
+  if (cap) { cap.dataset.text ??= cap.textContent; cap.textContent = S.fuzzy ? '没有完全匹配的内容，以下是相近的结果' : cap.dataset.text; cap.classList.toggle('fuzzy', S.fuzzy); }
   $('#empty').hidden = items.length > 0;
   const filtered = !!f || S.kind !== 'all';
   $('#emptyTitle').textContent = filtered ? '还没有找到这份灵感。' : '好想法，从这里开始。';
@@ -1199,6 +1271,8 @@ function bind() {
   });
 
   $('#search').addEventListener('input', e => { S.filter = e.target.value; renderList(); });
+  $('#fromFilter').onchange = e => { S.from = e.target.value; renderList(); };
+  $('#timeFilter').onchange = e => { S.since = +e.target.value; renderList(); };
   $('#list').addEventListener('dblclick', e => {
     const li = e.target.closest('.item');
     const it = li && S.items.find(x => x.id === li.dataset.id);

@@ -97,7 +97,7 @@ func (d *desktop) build() {
 		DisableResize:    true,
 		HideOnFocusLost:  true,
 		HideOnEscape:     true,
-		BackgroundColour: application.NewRGB(0xf6, 0xf6, 0xf3),
+		BackgroundColour: application.NewRGB(0xf2, 0xf5, 0xfa),
 		Windows:          application.WindowsWindow{HiddenOnTaskbar: true},
 	})
 	d.main = d.app.Window.NewWithOptions(application.WebviewWindowOptions{

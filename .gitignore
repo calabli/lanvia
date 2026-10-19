@@ -10,3 +10,6 @@
 # IDE
 .idea/
 .vscode/
+
+# 构建时生成的 Windows 资源
+*.syso

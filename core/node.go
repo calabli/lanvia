@@ -1,0 +1,155 @@
+// Package core 是 Lanvia 节点：剪贴板监听、局域网发现与同步、HTTP API 和内置网页。
+// 命令行版（cmd/lanvia）和桌面客户端（cmd/lanvia-desktop）共用它。
+package core
+
+import (
+	"embed"
+	"errors"
+	"fmt"
+	"io/fs"
+	"net"
+	"net/http"
+	"strconv"
+)
+
+const Version = "0.2.0"
+
+//go:embed web
+var webFS embed.FS
+
+type Options struct {
+	DataDir string   // 为空时使用系统配置目录下的 Lanvia/
+	Port    int      // 为 0 时使用配置文件里的端口（默认 8686）
+	Name    string   // 设备名
+	Join    string   // 另一台设备的配对码
+	NoWatch bool     // 不监听本机剪贴板
+	Peers   []string // 手动指定的对端 host:port
+}
+
+func DefaultDataDir() string { return defaultDataDir() }
+
+// Open 读取配置并准备好节点，但还不监听端口。
+func Open(o Options) (*App, error) {
+	if o.DataDir == "" {
+		o.DataDir = defaultDataDir()
+	}
+	cfg, err := loadConfig(o.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("读取配置失败: %w", err)
+	}
+	if o.Port != 0 {
+		cfg.Port = o.Port
+	}
+	if o.Name != "" {
+		cfg.Name = o.Name
+	}
+	if o.Join != "" {
+		c := normalizeCode(o.Join)
+		if len(c) != codeLen {
+			return nil, fmt.Errorf("配对码应为 %d 位", codeLen)
+		}
+		cfg.Code = c
+	}
+	if o.NoWatch {
+		cfg.Watch = false
+	}
+	if err := cfg.save(o.DataDir); err != nil {
+		return nil, err
+	}
+	return newApp(o.DataDir, cfg, o.Peers), nil
+}
+
+// ErrPortInUse 通常意味着已经有一个 Lanvia 在运行（命令行版或桌面版）。
+var ErrPortInUse = errors.New("端口已被占用")
+
+// Start 监听端口并启动后台任务，成功后立即返回。
+func (a *App) Start() error {
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", a.Port()))
+	if err != nil {
+		return fmt.Errorf("%w（%d）: %v", ErrPortInUse, a.Port(), err)
+	}
+	web, _ := fs.Sub(webFS, "web")
+	go a.peers.start()
+	go a.clip.run()
+	go a.presenceLoop()
+	go http.Serve(ln, a.routes(web))
+	return nil
+}
+
+// Close 把未写盘的历史保存下来。
+func (a *App) Close() { a.store.Flush() }
+
+func (a *App) Port() int          { return a.cfgSnapshot().Port }
+func (a *App) Name() string       { return a.cfgSnapshot().Name }
+func (a *App) Code() string       { return formatCode(a.cfgSnapshot().Code) }
+func (a *App) Settings() Settings { return a.cfgSnapshot().Settings }
+func (a *App) ClipboardOK() bool  { return a.clip.ok }
+func (a *App) LocalURL() string   { return fmt.Sprintf("http://localhost:%d", a.Port()) }
+
+// LANURLs 返回本机在局域网里的访问地址，最可能可用的排在前面。
+func (a *App) LANURLs() []string {
+	var out []string
+	for _, l := range lanAddrs() {
+		out = append(out, "http://"+net.JoinHostPort(l.IP.String(), strconv.Itoa(a.Port())))
+	}
+	return out
+}
+
+// PairURL 是扫码加入用的地址，配对码放在 # 后面，不会发给服务器。
+func (a *App) PairURL() string {
+	urls := a.LANURLs()
+	if len(urls) == 0 {
+		return ""
+	}
+	return urls[0] + "/#k=" + a.cfgSnapshot().Code
+}
+
+func (a *App) SetWatch(on bool)     { a.updateCfg(func(c *Config) { c.Watch = on }) }
+func (a *App) SetAutoApply(on bool) { a.updateCfg(func(c *Config) { c.AutoApply = on }) }
+
+// Recent 返回最近的 n 条内容。
+func (a *App) Recent(n int) []Item {
+	var out []Item
+	for _, it := range a.store.List() {
+		if len(out) == n {
+			break
+		}
+		out = append(out, *it)
+	}
+	return out
+}
+
+// CopyToClipboard 把一条文本写入本机系统剪贴板（不会产生新记录）。
+func (a *App) CopyToClipboard(id string) error {
+	it := a.store.Get(id)
+	if it == nil {
+		return errors.New("内容不存在")
+	}
+	if it.Kind != "text" {
+		return errors.New("只能复制文本")
+	}
+	return a.clip.Apply(it.Text)
+}
+
+// OnChange 注册一个回调，在历史或设置变化时调用（在独立的 goroutine 中）。
+func (a *App) OnChange(fn func()) {
+	a.mu.Lock()
+	a.onChange = fn
+	a.mu.Unlock()
+}
+
+// SetDesktopHook 让桌面客户端处理网页发来的窗口操作（如 hide、main）。
+func (a *App) SetDesktopHook(fn func(action string) bool) {
+	a.mu.Lock()
+	a.desktopHook = fn
+	a.mu.Unlock()
+}
+
+func (a *App) changed() {
+	a.mu.RLock()
+	fn := a.onChange
+	a.mu.RUnlock()
+	if fn != nil {
+		go fn()
+	}
+}

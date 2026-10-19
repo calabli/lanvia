@@ -6,30 +6,61 @@
 - **手机 / 平板**：不用安装，相机扫码后用浏览器打开（可“添加到主屏幕”）。
 - **多台电脑**：使用同一个配对码后通过 UDP 广播自动发现并互相同步，不需要服务器，也不需要外网。
 
-## 运行
+## 下载与运行
+
+**桌面客户端（推荐）**：Mac 解压 `Lanvia-macos.zip` 后把 `Lanvia.app` 拖进“应用程序”；Windows 直接运行 `Lanvia-windows-amd64.exe`。它常驻在菜单栏 / 托盘，不需要浏览器：
+
+| 操作 | 作用 |
+| --- | --- |
+| 点托盘图标，或按 **⌘⇧Y / Ctrl+Shift+Y** | 弹出快捷面板：直接打字搜索，↑↓ 选择，回车写入剪贴板并收起，Esc 收起 |
+| 右键托盘图标 | 最近 6 条内容一键复制（文件则保存并在访达/资源管理器中显示）、同步开关、开机启动、退出 |
+| 托盘菜单 → 打开主窗口 | 配对二维码、设置、完整历史 |
+
+第一次启动会自动打开主窗口，方便手机扫码配对。关闭窗口不会退出，Lanvia 会继续在后台同步。
+
+**命令行版**：适合服务器、Linux 或不想要界面的场景。
 
 ```bash
-go run .
+go run ./cmd/lanvia
 ```
 
-终端会打印配对码、局域网地址和二维码。浏览器打开 `http://localhost:8686` 是本机仪表盘，可以在那里设置和配对。
-
-打包成各平台的二进制：
-
-```bash
-GOOS=windows GOARCH=amd64 go build -o dist/lanvia.exe . && GOOS=darwin GOARCH=arm64 go build -o dist/lanvia-mac . && GOOS=linux GOARCH=amd64 go build -o dist/lanvia-linux .
-```
+终端会打印配对码、局域网地址和二维码；浏览器打开 `http://localhost:8686` 是同样的管理页面。命令行版和桌面版不要同时运行，它们共用配置和端口。
 
 常用参数：
 
 | 参数 | 说明 |
 | --- | --- |
-| `--join XXXXX-XXXXX` | 使用另一台电脑的配对码，加入它的空间（也可以在仪表盘里操作） |
+| `--join XXXXX-XXXXX` | 使用另一台电脑的配对码，加入它的空间（也可以在管理页面里操作） |
 | `--peer 192.168.1.20:8686` | 手动指定对端。路由器屏蔽广播、开了 AP 隔离或跨网段时使用 |
 | `--name 书房电脑` | 设备名 |
 | `--port 8686` | HTTP 端口（广播固定使用 UDP 8687） |
 | `--no-watch` | 不监听本机剪贴板 |
 | `--data DIR` | 数据目录，默认在系统配置目录下的 `Lanvia/` |
+
+## 打包
+
+在 Mac 上执行，产物在 `dist/`：
+
+```bash
+scripts/build.sh
+```
+
+- `Lanvia-macos.zip`：通用二进制（Apple 芯片 + Intel）的 `Lanvia.app`，最低 macOS 13，临时签名
+- `Lanvia-windows-{amd64,arm64}.exe`：带图标、高 DPI 清单、无控制台窗口（Windows 10/11 自带 WebView2）
+- `lanvia-cli-*`：六个平台的命令行版
+- `SHA256SUMS.txt`
+
+`scripts/build.sh desktop` 或 `scripts/build.sh cli` 只打其中一部分。图标由 `go run ./tools/genicons` 生成。
+
+## 目录
+
+```
+core/                 节点：剪贴板、发现与同步、HTTP API、内置网页（core/web）
+cmd/lanvia/           命令行版
+cmd/lanvia-desktop/   桌面客户端（Wails v3：托盘、快捷面板、主窗口、全局快捷键）
+tools/genicons/       生成应用图标和托盘图标
+scripts/build.sh      打包脚本
+```
 
 ## 工作原理
 
@@ -40,7 +71,7 @@ GOOS=windows GOARCH=amd64 go build -o dist/lanvia.exe . && GOOS=darwin GOARCH=ar
          └ 扫码配对        └──── UDP 广播发现 (8687) ──────────┘
 ```
 
-- **节点**：每台电脑是一个对等节点（Go，只依赖标准库和 `rsc.io/qr`，网页资源打包进二进制）。
+- **节点**：每台电脑是一个对等节点（Go，网页资源打包进二进制）。桌面客户端把节点跑在同一个进程里，窗口加载它在 localhost 上提供的页面，所以和浏览器里看到的是同一套界面。
 - **发现**：每 3 秒在各网卡上广播一个信标，里面带有由配对码派生出的空间 ID。发现同一空间的设备后，用签名请求访问它的 `/api/info` 来确认双方配对码一致。
 - **同步**：每条内容有一个随机 ID。节点只转发自己第一次见到的变更，所以网络不需要全连通，也不会形成环路。新节点上线时会拉取对方的历史，删除和清空通过墓碑记录传播。
 - **推送**：浏览器通过 Server-Sent Events 接收推送（iOS Safari 上很稳定，每 20 秒发一次保活），回到前台时自动重连。
@@ -75,7 +106,7 @@ GOOS=windows GOARCH=amd64 go build -o dist/lanvia.exe . && GOOS=darwin GOARCH=ar
 
 ## 后续可以做的
 
-- 托盘图标 / 菜单栏应用、开机自启
+- 快捷键可自定义；系统通知
 - 可选 HTTPS（自签证书，安装后浏览器即可读取剪贴板、使用 PWA 离线和分享目标）
 - 图片直接写入系统剪贴板（macOS NSPasteboard、Windows CF_DIB）
 - 发送给指定设备、置顶收藏、敏感内容自动过期

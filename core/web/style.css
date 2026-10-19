@@ -259,4 +259,22 @@ dialog.sheet::backdrop { background: rgba(10, 10, 10, .35); backdrop-filter: blu
   .hint { display: none; }
   .composer-bar .btn.primary { margin-left: auto; }
 }
+/* ---- 桌面快捷面板 ---- */
+body.panel .top { padding: 10px 12px 8px; }
+body.panel main { padding: 0 12px 48px; }
+body.panel .composer { margin: 4px 0 14px; }
+body.panel .composer textarea { min-height: 44px; font-size: 14px; }
+body.panel .list-head { position: sticky; top: 50px; z-index: 4; background: var(--bg); padding: 4px 0 8px; margin: 0; }
+body.panel .list-head h2 { display: none; }
+body.panel #search { width: 100%; height: 34px; }
+body.panel .item { padding: 10px 12px 8px; }
+body.panel .item.latest .text { font-size: 15px; }
+body.panel .text { -webkit-line-clamp: 4; }
+body.panel .item.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.kbd-hint {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; justify-content: center; gap: 16px;
+  padding: 8px; font-size: 12px; color: var(--muted); background: var(--bg); border-top: 1px solid var(--border);
+}
+kbd { font: 11px ui-monospace, Menlo, monospace; padding: 1px 5px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; margin-right: 3px; background: var(--surface); }
+
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

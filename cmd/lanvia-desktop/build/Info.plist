@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Lanvia</string>
+    <key>CFBundleDisplayName</key>
+    <string>Lanvia</string>
+    <key>CFBundleIdentifier</key>
+    <string>app.lanvia.desktop</string>
+    <key>CFBundleExecutable</key>
+    <string>Lanvia</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleVersion</key>
+    <string>{{VERSION}}</string>
+    <key>CFBundleShortVersionString</key>
+    <string>{{VERSION}}</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <!-- 只在菜单栏显示，不占程序坞 -->
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.productivity</string>
+    <!-- 窗口加载的是本机 http://localhost 上的页面 -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Lanvia 需要访问局域网，才能和你的其他设备同步剪贴板和文件。</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>Lanvia</string>
+</dict>
+</plist>

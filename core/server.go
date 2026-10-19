@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"encoding/json"
@@ -75,6 +75,47 @@ func (a *App) routes(web fs.FS) http.Handler {
 	m.HandleFunc("POST /api/settings", local(a.handleSettings))
 	m.HandleFunc("POST /api/join", local(a.handleJoin))
 	m.HandleFunc("GET /api/qr", local(handleQR))
+	m.HandleFunc("POST /api/copy/{id}", local(func(w http.ResponseWriter, r *http.Request) {
+		if err := a.CopyToClipboard(r.PathValue("id")); err != nil {
+			errJSON(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, ok)
+	}))
+	// 电脑端保存文件：then=open 用默认程序打开，then=reveal 在文件夹中显示
+	m.HandleFunc("POST /api/save/{id}", local(func(w http.ResponseWriter, r *http.Request) {
+		p, err := a.SaveFile(r.PathValue("id"))
+		if err != nil {
+			errJSON(w, 400, err.Error())
+			return
+		}
+		switch r.URL.Query().Get("then") {
+		case "open":
+			OpenFile(p)
+		case "reveal":
+			RevealFile(p)
+		}
+		writeJSON(w, 200, map[string]string{"path": p, "dir": downloadsDir()})
+	}))
+	m.HandleFunc("POST /api/reveal", local(func(w http.ResponseWriter, r *http.Request) {
+		var req struct{ Path string }
+		if json.NewDecoder(r.Body).Decode(&req) != nil || !inDownloads(req.Path) {
+			errJSON(w, 400, "bad path")
+			return
+		}
+		RevealFile(req.Path)
+		writeJSON(w, 200, ok)
+	}))
+	m.HandleFunc("POST /api/desktop/{action}", local(func(w http.ResponseWriter, r *http.Request) {
+		a.mu.RLock()
+		hook := a.desktopHook
+		a.mu.RUnlock()
+		if hook == nil || !hook(r.PathValue("action")) {
+			errJSON(w, 404, "not in desktop app")
+			return
+		}
+		writeJSON(w, 200, ok)
+	}))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
@@ -119,7 +160,7 @@ func (a *App) requireLocal(h http.HandlerFunc) http.HandlerFunc {
 
 func (a *App) info(local bool) *Info {
 	c := a.cfgSnapshot()
-	in := &Info{ID: c.ID, Name: c.Name, OS: runtime.GOOS, Version: version, Port: c.Port, Now: nowMs(), Clients: a.hub.List()}
+	in := &Info{ID: c.ID, Name: c.Name, OS: runtime.GOOS, Version: Version, Port: c.Port, Now: nowMs(), Clients: a.hub.List()}
 	if local {
 		s := c.Settings
 		in.Local, in.Code, in.Token, in.Settings = true, formatCode(c.Code), a.creds().token, &s

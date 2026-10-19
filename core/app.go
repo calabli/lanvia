@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"bytes"
@@ -19,10 +19,14 @@ type App struct {
 	hub   *Hub
 	peers *Peers
 	clip  *ClipWatcher
+
+	onChange    func()
+	desktopHook func(action string) bool
+	saved       map[string]string // 已保存到“下载”的文件：id -> 路径
 }
 
 func newApp(dir string, cfg *Config, manualPeers []string) *App {
-	a := &App{dir: dir, cfg: *cfg, cr: deriveCreds(cfg.Code), hub: newHub()}
+	a := &App{dir: dir, cfg: *cfg, cr: deriveCreds(cfg.Code), hub: newHub(), saved: map[string]string{}}
 	a.store = openStore(dir)
 	a.peers = newPeers(a, manualPeers)
 	a.clip = newClipWatcher(a)
@@ -47,6 +51,7 @@ func (a *App) updateCfg(fn func(*Config)) error {
 	a.cr = deriveCreds(a.cfg.Code)
 	c := a.cfg
 	a.mu.Unlock()
+	a.changed()
 	return c.save(a.dir)
 }
 
@@ -70,6 +75,7 @@ func (a *App) ingest(it *Item, fromPeer string, apply bool) bool {
 		}
 	}
 	a.peers.relay(Envelope{Op: "add", Item: it}, fromPeer)
+	a.changed()
 	log.Printf("%s  %s", it.From, preview(it))
 	return true
 }
@@ -78,6 +84,7 @@ func (a *App) remove(id, fromPeer string) {
 	if a.store.Delete(id) {
 		a.hub.Broadcast("delete", map[string]string{"id": id})
 		a.peers.relay(Envelope{Op: "delete", ID: id}, fromPeer)
+		a.changed()
 	}
 }
 
@@ -85,6 +92,7 @@ func (a *App) clear(ts int64, fromPeer string) {
 	if a.store.Clear(ts) {
 		a.hub.Broadcast("clear", map[string]int64{"ts": ts})
 		a.peers.relay(Envelope{Op: "clear", TS: ts}, fromPeer)
+		a.changed()
 	}
 }
 
@@ -104,6 +112,7 @@ func (a *App) merge(s storeFile) {
 		}
 	}
 	if n > 0 {
+		a.changed()
 		log.Printf("从对端同步了 %d 条历史", n)
 	}
 }

@@ -290,10 +290,11 @@ func (p *Peers) syncHistory(id, addr string) {
 }
 
 type Envelope struct {
-	Op   string `json:"op"` // add | delete | clear
-	Item *Item  `json:"item,omitempty"`
-	ID   string `json:"id,omitempty"`
-	TS   int64  `json:"ts,omitempty"`
+	Op      string       `json:"op"` // add | delete | clear | edit
+	Item    *Item        `json:"item,omitempty"`
+	ID      string       `json:"id,omitempty"`
+	TS      int64        `json:"ts,omitempty"`
+	Version *TextVersion `json:"version,omitempty"` // edit：新版本
 }
 
 // relay 把变更转发给除 except 以外的所有节点。

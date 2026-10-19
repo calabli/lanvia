@@ -67,6 +67,16 @@ func (a *App) routes(web fs.FS) http.Handler {
 		a.remove(r.PathValue("id"), "")
 		writeJSON(w, 200, ok)
 	}))
+	m.HandleFunc("POST /api/items/{id}/edit", auth(a.handleEdit))
+	m.HandleFunc("GET /api/items/{id}/versions", auth(func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		it := a.store.Get(id)
+		if it == nil {
+			errJSON(w, 404, "not found")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"item": it, "versions": a.store.Versions(id)})
+	}))
 	m.HandleFunc("POST /api/clear", auth(func(w http.ResponseWriter, r *http.Request) {
 		a.clear(nowMs(), "")
 		writeJSON(w, 200, ok)
@@ -380,6 +390,23 @@ func blobHeaders(w http.ResponseWriter, it *Item, dl bool) {
 	h.Set("Cache-Control", "private, max-age=86400")
 }
 
+func (a *App) handleEdit(w http.ResponseWriter, r *http.Request) {
+	var req struct{ Text, From string }
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxTextLen*2)).Decode(&req); err != nil {
+		errJSON(w, 400, "bad json")
+		return
+	}
+	if req.From == "" {
+		req.From = "快捷指令"
+	}
+	it, err := a.EditItem(r.PathValue("id"), req.Text, trimRunes(req.From, 40))
+	if err != nil {
+		errJSON(w, 400, err.Error())
+		return
+	}
+	writeJSON(w, 200, it)
+}
+
 func (a *App) handleRelay(w http.ResponseWriter, r *http.Request) {
 	var env Envelope
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxTextLen*2)).Decode(&env); err != nil {
@@ -391,6 +418,10 @@ func (a *App) handleRelay(w http.ResponseWriter, r *http.Request) {
 	case "add":
 		if validItem(env.Item) {
 			a.ingest(env.Item, from, true)
+		}
+	case "edit":
+		if idRe.MatchString(env.ID) && validVersion(env.Version) {
+			a.applyRemoteEdit(env.ID, env.Version, from)
 		}
 	case "delete":
 		a.remove(env.ID, from)

@@ -145,6 +145,8 @@ const ICON = {
   expand: I('<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/>'),
   wrap: I('<path d="M4 6h16M4 12h13a3 3 0 0 1 0 6h-4M4 18h5"/><path d="m14 16-2 2 2 2"/>'),
   code: I('<path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/>'),
+  pencil: I('<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'),
+  history: I('<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 4.5V9H8M12 7.5V12l3 2"/>'),
   pin: I('<path d="M9 4h6l-1 6 4 3v2H6v-2l4-3z"/><path d="M12 15v5"/>'),
   globe: I('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.7 2.5 14.3 0 17M12 3.5c-2.5 2.7-2.5 14.3 0 17"/>'),
 };
@@ -209,7 +211,7 @@ function findCode(text) {
 
 function itemHTML(it, latest) {
   const fromDev = S.devices.find(d => d.name === it.from);
-  const meta = `<div class="meta">${kindIcon(fromDev?.kind)}<span class="from">${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${latest ? '<span class="badge">最新</span>' : ''}</div>`;
+  const meta = `<div class="meta">${kindIcon(fromDev?.kind)}<span class="from">${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${latest ? '<span class="badge">最新</span>' : ''}${it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改">已编辑</span>` : ''}</div>`;
   if (it.kind === 'file') {
     const isImg = /^image\/(png|jpe?g|gif|webp|heic|avif|bmp)$/i.test(it.mime || '');
     const isVid = /^video\//.test(it.mime || '');
@@ -240,6 +242,7 @@ function itemHTML(it, latest) {
       <span class="smart">${smart}</span>
       <span class="spacer"></span>
       <span class="muted small">${long ? textStats(it.text) : it.text.length > 60 ? it.text.length + ' 字' : ''}</span>
+      <button class="icon-btn" data-act="edit" aria-label="编辑" title="编辑">${ICON.pencil}</button>
       <button class="icon-btn" data-act="delete" aria-label="删除">${ICON.trash}</button>
     </div>`;
 }
@@ -307,7 +310,8 @@ function connect() {
     renderList(); renderDevices();
     if (PREVIEW) {
       const it = S.items.find(x => x.id === PREVIEW_ID);
-      it ? showPreview(it) : showPreviewMissing();
+      if (!it) showPreviewMissing();
+      else if (PV?.id !== it.id) showPreview(it, QS.get('mode') || 'view'); // 重连时不打断正在进行的编辑
     }
   });
   es.addEventListener('item', e => {
@@ -319,6 +323,7 @@ function connect() {
     const li = $(`.item[data-id="${it.id}"]`); li?.classList.add('flash');
     if (!PREVIEW && it.from !== myName() && Date.now() + S.offset - it.ts < 30e3) onIncoming(it);
   });
+  es.addEventListener('update', e => onItemUpdated(JSON.parse(e.data)));
   es.addEventListener('delete', e => {
     const { id } = JSON.parse(e.data);
     S.items = S.items.filter(x => x.id !== id); renderList();
@@ -422,10 +427,11 @@ function autosize() {
 }
 function updateSend() { $('#sendBtn').disabled = !$('#input').value.trim(); }
 
-/* ================= 预览（类似访达的快速查看） ================= */
+/* ================= 预览、编辑与历史版本 ================= */
 
 let PV = null; // 正在预览的内容
-const PVS = { mono: null, wrap: store.get('pv.wrap') !== '0' };
+// mode: view 查看 | edit 编辑 | history 历史版本
+const PVS = { mono: null, wrap: store.get('pv.wrap') !== '0', mode: 'view', base: '', hist: [], sel: null, diff: true };
 
 // 看起来像代码 / 配置 / 日志时默认用等宽字体和行号
 function looksLikeCode(t) {
@@ -435,29 +441,63 @@ function looksLikeCode(t) {
   return hits / ls.length > 0.35;
 }
 
-function openPreview(it) {
+function openPreview(it, mode = 'view') {
   // 快捷面板太窄，交给桌面端打开一个可拖动、可置顶的独立窗口
-  if (PANEL) return desktop('preview', it.id);
-  showPreview(it);
+  if (PANEL) return desktop(mode === 'view' ? 'preview' : mode, it.id);
+  showPreview(it, mode);
 }
 
-function showPreview(it) {
+function showPreview(it, mode = 'view') {
   PV = it;
   PVS.mono = it.kind === 'text' ? looksLikeCode(it.text) : false;
+  PVS.mode = 'view';
+  $('#pvWarn').hidden = true;
+  renderPreview();
   const d = $('#previewDlg');
-  const fromDev = S.devices.find(x => x.name === it.from);
-  $('#pvMeta').innerHTML = `${kindIcon(fromDev?.kind)}<span class="from">${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>
-    <span class="pv-stat">${it.kind === 'text' ? textStats(it.text) : esc(it.name) + ' · ' + fmtSize(it.size || 0)}</span>`;
-  const isText = it.kind === 'text';
-  $('#pvWrap').hidden = $('#pvMono').hidden = !isText;
-  $('#pvCopy').innerHTML = isText ? `${ICON.copy}<span>复制全部</span>` : `${ICON.download}<span>${S.local ? '保存' : '下载'}</span>`;
-  $('#pvFoot').innerHTML = isText
-    ? `<span><kbd>↩</kbd> 复制全部并关闭</span><span>选中文字后 <kbd>${KIND === 'mac' ? '⌘' : 'Ctrl+'}C</kbd> 只复制选中部分</span><span><kbd>esc</kbd> 关闭</span>`
-    : `<span><kbd>esc</kbd> 关闭</span>`;
-  renderPreviewBody();
   if (!d.open) PREVIEW ? d.show() : d.showModal();
-  $('#pvBody').scrollTop = 0;
-  $('#pvBody').focus({ preventScroll: true });
+  if (mode === 'edit') startEdit();
+  else if (mode === 'history') openHistory();
+  else { $('#pvBody').scrollTop = 0; $('#pvBody').focus({ preventScroll: true }); }
+}
+
+// 头部、工具栏、底栏都随模式变化
+function renderPreview() {
+  const it = PV, isText = it.kind === 'text', m = PVS.mode;
+  const fromDev = S.devices.find(x => x.name === it.from);
+  const edited = it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改于 ${relTime(it.editedAt)}">已编辑 · ${esc(it.editedBy || '')} ${relTime(it.editedAt)}</span>` : '';
+  $('#pvMeta').innerHTML = `${kindIcon(fromDev?.kind)}<span class="from">${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${edited}
+    <span class="pv-stat">${isText ? textStats(it.text) : esc(it.name) + ' · ' + fmtSize(it.size || 0)}</span>`;
+  const show = (id, on) => { $(id).hidden = !on; };
+  show('#pvWrap', isText && m !== 'edit');
+  show('#pvMono', isText);
+  show('#pvEdit', isText && m === 'view');
+  show('#pvHist', isText && m !== 'edit');
+  show('#pvRestore', m === 'history' && PVS.sel && PVS.sel !== PVS.hist[0]?.id);
+  show('#pvDiff', m === 'history');
+  show('#pvCancel', m === 'edit');
+  show('#pvSave', m === 'edit');
+  show('#pvCopy', m !== 'edit');
+  $('#pvHist').classList.toggle('on', m === 'history');
+  $('#pvHist').innerHTML = ICON.history + (it.rev ? `<span class="count">${it.rev + 1}</span>` : '');
+  $('#pvDiff').textContent = PVS.diff ? '看全文' : '看改动';
+  $('#pvCopy').innerHTML = !isText ? `${ICON.download}<span>${S.local ? '保存' : '下载'}</span>`
+    : m === 'history' ? `${ICON.copy}<span>复制此版本</span>` : `${ICON.copy}<span>复制全部</span>`;
+  const mod = KIND === 'mac' ? '⌘' : 'Ctrl+';
+  $('#pvFoot').innerHTML = !isText ? '<span><kbd>esc</kbd> 关闭</span>'
+    : m === 'edit' ? `<span><kbd>${mod}S</kbd> 保存为新版本</span><span><kbd>esc</kbd> 取消</span><span>保存后会同步到所有设备，旧内容保留在历史版本里</span>`
+    : m === 'history' ? '<span><kbd>↑</kbd><kbd>↓</kbd> 切换版本</span><span><kbd>esc</kbd> 返回</span>'
+    : `<span><kbd>↩</kbd> 复制全部并关闭</span><span><kbd>${mod}E</kbd> 编辑</span><span>选中文字后 <kbd>${mod}C</kbd> 只复制选中部分</span><span><kbd>esc</kbd> 关闭</span>`;
+  $('#previewDlg').classList.toggle('with-hist', m === 'history');
+  if (m !== 'edit') renderPreviewBody();
+}
+
+function textHTML(text) {
+  const lines = text.split('\n');
+  if (PVS.mono && lines.length <= 20000) {
+    return `<div class="pv-code${PVS.wrap ? ' wrap' : ''}" style="--gutter:${String(lines.length).length + 1}ch">${
+      lines.map(l => `<div class="ln">${linkify(l) || ' '}</div>`).join('')}</div>`;
+  }
+  return `<div class="pv-text${PVS.mono ? ' mono' : ''}${PVS.wrap ? '' : ' nowrap'}">${linkify(text)}</div>`;
 }
 
 function renderPreviewBody() {
@@ -471,25 +511,24 @@ function renderPreviewBody() {
     else body.innerHTML = `<div class="pv-file"><div class="file-icon">${ICON.file}</div><div class="file-name">${esc(it.name)}</div><div class="muted">${fmtSize(it.size || 0)} · ${esc(it.mime || '')}</div></div>`;
     return;
   }
-  const lines = it.text.split('\n');
-  if (PVS.mono && lines.length <= 20000) {
-    body.innerHTML = `<div class="pv-code${PVS.wrap ? ' wrap' : ''}" style="--gutter:${String(lines.length).length + 1}ch">${
-      lines.map(l => `<div class="ln">${linkify(l) || ' '}</div>`).join('')}</div>`;
-  } else {
-    body.innerHTML = `<div class="pv-text${PVS.mono ? ' mono' : ''}${PVS.wrap ? '' : ' nowrap'}">${linkify(it.text)}</div>`;
-  }
+  if (PVS.mode === 'history') return renderHistory();
+  body.innerHTML = textHTML(it.text);
 }
 
 function showPreviewMissing() {
-  PV = null;
+  PV = null; PVS.mode = 'view';
   $('#pvMeta').textContent = '';
   $('#pvBody').innerHTML = '<div class="pv-file muted">这条内容已被删除</div>';
-  $('#pvCopy').hidden = true;
+  ['#pvCopy', '#pvEdit', '#pvHist', '#pvSave', '#pvCancel', '#pvRestore', '#pvDiff', '#pvWrap', '#pvMono'].forEach(s => { $(s).hidden = true; });
+  $('#pvFoot').innerHTML = '';
+  $('#previewDlg').classList.remove('with-hist');
+  $('#pvHistList').innerHTML = '';
   const d = $('#previewDlg');
   if (!d.open) d.show();
 }
 
 function closePreview() {
+  if (PVS.mode === 'edit' && !cancelEdit()) return;
   if (PREVIEW) return desktop('hide-preview');
   $('#previewDlg').close();
 }
@@ -497,8 +536,195 @@ function closePreview() {
 async function previewCopyAll(andClose) {
   if (!PV) return;
   if (PV.kind !== 'text') { download(PV); return; }
-  await doCopy(PV.text, andClose ? null : $('#pvCopy'), PV.id);
+  const text = PVS.mode === 'history' ? (PVS.hist.find(v => v.id === PVS.sel)?.text ?? PV.text) : PV.text;
+  await doCopy(text, andClose ? null : $('#pvCopy'), PVS.mode === 'history' ? null : PV.id);
   if (andClose) closePreview();
+}
+
+/* ---- 编辑 ---- */
+
+function startEdit() {
+  if (!PV || PV.kind !== 'text') return;
+  PVS.mode = 'edit';
+  PVS.base = PV.text;
+  $('#pvWarn').hidden = true;
+  renderPreview();
+  const body = $('#pvBody');
+  body.innerHTML = `<textarea id="pvEditor" class="pv-edit${PVS.mono ? ' mono' : ''}" spellcheck="false" aria-label="编辑内容"></textarea>`;
+  const ta = $('#pvEditor');
+  ta.value = PV.text;
+  ta.focus();
+  ta.setSelectionRange(0, 0);
+  ta.scrollTop = 0;
+}
+
+// 返回 true 表示已退出编辑
+function cancelEdit() {
+  const ta = $('#pvEditor');
+  if (ta && ta.value !== PVS.base && !confirm('放弃这次修改吗？')) return false;
+  PVS.mode = 'view';
+  $('#pvWarn').hidden = true;
+  renderPreview();
+  $('#pvBody').focus({ preventScroll: true });
+  return true;
+}
+
+async function saveEdit() {
+  const ta = $('#pvEditor');
+  if (!ta || !PV) return;
+  const text = ta.value;
+  if (text === PV.text && text === PVS.base) { cancelEdit(); return; }
+  if (!text.trim()) { toast('内容不能为空'); return; }
+  $('#pvSave').disabled = true;
+  try {
+    const it = await api('POST', `/api/items/${PV.id}/edit`, { text, from: myName() });
+    upsertItem(it);
+    PV = it;
+    PVS.mode = 'view';
+    $('#pvWarn').hidden = true;
+    renderPreview();
+    flashButton($('#pvCopy'), `已保存 · 第 ${it.rev + 1} 版`);
+  } catch (e) {
+    toast('保存失败：' + e.message);
+  } finally {
+    $('#pvSave').disabled = false;
+  }
+}
+
+/* ---- 历史版本 ---- */
+
+async function openHistory() {
+  if (!PV || PV.kind !== 'text') return;
+  PVS.mode = 'history';
+  try {
+    const d = await api('GET', `/api/items/${PV.id}/versions`);
+    PVS.hist = d.versions || [];
+    if (!PVS.hist.some(v => v.id === PVS.sel)) PVS.sel = PVS.hist[0]?.id || null;
+  } catch (e) { toast('读取历史失败：' + e.message); PVS.mode = 'view'; }
+  renderPreview();
+  $('#pvHistList').querySelector('.on')?.focus();
+}
+
+function closeHistory() { PVS.mode = 'view'; PVS.sel = null; renderPreview(); $('#pvBody').focus({ preventScroll: true }); }
+
+function renderHistory() {
+  const vs = PVS.hist, n = vs.length;
+  $('#pvHistList').innerHTML = vs.map((v, i) => {
+    const prev = vs[i + 1];
+    const st = prev ? diffStats(prev.text, v.text) : null;
+    const label = i === n - 1 ? '原始内容' : `第 ${n - i} 版`;
+    return `<button class="hv${v.id === PVS.sel ? ' on' : ''}" data-vid="${v.id}">
+      <span class="hv-top"><b>${label}</b>${i === 0 ? '<span class="badge">当前</span>' : ''}</span>
+      <span class="hv-sub">${esc(v.by)} · ${relTime(v.ts)}</span>
+      ${st ? `<span class="hv-delta"><i class="add">+${st.add}</i> <i class="del">−${st.del}</i> 行</span>` : `<span class="hv-delta">${v.text.length} 字</span>`}
+    </button>`;
+  }).join('');
+  const i = vs.findIndex(v => v.id === PVS.sel);
+  const v = vs[i], prev = vs[i + 1];
+  const body = $('#pvBody');
+  if (!v) { body.innerHTML = ''; return; }
+  if (PVS.diff && prev) {
+    const ops = diffLines(prev.text, v.text);
+    body.innerHTML = ops ? diffHTML(ops) : `<div class="pv-note">内容太长，无法逐行对比，显示全文。</div>${textHTML(v.text)}`;
+  } else {
+    body.innerHTML = (prev || !PVS.diff ? '' : '<div class="pv-note">这是原始内容。</div>') + textHTML(v.text);
+  }
+}
+
+function selectVersion(vid) {
+  PVS.sel = vid;
+  renderPreview();
+  $('#pvHistList').querySelector('.on')?.focus();
+}
+
+async function restoreVersion() {
+  const v = PVS.hist.find(x => x.id === PVS.sel);
+  if (!v || !PV) return;
+  try {
+    const it = await api('POST', `/api/items/${PV.id}/edit`, { text: v.text, from: myName() });
+    upsertItem(it);
+    PV = it;
+    PVS.sel = null;
+    await openHistory();
+    flashButton($('#pvCopy'), '已恢复为新版本');
+  } catch (e) { toast('恢复失败：' + e.message); }
+}
+
+/* ---- 逐行对比（最长公共子序列，先去掉相同的首尾） ---- */
+
+function diffLines(oldText, newText) {
+  const a = oldText.split('\n'), b = newText.split('\n');
+  let s = 0;
+  while (s < a.length && s < b.length && a[s] === b[s]) s++;
+  let ea = a.length, eb = b.length;
+  while (ea > s && eb > s && a[ea - 1] === b[eb - 1]) { ea--; eb--; }
+  const A = a.slice(s, ea), B = b.slice(s, eb), n = A.length, m = B.length;
+  if (n * m > 4e6) return null;
+  const w = m + 1, L = new Uint32Array((n + 1) * w);
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+    L[i * w + j] = A[i] === B[j] ? L[(i + 1) * w + j + 1] + 1 : Math.max(L[(i + 1) * w + j], L[i * w + j + 1]);
+  const ops = a.slice(0, s).map(l => ['=', l]);
+  let i = 0, j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && A[i] === B[j]) { ops.push(['=', A[i]]); i++; j++; }
+    else if (i < n && (j === m || L[(i + 1) * w + j] >= L[i * w + j + 1])) ops.push(['-', A[i++]]); // 先删后增
+    else ops.push(['+', B[j++]]);
+  }
+  return ops.concat(a.slice(ea).map(l => ['=', l]));
+}
+
+function diffStats(oldText, newText) {
+  const ops = diffLines(oldText, newText);
+  if (!ops) return null;
+  return { add: ops.filter(o => o[0] === '+').length, del: ops.filter(o => o[0] === '-').length };
+}
+
+// 相同的大段内容折叠起来，只保留改动前后各 3 行
+function diffHTML(ops) {
+  if (!ops.some(o => o[0] !== '=')) return '<div class="pv-note">与上一版内容相同。</div>';
+  const keep = new Uint8Array(ops.length);
+  ops.forEach((o, i) => { if (o[0] !== '=') for (let k = Math.max(0, i - 3); k <= Math.min(ops.length - 1, i + 3); k++) keep[k] = 1; });
+  // 只折叠 4 行以上的连续未改动内容，更短的直接显示
+  for (let i = 0; i < ops.length;) {
+    if (keep[i]) { i++; continue; }
+    let j = i; while (j < ops.length && !keep[j]) j++;
+    if (j - i < 4) keep.fill(1, i, j);
+    i = j;
+  }
+  let out = '', skipped = 0;
+  const flush = () => { if (skipped) { out += `<div class="df skip">⋯ ${skipped} 行未改动 ⋯</div>`; skipped = 0; } };
+  ops.forEach((o, i) => {
+    if (!keep[i]) { skipped++; return; }
+    flush();
+    const cls = o[0] === '+' ? 'add' : o[0] === '-' ? 'del' : '';
+    out += `<div class="df ${cls}"><span class="sign">${o[0] === '=' ? ' ' : o[0] === '-' ? '−' : '+'}</span>${esc(o[1]) || ' '}</div>`;
+  });
+  flush();
+  return `<div class="pv-diff${PVS.mono ? ' mono' : ''}">${out}</div>`;
+}
+
+/* ---- 列表数据更新（编辑同步过来时） ---- */
+
+function upsertItem(it) {
+  const i = S.items.findIndex(x => x.id === it.id);
+  if (i >= 0) S.items[i] = it;
+  renderList();
+}
+
+function onItemUpdated(it) {
+  upsertItem(it);
+  if (PV?.id !== it.id) return;
+  if (PVS.mode === 'edit') {
+    // 正在编辑时别人改了：提示，不打断
+    if (it.text !== PVS.base) {
+      $('#pvWarn').innerHTML = `${esc(it.editedBy || '其他设备')} 刚刚修改了这条内容。保存后你的版本会成为最新版本，对方的修改会保留在历史版本中。`;
+      $('#pvWarn').hidden = false;
+    }
+    PV = it;
+    return;
+  }
+  PV = it;
+  if (PVS.mode === 'history') openHistory(); else renderPreview();
 }
 
 function bindPreview() {
@@ -507,8 +733,20 @@ function bindPreview() {
   $('#pvWrap').innerHTML = ICON.wrap;
   $('#pvMono').innerHTML = ICON.code;
   $('#pvPin').innerHTML = ICON.pin;
+  $('#pvEdit').innerHTML = ICON.pencil;
   $('#pvWrap').onclick = () => { PVS.wrap = !PVS.wrap; store.set('pv.wrap', PVS.wrap ? '1' : '0'); renderPreviewBody(); };
-  $('#pvMono').onclick = () => { PVS.mono = !PVS.mono; renderPreviewBody(); };
+  $('#pvMono').onclick = () => {
+    PVS.mono = !PVS.mono;
+    if (PVS.mode === 'edit') $('#pvEditor')?.classList.toggle('mono', PVS.mono), $('#pvMono').classList.toggle('on', PVS.mono);
+    else renderPreviewBody();
+  };
+  $('#pvEdit').onclick = startEdit;
+  $('#pvSave').onclick = saveEdit;
+  $('#pvCancel').onclick = cancelEdit;
+  $('#pvHist').onclick = () => (PVS.mode === 'history' ? closeHistory() : openHistory());
+  $('#pvDiff').onclick = () => { PVS.diff = !PVS.diff; renderPreview(); };
+  $('#pvRestore').onclick = restoreVersion;
+  $('#pvHistList').addEventListener('click', e => { const b = e.target.closest('[data-vid]'); if (b) selectVersion(b.dataset.vid); });
   // 预览窗口默认悬浮在最上层，可以切换
   let pinned = true;
   $('#pvPin').hidden = !PREVIEW;
@@ -516,19 +754,32 @@ function bindPreview() {
   $('#pvPin').onclick = () => { pinned = !pinned; $('#pvPin').classList.toggle('on', pinned); desktop(pinned ? 'pin' : 'unpin'); };
   $('[data-close]', d).onclick = closePreview;
   d.addEventListener('cancel', e => { e.preventDefault(); closePreview(); });
-  d.addEventListener('click', e => { if (e.target === d && !PREVIEW) d.close(); });
+  d.addEventListener('click', e => { if (e.target === d && !PREVIEW && PVS.mode !== 'edit') d.close(); });
   d.addEventListener('keydown', e => {
-    if (e.isComposing) return;
-    const mod = e.metaKey || e.ctrlKey;
+    if (e.isComposing || !PV) return;
+    const mod = e.metaKey || e.ctrlKey, k = e.key.toLowerCase();
+    if (PVS.mode === 'edit') {
+      if ((mod && k === 's') || (mod && e.key === 'Enter')) { e.preventDefault(); saveEdit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+      return;
+    }
+    if (PVS.mode === 'history') {
+      const i = PVS.hist.findIndex(v => v.id === PVS.sel);
+      if (e.key === 'ArrowDown' && i < PVS.hist.length - 1) { e.preventDefault(); selectVersion(PVS.hist[i + 1].id); }
+      else if (e.key === 'ArrowUp' && i > 0) { e.preventDefault(); selectVersion(PVS.hist[i - 1].id); }
+      else if (e.key === 'Escape') { e.preventDefault(); closeHistory(); }
+      else if (mod && k === 'c' && !getSelection()?.toString()) { e.preventDefault(); previewCopyAll(false); }
+      return;
+    }
     const sel = getSelection()?.toString() || '';
     if (e.key === 'Escape') { e.preventDefault(); closePreview(); }
+    else if (mod && k === 'e' && PV.kind === 'text') { e.preventDefault(); startEdit(); }
     else if (e.key === 'Enter' && !mod && !e.target.closest('button')) { e.preventDefault(); previewCopyAll(true); }
     else if (e.key === ' ' && !sel && !e.target.closest('button, video')) { e.preventDefault(); closePreview(); }
-    else if (mod && e.key.toLowerCase() === 'c' && PV?.kind === 'text') {
+    else if (mod && k === 'c' && PV.kind === 'text') {
       e.preventDefault();
-      if (sel) {
-        copyText(sel).then(ok => flashButton($('#pvCopy'), ok ? '已复制选中' : '复制失败'));
-      } else previewCopyAll(false);
+      if (sel) copyText(sel).then(ok => flashButton($('#pvCopy'), ok ? '已复制选中' : '复制失败'));
+      else previewCopyAll(false);
     }
   });
 }
@@ -680,6 +931,7 @@ function bind() {
       case 'expand': li.classList.toggle('open'); el.textContent = li.classList.contains('open') ? '收起' : '展开全部'; break;
       case 'download': download(it); break;
       case 'view': case 'preview': openPreview(it); break;
+      case 'edit': openPreview(it, 'edit'); break;
       case 'delete':
         api('DELETE', '/api/items/' + it.id).catch(err => toast('删除失败：' + err.message));
         break;
@@ -767,6 +1019,9 @@ function bindPanel() {
     else if (e.key === 'ArrowUp' && !inComposer) { e.preventDefault(); move(-1); }
     else if (((e.key === ' ' && e.target === search && !search.value) || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y')) && S.view[S.sel]) {
       e.preventDefault(); openPreview(S.view[S.sel]);
+    }
+    else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e' && S.view[S.sel]?.kind === 'text') {
+      e.preventDefault(); openPreview(S.view[S.sel], 'edit');
     }
     else if (e.key === 'Enter' && !inComposer && !e.isComposing) {
       const it = S.view[S.sel];

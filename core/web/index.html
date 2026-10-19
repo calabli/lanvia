@@ -132,7 +132,23 @@
   </div>
 </dialog>
 
-<div id="kbdHint" class="kbd-hint" hidden><span><kbd>↑</kbd><kbd>↓</kbd> 选择</span><span><kbd>↩</kbd> 复制</span><span><kbd>esc</kbd> 收起</span></div>
+<div id="kbdHint" class="kbd-hint" hidden><span><kbd>↑</kbd><kbd>↓</kbd> 选择</span><span><kbd>↩</kbd> 复制</span><span><kbd>空格</kbd> 预览</span><span><kbd>esc</kbd> 收起</span></div>
+
+<!-- 预览：浏览器里是弹层，桌面端是独立的悬浮窗口 -->
+<dialog id="previewDlg" class="preview">
+  <div class="pv-head">
+    <div id="pvMeta" class="meta pv-meta"></div>
+    <div class="pv-tools">
+      <button id="pvWrap" class="icon-btn toggle" title="自动换行" aria-label="自动换行"></button>
+      <button id="pvMono" class="icon-btn toggle" title="等宽字体与行号" aria-label="等宽字体与行号"></button>
+      <button id="pvPin" class="icon-btn toggle" title="悬浮在最上层" aria-label="悬浮在最上层" hidden></button>
+      <button id="pvCopy" class="btn primary sm"></button>
+      <button class="icon-btn close" data-close aria-label="关闭"></button>
+    </div>
+  </div>
+  <div id="pvBody" class="pv-body" tabindex="-1"></div>
+  <div id="pvFoot" class="pv-foot"></div>
+</dialog>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <div id="drop" class="drop" hidden><div>松开即可分享文件</div></div>
 

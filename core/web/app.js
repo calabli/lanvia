@@ -65,14 +65,17 @@ const fmtCode = c => c.length > 5 ? c.slice(0, 5) + '-' + c.slice(5) : c;
 
 const isLoopback = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
 // 桌面客户端里的窗口：panel 是托盘弹出的快捷面板，main 是主窗口
-const DESKTOP = new URLSearchParams(location.search).get('desktop');
+const QS = new URLSearchParams(location.search);
+const DESKTOP = QS.get('desktop');
 const PANEL = DESKTOP === 'panel';
+const PREVIEW = DESKTOP === 'preview'; // 桌面端的悬浮预览窗口
+const PREVIEW_ID = QS.get('id');
 const S = {
   key: null, offset: 0, items: [], devices: [], you: null, node: null, local: false,
   info: null, filter: '', es: null, connected: false, retry: 0, unseen: 0,
   view: [], sel: 0, // 当前显示的列表和键盘选中项（快捷面板）
 };
-const desktop = action => api('POST', '/api/desktop/' + action).catch(() => {});
+const desktop = (action, id) => api('POST', '/api/desktop/' + action + (id ? '?id=' + id : '')).catch(() => {});
 
 function setCode(code) {
   S.key = code ? sha256(enc.encode('lanvia-key:' + code)) : null;
@@ -89,7 +92,7 @@ function signedURL(path, params = {}, method = 'GET') {
 }
 async function api(method, path, body) {
   const headers = {};
-  if (S.key) { const { ts, sig } = sign(method, path); headers['X-Lanvia-TS'] = ts; headers['X-Lanvia-Sig'] = sig; }
+  if (S.key) { const { ts, sig } = sign(method, path.split('?')[0]); headers['X-Lanvia-TS'] = ts; headers['X-Lanvia-Sig'] = sig; }
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const r = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   if (r.status === 401 && !isLoopback) { unpair('配对已失效，请重新输入配对码'); throw new Error('unauthorized'); }
@@ -139,6 +142,10 @@ const ICON = {
   phone: I('<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 18h2"/>'),
   tablet: I('<rect x="4.5" y="3" width="15" height="18" rx="2.5"/><path d="M11 18h2"/>'),
   laptop: I('<rect x="4.5" y="5" width="15" height="10" rx="1.5"/><path d="M2.5 19h19"/>'),
+  expand: I('<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/>'),
+  wrap: I('<path d="M4 6h16M4 12h13a3 3 0 0 1 0 6h-4M4 18h5"/><path d="m14 16-2 2 2 2"/>'),
+  code: I('<path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/>'),
+  pin: I('<path d="M9 4h6l-1 6 4 3v2H6v-2l4-3z"/><path d="M12 15v5"/>'),
   globe: I('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.7 2.5 14.3 0 17M12 3.5c-2.5 2.7-2.5 14.3 0 17"/>'),
 };
 const kindIcon = k => ({ ios: ICON.phone, android: ICON.phone, ipad: ICON.tablet, mac: ICON.laptop, windows: ICON.laptop, linux: ICON.laptop }[k] || ICON.globe);
@@ -217,7 +224,8 @@ function itemHTML(it, latest) {
         <button class="icon-btn" data-act="delete" aria-label="删除">${ICON.trash}</button>
       </div>`;
   }
-  const long = it.text.length > 400 || it.text.split('\n').length > 8;
+  const long = isLong(it);
+  const lines = it.text.split('\n').length;
   const url = (it.text.match(URL_RE) || [])[0];
   const code = findCode(it.text);
   const smart = [
@@ -225,15 +233,19 @@ function itemHTML(it, latest) {
     url && url.length < it.text.length + 1 ? `<a class="btn sm" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${ICON.link}打开链接</a>` : '',
   ].join('');
   return `${meta}<div class="text" data-act="copy">${linkify(it.text)}</div>
-    ${long ? '<button class="more" data-act="expand">展开全部</button>' : ''}
+    ${long && !PANEL ? '<button class="more" data-act="expand">展开全部</button>' : ''}
     <div class="actions">
       <button class="btn sm" data-act="copy">${ICON.copy}<span>复制</span></button>
+      ${long ? `<button class="btn sm" data-act="preview">${ICON.expand}<span>预览</span></button>` : ''}
       <span class="smart">${smart}</span>
       <span class="spacer"></span>
-      <span class="muted small">${it.text.length > 60 ? it.text.length + ' 字' : ''}</span>
+      <span class="muted small">${long ? textStats(it.text) : it.text.length > 60 ? it.text.length + ' 字' : ''}</span>
       <button class="icon-btn" data-act="delete" aria-label="删除">${ICON.trash}</button>
     </div>`;
 }
+
+const isLong = it => it.kind === 'text' && (it.text.length > 280 || it.text.split('\n').length > 4);
+const textStats = t => { const n = t.split('\n').length; return (n > 1 ? n + ' 行 · ' : '') + t.length + ' 字'; };
 
 function renderList() {
   const f = S.filter.trim().toLowerCase();
@@ -243,7 +255,7 @@ function renderList() {
   S.view = items;
   S.sel = Math.max(0, Math.min(S.sel, items.length - 1));
   list.innerHTML = items.map((it, i) =>
-    `<li class="item card${i === 0 && !f ? ' latest' : ''}${open.has(it.id) ? ' open' : ''}${PANEL && i === S.sel ? ' sel' : ''}" data-id="${it.id}">${itemHTML(it, i === 0 && !f)}</li>`).join('');
+    `<li class="item card${i === 0 && !f ? ' latest' : ''}${open.has(it.id) ? ' open' : ''}${PANEL && i === S.sel ? ' sel' : ''}${isLong(it) ? ' long' : ''}" data-id="${it.id}">${itemHTML(it, i === 0 && !f)}</li>`).join('');
   $('#empty').hidden = S.items.length > 0;
 }
 
@@ -291,8 +303,12 @@ function connect() {
     $('#settingsBtn').hidden = !S.local;
     $('#remoteOnly').hidden = S.local;
     $('#pairCard').hidden = !S.local || PANEL;
-    if (S.local) loadInfo();
+    if (S.local && !PREVIEW) loadInfo();
     renderList(); renderDevices();
+    if (PREVIEW) {
+      const it = S.items.find(x => x.id === PREVIEW_ID);
+      it ? showPreview(it) : showPreviewMissing();
+    }
   });
   es.addEventListener('item', e => {
     const it = JSON.parse(e.data);
@@ -301,9 +317,13 @@ function connect() {
     i < 0 ? S.items.push(it) : S.items.splice(i, 0, it);
     renderList();
     const li = $(`.item[data-id="${it.id}"]`); li?.classList.add('flash');
-    if (it.from !== myName() && Date.now() + S.offset - it.ts < 30e3) onIncoming(it);
+    if (!PREVIEW && it.from !== myName() && Date.now() + S.offset - it.ts < 30e3) onIncoming(it);
   });
-  es.addEventListener('delete', e => { const { id } = JSON.parse(e.data); S.items = S.items.filter(x => x.id !== id); renderList(); });
+  es.addEventListener('delete', e => {
+    const { id } = JSON.parse(e.data);
+    S.items = S.items.filter(x => x.id !== id); renderList();
+    if (PV?.id === id) PREVIEW ? showPreviewMissing() : $('#previewDlg').close();
+  });
   es.addEventListener('clear', e => { const { ts } = JSON.parse(e.data); S.items = S.items.filter(x => x.ts > ts); renderList(); });
   es.addEventListener('devices', e => { S.devices = JSON.parse(e.data); renderDevices(); renderList(); });
   es.onerror = () => {
@@ -402,6 +422,123 @@ function autosize() {
 }
 function updateSend() { $('#sendBtn').disabled = !$('#input').value.trim(); }
 
+/* ================= 预览（类似访达的快速查看） ================= */
+
+let PV = null; // 正在预览的内容
+const PVS = { mono: null, wrap: store.get('pv.wrap') !== '0' };
+
+// 看起来像代码 / 配置 / 日志时默认用等宽字体和行号
+function looksLikeCode(t) {
+  const ls = t.split('\n');
+  if (ls.length < 3) return false;
+  const hits = ls.filter(l => /^(\t| {2,})\S|[{};]\s*$|^\s*(\/\/|#|<\/?[a-z]|\$ |[a-z_]+\s*[:=])/i.test(l)).length;
+  return hits / ls.length > 0.35;
+}
+
+function openPreview(it) {
+  // 快捷面板太窄，交给桌面端打开一个可拖动、可置顶的独立窗口
+  if (PANEL) return desktop('preview', it.id);
+  showPreview(it);
+}
+
+function showPreview(it) {
+  PV = it;
+  PVS.mono = it.kind === 'text' ? looksLikeCode(it.text) : false;
+  const d = $('#previewDlg');
+  const fromDev = S.devices.find(x => x.name === it.from);
+  $('#pvMeta').innerHTML = `${kindIcon(fromDev?.kind)}<span class="from">${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>
+    <span class="pv-stat">${it.kind === 'text' ? textStats(it.text) : esc(it.name) + ' · ' + fmtSize(it.size || 0)}</span>`;
+  const isText = it.kind === 'text';
+  $('#pvWrap').hidden = $('#pvMono').hidden = !isText;
+  $('#pvCopy').innerHTML = isText ? `${ICON.copy}<span>复制全部</span>` : `${ICON.download}<span>${S.local ? '保存' : '下载'}</span>`;
+  $('#pvFoot').innerHTML = isText
+    ? `<span><kbd>↩</kbd> 复制全部并关闭</span><span>选中文字后 <kbd>${KIND === 'mac' ? '⌘' : 'Ctrl+'}C</kbd> 只复制选中部分</span><span><kbd>esc</kbd> 关闭</span>`
+    : `<span><kbd>esc</kbd> 关闭</span>`;
+  renderPreviewBody();
+  if (!d.open) PREVIEW ? d.show() : d.showModal();
+  $('#pvBody').scrollTop = 0;
+  $('#pvBody').focus({ preventScroll: true });
+}
+
+function renderPreviewBody() {
+  const it = PV, body = $('#pvBody');
+  $('#pvWrap').classList.toggle('on', PVS.wrap);
+  $('#pvMono').classList.toggle('on', !!PVS.mono);
+  if (it.kind === 'file') {
+    const src = esc(signedURL('/api/blob/' + it.id));
+    if (/^image\//.test(it.mime || '') && it.mime !== 'image/svg+xml') body.innerHTML = `<div class="pv-media"><img src="${src}" alt="${esc(it.name)}"></div>`;
+    else if (/^video\//.test(it.mime || '')) body.innerHTML = `<div class="pv-media"><video src="${src}" controls autoplay></video></div>`;
+    else body.innerHTML = `<div class="pv-file"><div class="file-icon">${ICON.file}</div><div class="file-name">${esc(it.name)}</div><div class="muted">${fmtSize(it.size || 0)} · ${esc(it.mime || '')}</div></div>`;
+    return;
+  }
+  const lines = it.text.split('\n');
+  if (PVS.mono && lines.length <= 20000) {
+    body.innerHTML = `<div class="pv-code${PVS.wrap ? ' wrap' : ''}" style="--gutter:${String(lines.length).length + 1}ch">${
+      lines.map(l => `<div class="ln">${linkify(l) || ' '}</div>`).join('')}</div>`;
+  } else {
+    body.innerHTML = `<div class="pv-text${PVS.mono ? ' mono' : ''}${PVS.wrap ? '' : ' nowrap'}">${linkify(it.text)}</div>`;
+  }
+}
+
+function showPreviewMissing() {
+  PV = null;
+  $('#pvMeta').textContent = '';
+  $('#pvBody').innerHTML = '<div class="pv-file muted">这条内容已被删除</div>';
+  $('#pvCopy').hidden = true;
+  const d = $('#previewDlg');
+  if (!d.open) d.show();
+}
+
+function closePreview() {
+  if (PREVIEW) return desktop('hide-preview');
+  $('#previewDlg').close();
+}
+
+async function previewCopyAll(andClose) {
+  if (!PV) return;
+  if (PV.kind !== 'text') { download(PV); return; }
+  await doCopy(PV.text, andClose ? null : $('#pvCopy'), PV.id);
+  if (andClose) closePreview();
+}
+
+function bindPreview() {
+  const d = $('#previewDlg');
+  $('#pvCopy').onclick = () => previewCopyAll(false);
+  $('#pvWrap').innerHTML = ICON.wrap;
+  $('#pvMono').innerHTML = ICON.code;
+  $('#pvPin').innerHTML = ICON.pin;
+  $('#pvWrap').onclick = () => { PVS.wrap = !PVS.wrap; store.set('pv.wrap', PVS.wrap ? '1' : '0'); renderPreviewBody(); };
+  $('#pvMono').onclick = () => { PVS.mono = !PVS.mono; renderPreviewBody(); };
+  // 预览窗口默认悬浮在最上层，可以切换
+  let pinned = true;
+  $('#pvPin').hidden = !PREVIEW;
+  $('#pvPin').classList.toggle('on', pinned);
+  $('#pvPin').onclick = () => { pinned = !pinned; $('#pvPin').classList.toggle('on', pinned); desktop(pinned ? 'pin' : 'unpin'); };
+  $('[data-close]', d).onclick = closePreview;
+  d.addEventListener('cancel', e => { e.preventDefault(); closePreview(); });
+  d.addEventListener('click', e => { if (e.target === d && !PREVIEW) d.close(); });
+  d.addEventListener('keydown', e => {
+    if (e.isComposing) return;
+    const mod = e.metaKey || e.ctrlKey;
+    const sel = getSelection()?.toString() || '';
+    if (e.key === 'Escape') { e.preventDefault(); closePreview(); }
+    else if (e.key === 'Enter' && !mod && !e.target.closest('button')) { e.preventDefault(); previewCopyAll(true); }
+    else if (e.key === ' ' && !sel && !e.target.closest('button, video')) { e.preventDefault(); closePreview(); }
+    else if (mod && e.key.toLowerCase() === 'c' && PV?.kind === 'text') {
+      e.preventDefault();
+      if (sel) {
+        copyText(sel).then(ok => flashButton($('#pvCopy'), ok ? '已复制选中' : '复制失败'));
+      } else previewCopyAll(false);
+    }
+  });
+}
+
+function flashButton(btn, label) {
+  const old = btn.innerHTML;
+  btn.classList.add('ok'); btn.innerHTML = ICON.check + `<span>${esc(label)}</span>`;
+  setTimeout(() => { btn.classList.remove('ok'); btn.innerHTML = old; }, 1400);
+}
+
 /* ================= 本机仪表盘 ================= */
 
 async function loadInfo() {
@@ -476,7 +613,8 @@ async function tryCode(code) {
 }
 function startApp() {
   $('#pair').hidden = true;
-  $('#app').hidden = false;
+  $('#app').hidden = PREVIEW;
+  document.body.classList.toggle('preview-mode', PREVIEW);
   connect();
 }
 
@@ -541,7 +679,7 @@ function bind() {
       case 'code': doCopy(el.dataset.v, el); break;
       case 'expand': li.classList.toggle('open'); el.textContent = li.classList.contains('open') ? '收起' : '展开全部'; break;
       case 'download': download(it); break;
-      case 'view': S.local ? saveLocal(it, 'open') : window.open(signedURL('/api/blob/' + it.id), '_blank', 'noopener'); break;
+      case 'view': case 'preview': openPreview(it); break;
       case 'delete':
         api('DELETE', '/api/items/' + it.id).catch(err => toast('删除失败：' + err.message));
         break;
@@ -549,6 +687,12 @@ function bind() {
   });
 
   $('#search').addEventListener('input', e => { S.filter = e.target.value; renderList(); });
+  $('#list').addEventListener('dblclick', e => {
+    const li = e.target.closest('.item');
+    const it = li && S.items.find(x => x.id === li.dataset.id);
+    if (it && !e.target.closest('a, button, video')) { getSelection()?.removeAllRanges(); openPreview(it); }
+  });
+  bindPreview();
 
   $('#devicesBtn').onclick = () => { $('#myName').value = myName(); $('#devicesDlg').showModal(); };
   $('#myName').addEventListener('change', e => {
@@ -621,6 +765,9 @@ function bindPanel() {
     const inComposer = e.target === $('#input');
     if (e.key === 'ArrowDown' && !inComposer) { e.preventDefault(); move(1); }
     else if (e.key === 'ArrowUp' && !inComposer) { e.preventDefault(); move(-1); }
+    else if (((e.key === ' ' && e.target === search && !search.value) || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y')) && S.view[S.sel]) {
+      e.preventDefault(); openPreview(S.view[S.sel]);
+    }
     else if (e.key === 'Enter' && !inComposer && !e.isComposing) {
       const it = S.view[S.sel];
       if (!it) return;

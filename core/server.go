@@ -110,7 +110,12 @@ func (a *App) routes(web fs.FS) http.Handler {
 		a.mu.RLock()
 		hook := a.desktopHook
 		a.mu.RUnlock()
-		if hook == nil || !hook(r.PathValue("action")) {
+		id := r.URL.Query().Get("id")
+		if id != "" && !idRe.MatchString(id) {
+			errJSON(w, 400, "bad id")
+			return
+		}
+		if hook == nil || !hook(r.PathValue("action"), id) {
 			errJSON(w, 404, "not in desktop app")
 			return
 		}

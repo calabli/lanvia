@@ -64,10 +64,15 @@ const normCode = s => (s || '').toUpperCase().split('').filter(c => ALPHABET.inc
 const fmtCode = c => c.length > 5 ? c.slice(0, 5) + '-' + c.slice(5) : c;
 
 const isLoopback = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+// 桌面客户端里的窗口：panel 是托盘弹出的快捷面板，main 是主窗口
+const DESKTOP = new URLSearchParams(location.search).get('desktop');
+const PANEL = DESKTOP === 'panel';
 const S = {
   key: null, offset: 0, items: [], devices: [], you: null, node: null, local: false,
   info: null, filter: '', es: null, connected: false, retry: 0, unseen: 0,
+  view: [], sel: 0, // 当前显示的列表和键盘选中项（快捷面板）
 };
+const desktop = action => api('POST', '/api/desktop/' + action).catch(() => {});
 
 function setCode(code) {
   S.key = code ? sha256(enc.encode('lanvia-key:' + code)) : null;
@@ -235,8 +240,10 @@ function renderList() {
   const items = f ? S.items.filter(it => (it.text || it.name || '').toLowerCase().includes(f) || it.from.toLowerCase().includes(f)) : S.items;
   const list = $('#list');
   const open = new Set([...list.querySelectorAll('.item.open')].map(li => li.dataset.id));
+  S.view = items;
+  S.sel = Math.max(0, Math.min(S.sel, items.length - 1));
   list.innerHTML = items.map((it, i) =>
-    `<li class="item card${i === 0 && !f ? ' latest' : ''}${open.has(it.id) ? ' open' : ''}" data-id="${it.id}">${itemHTML(it, i === 0 && !f)}</li>`).join('');
+    `<li class="item card${i === 0 && !f ? ' latest' : ''}${open.has(it.id) ? ' open' : ''}${PANEL && i === S.sel ? ' sel' : ''}" data-id="${it.id}">${itemHTML(it, i === 0 && !f)}</li>`).join('');
   $('#empty').hidden = S.items.length > 0;
 }
 
@@ -283,7 +290,7 @@ function connect() {
     document.body.classList.toggle('is-local', S.local);
     $('#settingsBtn').hidden = !S.local;
     $('#remoteOnly').hidden = S.local;
-    $('#pairCard').hidden = !S.local;
+    $('#pairCard').hidden = !S.local || PANEL;
     if (S.local) loadInfo();
     renderList(); renderDevices();
   });
@@ -316,14 +323,18 @@ function onIncoming(it) {
     const preview = it.text.replace(/\s+/g, ' ').slice(0, 36);
     // 电脑端已自动写入系统剪贴板，就不必再点
     if (S.local && S.info?.settings?.autoApply && S.info?.clipboard) toast(`来自 ${it.from}：已写入剪贴板`);
-    else toast(`${it.from}：${preview}`, { label: '复制', run: () => doCopy(it.text) });
+    else toast(`${it.from}：${preview}`, { label: '复制', run: () => doCopy(it.text, null, it.id) });
   } else {
     toast(`${it.from} 发来文件 ${it.name}`, { label: '下载', run: () => download(it) });
   }
 }
 
-async function doCopy(text, btn) {
-  const ok = await copyText(text);
+async function doCopy(text, btn, id) {
+  let ok = false;
+  // 本机：由 Lanvia 直接写入系统剪贴板，不受浏览器/WebView 剪贴板权限限制
+  if (S.local && id) ok = await api('POST', '/api/copy/' + id).then(() => true, () => false);
+  if (!ok) ok = await copyText(text);
+  if (ok && PANEL) { desktop('hide'); return; }
   if (btn) {
     const old = btn.innerHTML;
     btn.classList.add('ok'); btn.innerHTML = ICON.check + '<span>已复制</span>';
@@ -332,7 +343,15 @@ async function doCopy(text, btn) {
   if (!btn || !ok) toast(ok ? '已复制' : '复制失败，请长按文字手动复制');
 }
 
+async function saveLocal(it, then) {
+  try {
+    const { path } = await api('POST', `/api/save/${it.id}?then=${then}`);
+    if (then === 'none') toast('已保存到 下载/Lanvia', { label: '显示', run: () => api('POST', '/api/reveal', { path }) });
+  } catch (e) { toast('保存失败：' + e.message); }
+}
+
 function download(it) {
+  if (S.local) return saveLocal(it, 'none');
   const a = document.createElement('a');
   a.href = signedURL('/api/blob/' + it.id, { dl: '1' });
   a.download = it.name;
@@ -512,12 +531,12 @@ function bind() {
     switch (el.dataset.act) {
       case 'copy':
         if (el.classList.contains('text') && getSelection().toString()) return; // 正在选择文字
-        doCopy(it.text, el.classList.contains('btn') ? el : $('[data-act="copy"].btn', li));
+        doCopy(it.text, el.classList.contains('btn') ? el : $('[data-act="copy"].btn', li), it.id);
         break;
       case 'code': doCopy(el.dataset.v, el); break;
       case 'expand': li.classList.toggle('open'); el.textContent = li.classList.contains('open') ? '收起' : '展开全部'; break;
       case 'download': download(it); break;
-      case 'view': window.open(signedURL('/api/blob/' + it.id), '_blank', 'noopener'); break;
+      case 'view': S.local ? saveLocal(it, 'open') : window.open(signedURL('/api/blob/' + it.id), '_blank', 'noopener'); break;
       case 'delete':
         api('DELETE', '/api/items/' + it.id).catch(err => toast('删除失败：' + err.message));
         break;
@@ -534,7 +553,7 @@ function bind() {
   });
   $('#forgetBtn').onclick = () => { if (confirm('退出后需要重新输入配对码。确定吗？')) { $('#devicesDlg').close(); unpair(); } };
 
-  $('#settingsBtn').onclick = () => { loadInfo(); $('#settingsDlg').showModal(); };
+  $('#settingsBtn').onclick = () => { if (PANEL) return desktop('main'); loadInfo(); $('#settingsDlg').showModal(); };
   $('#pairCollapse').onclick = () => {
     const c = $('#pairCard').classList.toggle('collapsed');
     store.set('pairCollapsed', c ? '1' : '0');
@@ -577,6 +596,40 @@ function bind() {
     if (!S.connected && !$('#app').hidden) { syncTime().then(connect); }
   });
   setInterval(() => { if (!document.hidden && S.items.length) renderList(); }, 60e3);
+  if (PANEL) bindPanel();
+}
+
+/* 快捷面板：打开即搜索，↑↓ 选择，回车复制并收起 */
+function bindPanel() {
+  document.body.classList.add('panel');
+  $('#kbdHint').hidden = false;
+  const search = $('#search');
+  search.placeholder = '搜索，↑↓ 选择';
+  const move = d => {
+    if (!S.view.length) return;
+    S.sel = (S.sel + d + S.view.length) % S.view.length;
+    document.querySelectorAll('#list .item').forEach((li, i) => li.classList.toggle('sel', i === S.sel));
+    $('#list .item.sel')?.scrollIntoView({ block: 'nearest' });
+  };
+  document.addEventListener('keydown', e => {
+    if (document.querySelector('dialog[open]')) return;
+    const inComposer = e.target === $('#input');
+    if (e.key === 'ArrowDown' && !inComposer) { e.preventDefault(); move(1); }
+    else if (e.key === 'ArrowUp' && !inComposer) { e.preventDefault(); move(-1); }
+    else if (e.key === 'Enter' && !inComposer && !e.isComposing) {
+      const it = S.view[S.sel];
+      if (!it) return;
+      e.preventDefault();
+      it.kind === 'text' ? doCopy(it.text, null, it.id) : saveLocal(it, 'reveal');
+    } else if (e.key === 'Escape') { desktop('hide'); }
+  });
+  // 每次弹出都回到初始状态
+  addEventListener('focus', () => {
+    if (document.activeElement === $('#input')) return;
+    search.value = ''; S.filter = ''; S.sel = 0; renderList();
+    search.focus();
+    if (!S.connected) syncTime().then(connect);
+  });
 }
 
 async function boot() {

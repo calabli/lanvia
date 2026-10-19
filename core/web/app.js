@@ -550,7 +550,15 @@ function updateSend() { $('#sendBtn').disabled = !$('#input').value.trim(); }
 
 let PV = null; // 正在预览的内容
 // mode: view 查看 | edit 编辑 | history 历史版本
-const PVS = { mono: null, wrap: store.get('pv.wrap') !== '0', mode: 'view', base: '', hist: [], sel: null, diff: true };
+const PVS = { mono: null, wrap: store.get('pv.wrap') !== '0', mode: 'view', base: '', hist: [], sel: null, diff: true, lang: null, fmt: false };
+
+// 预览里显示的文本：JSON 可以切换为格式化后的样子
+function pvText() {
+  if (PVS.fmt && PVS.lang === 'json' && PVS.mode === 'view') {
+    try { return JSON.stringify(JSON.parse(PV.text), null, 2); } catch {}
+  }
+  return PV.text;
+}
 
 // 看起来像代码 / 配置 / 日志时默认用等宽字体和行号
 function looksLikeCode(t) {
@@ -568,7 +576,10 @@ function openPreview(it, mode = 'view') {
 
 function showPreview(it, mode = 'view') {
   PV = it;
-  PVS.mono = it.kind === 'text' ? looksLikeCode(it.text) : false;
+  PVS.lang = it.kind === 'text' ? HL.detect(it.text) : null;
+  PVS.mono = it.kind === 'text' ? (!!PVS.lang || looksLikeCode(it.text)) : false;
+  // 单行的长 JSON 默认就展开，方便阅读
+  PVS.fmt = PVS.lang === 'json' && !it.text.trim().includes('\n') && it.text.length > 80;
   PVS.mode = 'view';
   $('#pvWarn').hidden = true;
   renderPreview();
@@ -585,6 +596,7 @@ function renderPreview() {
   const fromDev = S.devices.find(x => x.name === it.from);
   const edited = it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改于 ${relTime(it.editedAt)}">已编辑 · ${esc(it.editedBy || '')} ${relTime(it.editedAt)}</span>` : '';
   $('#pvMeta').innerHTML = `${kindIcon(fromDev?.kind)}<span class="from">${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${edited}${expiryBadge(it)}
+    ${PVS.lang ? `<span class="badge soft lang">${esc(HL.name(PVS.lang))}</span>` : ''}
     <span class="pv-stat">${isText ? textStats(it.text) : esc(it.name) + ' · ' + fmtSize(it.size || 0)}</span>`;
   const show = (id, on) => { $(id).hidden = !on; };
   show('#pvWrap', isText && m !== 'edit');
@@ -596,6 +608,9 @@ function renderPreview() {
   show('#pvCancel', m === 'edit');
   show('#pvSave', m === 'edit');
   show('#pvCopy', m !== 'edit');
+  show('#pvFmt', PVS.lang === 'json' && m === 'view');
+  $('#pvFmt').classList.toggle('on', PVS.fmt);
+  $('#pvFmt').textContent = PVS.fmt ? '原文' : '格式化';
   $('#pvHist').classList.toggle('on', m === 'history');
   $('#pvHist').innerHTML = ICON.history + (it.rev ? `<span class="count">${it.rev + 1}</span>` : '');
   $('#pvDiff').textContent = PVS.diff ? '看全文' : '看改动';
@@ -613,8 +628,10 @@ function renderPreview() {
 function textHTML(text) {
   const lines = text.split('\n');
   if (PVS.mono && lines.length <= 20000) {
+    // 识别出语言时按语法着色，否则只加行号和链接
+    const rows = PVS.lang ? HL.lines(text, PVS.lang) : lines.map(linkify);
     return `<div class="pv-code${PVS.wrap ? ' wrap' : ''}" style="--gutter:${String(lines.length).length + 1}ch">${
-      lines.map(l => `<div class="ln">${linkify(l) || ' '}</div>`).join('')}</div>`;
+      rows.map(l => `<div class="ln">${l || ' '}</div>`).join('')}</div>`;
   }
   return `<div class="pv-text${PVS.mono ? ' mono' : ''}${PVS.wrap ? '' : ' nowrap'}">${linkify(text)}</div>`;
 }
@@ -631,7 +648,7 @@ function renderPreviewBody() {
     return;
   }
   if (PVS.mode === 'history') return renderHistory();
-  body.innerHTML = textHTML(it.text);
+  body.innerHTML = textHTML(pvText());
 }
 
 function showPreviewMissing() {
@@ -655,8 +672,10 @@ async function closePreview() {
 async function previewCopyAll(andClose) {
   if (!PV) return;
   if (PV.kind !== 'text') { download(PV); return; }
-  const text = PVS.mode === 'history' ? (PVS.hist.find(v => v.id === PVS.sel)?.text ?? PV.text) : PV.text;
-  await doCopy(text, andClose ? null : $('#pvCopy'), PVS.mode === 'history' ? null : PV.id);
+  const text = PVS.mode === 'history' ? (PVS.hist.find(v => v.id === PVS.sel)?.text ?? PV.text) : pvText();
+  // 历史版本、格式化后的 JSON 和原文不同，不能按条目 ID 让服务端复制
+  const sameAsItem = PVS.mode !== 'history' && text === PV.text;
+  await doCopy(text, andClose ? null : $('#pvCopy'), sameAsItem ? PV.id : null);
   if (andClose) closePreview();
 }
 
@@ -854,6 +873,7 @@ function bindPreview() {
   $('#pvPin').innerHTML = ICON.pin;
   $('#pvEdit').innerHTML = ICON.pencil;
   $('#pvWrap').onclick = () => { PVS.wrap = !PVS.wrap; store.set('pv.wrap', PVS.wrap ? '1' : '0'); renderPreviewBody(); };
+  $('#pvFmt').onclick = () => { PVS.fmt = !PVS.fmt; renderPreview(); };
   $('#pvMono').onclick = () => {
     PVS.mono = !PVS.mono;
     if (PVS.mode === 'edit') $('#pvEditor')?.classList.toggle('mono', PVS.mono), $('#pvMono').classList.toggle('on', PVS.mono);

@@ -372,3 +372,17 @@ select.mini-select { width: auto; height: 30px; padding: 0 26px 0 10px; font-siz
 .file-name mark { background: color-mix(in srgb, #f2b01e 35%, transparent); color: inherit; border-radius: 3px; }
 .kind-filters { flex-wrap: wrap; row-gap: 6px; }
 body.panel .filter-selects { display: none; }
+
+/* ---- 代码高亮 ---- */
+.tk-k { color: #8250df; } .tk-s { color: #0a7f4f; } .tk-c { color: var(--muted); font-style: italic; }
+.tk-n { color: #b35900; } .tk-f { color: #1f5fd6; } .tk-p { color: #0e7490; } .tk-t { color: #c0392b; } .tk-v { color: #9a3412; }
+:root[data-theme="dark"] .tk-k { color: #c4a5ff; } :root[data-theme="dark"] .tk-s { color: #7ee0a6; }
+:root[data-theme="dark"] .tk-n { color: #ffb86b; } :root[data-theme="dark"] .tk-f { color: #82b4ff; }
+:root[data-theme="dark"] .tk-p { color: #67d6e6; } :root[data-theme="dark"] .tk-t { color: #ff8a80; } :root[data-theme="dark"] .tk-v { color: #ffab70; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tk-k { color: #c4a5ff; } :root:not([data-theme="light"]) .tk-s { color: #7ee0a6; }
+  :root:not([data-theme="light"]) .tk-n { color: #ffb86b; } :root:not([data-theme="light"]) .tk-f { color: #82b4ff; }
+  :root:not([data-theme="light"]) .tk-p { color: #67d6e6; } :root:not([data-theme="light"]) .tk-t { color: #ff8a80; } :root:not([data-theme="light"]) .tk-v { color: #ffab70; }
+}
+.badge.lang { font-family: var(--mono); }
+#pvFmt.on { color: var(--accent); background: var(--accent-soft); }

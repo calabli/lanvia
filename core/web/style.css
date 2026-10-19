@@ -364,3 +364,11 @@ dialog.ask p { font-size: 14px; line-height: 1.6; margin: 0 0 14px; white-space:
 .ask-bar { display: flex; justify-content: flex-end; gap: 8px; }
 .btn.primary.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 @media (max-width: 600px) { dialog.ask { margin: auto; width: calc(100vw - 32px); border-radius: 18px; } }
+
+/* ---- 搜索筛选 ---- */
+.filter-selects { display: inline-flex; gap: 6px; }
+select.mini-select { width: auto; height: 30px; padding: 0 26px 0 10px; font-size: 12px; border-radius: 9px; background-color: var(--surface); }
+.history-caption.fuzzy { color: var(--accent); }
+.file-name mark { background: color-mix(in srgb, #f2b01e 35%, transparent); color: inherit; border-radius: 3px; }
+.kind-filters { flex-wrap: wrap; row-gap: 6px; }
+body.panel .filter-selects { display: none; }

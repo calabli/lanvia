@@ -298,3 +298,38 @@ body.panel .item.sel { border-color: var(--accent); background: color-mix(in srg
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 
 .url-text { font-size: 11px; padding: 6px 0; user-select: all; overflow-wrap: anywhere; }
+
+/* ---- 发送模式 ---- */
+.mode-chip { gap: 7px; }
+.mode-chip .mode-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent); }
+.mode-chip.passive .mode-dot { background: var(--muted); box-shadow: none; }
+.segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border-radius: 14px; background: var(--surface-2); }
+.segmented label { cursor: pointer; }
+.segmented input { position: absolute; opacity: 0; pointer-events: none; }
+.segmented span { display: grid; gap: 1px; padding: 8px 12px; border-radius: 10px; color: var(--muted); transition: background .15s, color .15s; }
+.segmented b { font-size: 13px; font-weight: 600; color: var(--text); }
+.segmented small { font-size: 11px; }
+.segmented input:checked + span { background: var(--surface-solid); box-shadow: 0 1px 6px -2px rgba(20,40,80,.25); }
+.segmented input:focus-visible + span { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.clip-card { padding: 16px 18px; margin-bottom: 18px; display: grid; gap: 10px; }
+.clip-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.clip-text { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; max-height: 7.5em; overflow: hidden; font-size: 13.5px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
+.clip-text.empty { color: var(--muted); }
+.clip-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+
+/* ---- 单条保留时长 ---- */
+.badge svg { width: 10px; height: 10px; vertical-align: -1px; margin-right: 3px; }
+.badge.keep { background: var(--accent-soft); color: var(--accent); }
+.badge.expire { background: color-mix(in srgb, var(--danger) 13%, transparent); color: var(--danger); }
+.meta .badge + .badge { margin-left: 4px; }
+.pop-menu {
+  position: fixed; z-index: 40; min-width: 210px; padding: 6px; border-radius: 14px;
+  background: var(--surface-solid); border: 1px solid var(--border); box-shadow: 0 18px 50px -12px rgba(10,25,50,.35);
+}
+.pop-menu .pop-title { padding: 6px 10px 8px; font-size: 12px; font-weight: 600; }
+.pop-menu button { display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 8px 10px; border: 0; border-radius: 9px; background: none; text-align: left; font-size: 13px; cursor: pointer; }
+.pop-menu button:hover, .pop-menu button:focus-visible { background: var(--surface-hover); outline: 0; }
+.pop-menu button.on { color: var(--accent); font-weight: 600; }
+.pop-menu button svg { width: 15px; height: 15px; }
+.pop-menu .pop-foot { padding: 6px 10px 4px; font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--border); margin-top: 4px; }

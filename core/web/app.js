@@ -147,6 +147,7 @@ const ICON = {
   code: I('<path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/>'),
   pencil: I('<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'),
   history: I('<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 4.5V9H8M12 7.5V12l3 2"/>'),
+  timer: I('<circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 1.5M9.5 3h5"/>'),
   pin: I('<path d="M9 4h6l-1 6 4 3v2H6v-2l4-3z"/><path d="M12 15v5"/>'),
   globe: I('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.7 2.5 14.3 0 17M12 3.5c-2.5 2.7-2.5 14.3 0 17"/>'),
   sun: I('<circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
@@ -226,7 +227,7 @@ function findCode(text) {
 
 function itemHTML(it, latest) {
   const fromDev = S.devices.find(d => d.name === it.from);
-  const meta = `<div class="meta">${kindIcon(fromDev?.kind)}<span class="from">${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${latest ? '<span class="badge">最新</span>' : ''}${it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改">已编辑</span>` : ''}</div>`;
+  const meta = `<div class="meta">${kindIcon(fromDev?.kind)}<span class="from">${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${latest ? '<span class="badge">最新</span>' : ''}${it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改">已编辑</span>` : ''}${expiryBadge(it)}</div>`;
   if (it.kind === 'file') {
     const isImg = /^image\/(png|jpe?g|gif|webp|heic|avif|bmp)$/i.test(it.mime || '');
     const isVid = /^video\//.test(it.mime || '');
@@ -238,6 +239,7 @@ function itemHTML(it, latest) {
       <div class="actions">
         <button class="btn sm" data-act="download">${ICON.download}下载</button>
         <span class="spacer"></span>
+        <button class="icon-btn" data-act="expiry" aria-label="保留时长" title="保留时长">${ICON.timer}</button>
         <button class="icon-btn" data-act="delete" aria-label="删除">${ICON.trash}</button>
       </div>`;
   }
@@ -258,6 +260,7 @@ function itemHTML(it, latest) {
       <span class="spacer"></span>
       <span class="muted small">${long ? textStats(it.text) : it.text.length > 60 ? it.text.length + ' 字' : ''}</span>
       <button class="icon-btn" data-act="edit" aria-label="编辑" title="编辑">${ICON.pencil}</button>
+      <button class="icon-btn" data-act="expiry" aria-label="保留时长" title="保留时长">${ICON.timer}</button>
       <button class="icon-btn" data-act="delete" aria-label="删除">${ICON.trash}</button>
     </div>`;
 }
@@ -352,6 +355,13 @@ function connect() {
     if (!PREVIEW && it.from !== myName() && Date.now() + S.offset - it.ts < 30e3) onIncoming(it);
   });
   es.addEventListener('update', e => onItemUpdated(JSON.parse(e.data)));
+  es.addEventListener('settings', e => {
+    if (!S.info) return;
+    S.info.settings = JSON.parse(e.data);
+    $('#optApply').checked = S.info.settings.autoApply;
+    $('#optKeep').value = String(S.info.settings.historyDays);
+    renderMode();
+  });
   es.addEventListener('delete', e => {
     const { id } = JSON.parse(e.data);
     S.items = S.items.filter(x => x.id !== id); renderList();
@@ -493,7 +503,7 @@ function renderPreview() {
   const it = PV, isText = it.kind === 'text', m = PVS.mode;
   const fromDev = S.devices.find(x => x.name === it.from);
   const edited = it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改于 ${relTime(it.editedAt)}">已编辑 · ${esc(it.editedBy || '')} ${relTime(it.editedAt)}</span>` : '';
-  $('#pvMeta').innerHTML = `${kindIcon(fromDev?.kind)}<span class="from">${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${edited}
+  $('#pvMeta').innerHTML = `${kindIcon(fromDev?.kind)}<span class="from">${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${edited}${expiryBadge(it)}
     <span class="pv-stat">${isText ? textStats(it.text) : esc(it.name) + ' · ' + fmtSize(it.size || 0)}</span>`;
   const show = (id, on) => { $(id).hidden = !on; };
   show('#pvWrap', isText && m !== 'edit');
@@ -818,6 +828,118 @@ function flashButton(btn, label) {
   setTimeout(() => { btn.classList.remove('ok'); btn.innerHTML = old; }, 1400);
 }
 
+/* ================= 发送模式（主动 / 被动） ================= */
+
+const isActive = () => S.info?.settings?.watch !== false;
+
+function renderMode() {
+  if (!S.local || !S.info) return;
+  const active = isActive();
+  document.querySelectorAll('input[name="sendMode"]').forEach(r => { r.checked = (r.value === 'active') === active; });
+  const hk = KIND === 'mac' ? '⌘⇧U' : 'Ctrl+Shift+U';
+  $('#modeHint').textContent = active
+    ? '在这台电脑上复制文字，会自动发送到所有设备。'
+    : `复制不会自动发送。需要时点“发送剪贴板”，或在任意应用里按 ${hk}（桌面版）。`;
+  const b = $('#modeBtn');
+  b.hidden = PREVIEW;
+  b.classList.toggle('passive', !active);
+  b.innerHTML = `<span class="mode-dot"></span>${active ? '主动' : '被动'}`;
+  b.title = active ? '主动模式：复制即发送。点击切换为被动模式' : '被动模式：手动发送。点击切换为主动模式';
+  $('#clipCard').hidden = active || PREVIEW;
+  $('#clipHint').textContent = `也可以在任意应用里按 ${hk}`;
+  if (!active) refreshClip();
+}
+
+async function setMode(active) {
+  await saveSettings({ watch: active });
+  renderMode();
+  toast(active ? '已切换为主动模式：复制即发送' : '已切换为被动模式：需要手动发送');
+}
+
+let clipBusy = false;
+async function refreshClip() {
+  if (!S.local || !S.info || isActive() || PREVIEW || clipBusy) return;
+  clipBusy = true;
+  try {
+    const c = await api('GET', '/api/clipboard');
+    const box = $('#clipText');
+    if (c.reason) {
+      box.textContent = c.reason;
+      box.classList.add('empty');
+    } else {
+      box.textContent = c.text + (c.length > [...c.text].length ? '…' : '');
+      box.classList.remove('empty');
+    }
+    $('#clipInfo').textContent = c.reason ? '' : c.sent ? '已发送' : `${c.length} 字`;
+    $('#clipSend').disabled = !!c.reason || c.sent;
+    $('#clipSend').textContent = c.sent ? '已发送' : '发送剪贴板';
+  } catch {} finally { clipBusy = false; }
+}
+
+async function sendClipboard() {
+  try {
+    await api('POST', '/api/send-clipboard');
+    toast('已发送到所有设备');
+  } catch (e) { toast(e.message); }
+  refreshClip();
+}
+
+/* ================= 单条保留时长 ================= */
+
+const EXPIRY_OPTIONS = [
+  { label: '1 小时后删除', ttl: 3600 },
+  { label: '1 天后删除', ttl: 86400 },
+  { label: '7 天后删除', ttl: 7 * 86400 },
+  { label: '30 天后删除', ttl: 30 * 86400 },
+  { label: '永久保留', keep: true },
+  { label: '跟随全局设置', ttl: 0 },
+];
+
+function fmtRemain(ms) {
+  if (ms < 3600e3) return Math.max(1, Math.round(ms / 60e3)) + ' 分钟后删除';
+  if (ms < 86400e3) return Math.round(ms / 3600e3) + ' 小时后删除';
+  return Math.round(ms / 86400e3) + ' 天后删除';
+}
+
+function expiryBadge(it) {
+  if (it.keep) return `<span class="badge keep" title="不受全局保留时间影响">${ICON.pin}永久保留</span>`;
+  if (it.expiresAt) return `<span class="badge expire" title="${new Date(it.expiresAt).toLocaleString()} 删除">${ICON.timer}${fmtRemain(it.expiresAt - Date.now() - S.offset)}</span>`;
+  return '';
+}
+
+let menuItem = null;
+function openExpiryMenu(it, anchor) {
+  menuItem = it;
+  const m = $('#expiryMenu');
+  const cur = it.keep ? 'keep' : it.expiresAt ? 'ttl' : 'default';
+  m.innerHTML = `<div class="pop-title">保留时长 <span class="muted">· 同步到所有设备</span></div>` + EXPIRY_OPTIONS.map((o, i) => {
+    const on = (o.keep && cur === 'keep') || (o.ttl === 0 && !o.keep && cur === 'default');
+    return `<button role="menuitem" data-i="${i}" class="${on ? 'on' : ''}">${o.label}${on ? ICON.check : ''}</button>`;
+  }).join('') + (cur === 'ttl' ? `<div class="pop-foot">当前：${fmtRemain(it.expiresAt - Date.now() - S.offset)}</div>` : '');
+  m.hidden = false;
+  const r = anchor.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
+  m.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
+  m.style.top = (r.bottom + h + 8 > innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+  $('button', m)?.focus();
+}
+
+function bindExpiryMenu() {
+  const m = $('#expiryMenu');
+  m.addEventListener('click', async e => {
+    const b = e.target.closest('[data-i]');
+    if (!b || !menuItem) return;
+    const o = EXPIRY_OPTIONS[+b.dataset.i];
+    m.hidden = true;
+    try {
+      const it = await api('POST', `/api/items/${menuItem.id}/expiry`, { ttl: o.ttl || 0, keep: !!o.keep });
+      upsertItem(it);
+      toast(o.keep ? '已设为永久保留' : o.ttl ? `已设置：${o.label}` : '已恢复跟随全局设置');
+    } catch (err) { toast('设置失败：' + err.message); }
+  });
+  document.addEventListener('mousedown', e => { if (!m.hidden && !m.contains(e.target) && !e.target.closest('[data-act="expiry"]')) m.hidden = true; });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !m.hidden) { e.stopPropagation(); m.hidden = true; } }, true);
+}
+
 /* ================= 本机仪表盘 ================= */
 
 async function loadInfo() {
@@ -835,7 +957,7 @@ async function loadInfo() {
   $('#urlText').textContent = (i.urls || [])[0] || '未检测到局域网地址';
   drawQR();
   $('#nodeName').value = i.name;
-  $('#optWatch').checked = i.settings.watch;
+  renderMode();
   $('#optApply').checked = i.settings.autoApply;
   const keep = String(i.settings.historyDays ?? 30), ks = $('#optKeep');
   if (![...ks.options].some(o => o.value === keep)) ks.add(new Option(`${keep} 天`, keep)); // 手动改过配置文件的情况
@@ -969,6 +1091,7 @@ function bind() {
       case 'download': download(it); break;
       case 'view': case 'preview': openPreview(it); break;
       case 'edit': openPreview(it, 'edit'); break;
+      case 'expiry': openExpiryMenu(it, el); break;
       case 'delete':
         api('DELETE', '/api/items/' + it.id).catch(err => toast('删除失败：' + err.message));
         break;
@@ -1018,7 +1141,12 @@ function bind() {
   };
   $('#urlSelect').onchange = drawQR;
   $('#nodeName').addEventListener('change', e => e.target.value.trim() && saveSettings({ name: e.target.value.trim() }));
-  $('#optWatch').onchange = e => saveSettings({ watch: e.target.checked });
+  document.querySelectorAll('input[name="sendMode"]').forEach(r => { r.onchange = () => setMode(r.value === 'active'); });
+  $('#modeBtn').onclick = () => setMode(!S.info?.settings?.watch);
+  $('#clipSend').onclick = sendClipboard;
+  bindExpiryMenu();
+  addEventListener('focus', refreshClip);
+  setInterval(() => { if (!document.hidden) refreshClip(); }, 2000);
   $('#optApply').onchange = e => saveSettings({ autoApply: e.target.checked });
   $('#optKeep').onchange = e => {
     const days = +e.target.value;

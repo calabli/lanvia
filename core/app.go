@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"log"
 	"runtime"
 	"sync"
@@ -52,6 +53,7 @@ func (a *App) updateCfg(fn func(*Config)) error {
 	a.cr = deriveCreds(a.cfg.Code)
 	c := a.cfg
 	a.mu.Unlock()
+	a.hub.Broadcast("settings", c.Settings) // 托盘菜单里改的设置，打开着的窗口也要跟着变
 	a.changed()
 	return c.save(a.dir)
 }
@@ -107,9 +109,19 @@ func (a *App) merge(s storeFile) {
 	}
 	n := 0
 	for i := len(s.Items) - 1; i >= 0; i-- {
-		if it := s.Items[i]; validItem(it) && a.store.Add(it) {
+		it := s.Items[i]
+		if !validItem(it) {
+			continue
+		}
+		if a.store.Add(it) {
 			a.hub.Broadcast("item", it)
 			n++
+		} else if it.MetaTS > 0 {
+			// 已有的内容：补上对方更新过的保留设置
+			if u := a.store.applyMeta(it.ID, it.ExpiresAt, it.Keep, it.MetaTS); u != nil {
+				a.hub.Broadcast("update", u)
+				n++
+			}
 		}
 	}
 	// 合并编辑历史。对方的内容里已经是编辑后的文本，所以这里不能把当前文本当成原始版本
@@ -188,12 +200,36 @@ func (a *App) devices() []Device {
 	return out
 }
 
-// pruneLoop 定期清理过期历史。
+// pruneLoop 定期清理过期历史。单条可以设成 1 小时后删除，所以每分钟检查一次（只是遍历内存里的列表）。
 func (a *App) pruneLoop() {
 	for {
 		a.prune()
-		time.Sleep(10 * time.Minute)
+		time.Sleep(time.Minute)
 	}
+}
+
+// SetItemExpiry 设置单条内容的保留时长并同步到所有设备。ttl 为 0 且 keep 为 false 时恢复跟随全局设置。
+func (a *App) SetItemExpiry(id string, ttl time.Duration, keep bool) (*Item, error) {
+	if a.store.Get(id) == nil {
+		return nil, errors.New("内容不存在")
+	}
+	now := nowMs()
+	var exp int64
+	if ttl > 0 && !keep {
+		exp = now + ttl.Milliseconds()
+	}
+	it := a.store.applyMeta(id, exp, keep, now)
+	if it == nil {
+		return nil, errors.New("设置失败，请重试")
+	}
+	a.afterMeta(it, "")
+	return it, nil
+}
+
+func (a *App) afterMeta(it *Item, fromPeer string) {
+	a.hub.Broadcast("update", it)
+	a.peers.relay(Envelope{Op: "meta", ID: it.ID, Item: &Item{ExpiresAt: it.ExpiresAt, Keep: it.Keep, MetaTS: it.MetaTS}}, fromPeer)
+	a.changed()
 }
 
 func (a *App) prune() {

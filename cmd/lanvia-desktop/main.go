@@ -29,13 +29,16 @@ import (
 var assets embed.FS
 
 // ⌘⇧V / Ctrl+Shift+V 在很多应用里是“粘贴为纯文本”，不抢；Y 在两个平台上都基本空闲。
-const hotkey = "CmdOrCtrl+Shift+Y"
+const (
+	hotkey     = "CmdOrCtrl+Shift+Y" // 快捷面板
+	sendHotkey = "CmdOrCtrl+Shift+U" // 发送当前剪贴板（被动模式下最常用）
+)
 
-func hotkeyLabel() string {
+func hotkeyLabel(accel string) string {
 	if runtime.GOOS == "darwin" {
-		return "⌘⇧Y"
+		return map[string]string{hotkey: "⌘⇧Y", sendHotkey: "⌘⇧U"}[accel]
 	}
-	return "Ctrl+Shift+Y"
+	return strings.TrimPrefix(accel, "CmdOr") // Ctrl+Shift+Y
 }
 
 type desktop struct {
@@ -157,6 +160,9 @@ func (d *desktop) build() {
 	if err := d.app.GlobalShortcut.Register(hotkey, d.togglePanel); err != nil {
 		log.Printf("无法注册快捷键 %s: %v", hotkey, err)
 	}
+	if err := d.app.GlobalShortcut.Register(sendHotkey, d.sendClipboard); err != nil {
+		log.Printf("无法注册快捷键 %s: %v", sendHotkey, err)
+	}
 
 	// 网页里的“收起”“打开主窗口”“预览”
 	d.node.SetDesktopHook(func(action, id string) bool {
@@ -208,6 +214,29 @@ func (d *desktop) showMain() {
 	d.main.Focus()
 }
 
+// sendClipboard 手动发送当前剪贴板。没有窗口可以提示，所以在菜单栏图标旁边短暂显示结果。
+func (d *desktop) sendClipboard() {
+	msg := "已发送"
+	if _, err := d.node.SendClipboard(); err != nil {
+		msg = err.Error()
+		log.Printf("发送剪贴板: %v", err)
+	}
+	d.flash(msg)
+}
+
+func (d *desktop) flash(msg string) {
+	if runtime.GOOS != "darwin" { // Windows 托盘没有文字标签，用提示文字代替
+		d.tray.SetTooltip("Lanvia · " + msg)
+		time.AfterFunc(3*time.Second, func() { d.tray.SetTooltip("Lanvia") })
+		return
+	}
+	if r := []rune(msg); len(r) > 12 {
+		msg = string(r[:12]) + "…"
+	}
+	d.tray.SetLabel(" " + msg)
+	time.AfterFunc(2*time.Second, func() { d.tray.SetLabel("") })
+}
+
 // refreshMenu 合并短时间内的多次变化，避免频繁重建菜单。
 func (d *desktop) refreshMenu() {
 	d.mu.Lock()
@@ -255,9 +284,10 @@ func (d *desktop) fillMenu() {
 	m.AddSeparator()
 
 	s := d.node.Settings()
-	m.AddCheckbox("分享本机复制的内容", s.Watch).OnClick(func(c *application.Context) {
-		d.node.SetWatch(c.IsChecked())
-	})
+	m.AddRadio("主动模式 · 复制即发送", s.Watch).OnClick(func(*application.Context) { d.node.SetWatch(true) })
+	m.AddRadio("被动模式 · 手动发送", !s.Watch).OnClick(func(*application.Context) { d.node.SetWatch(false) })
+	m.Add("发送当前剪贴板    " + hotkeyLabel(sendHotkey)).OnClick(func(*application.Context) { d.sendClipboard() })
+	m.AddSeparator()
 	m.AddCheckbox("自动写入本机剪贴板", s.AutoApply).OnClick(func(c *application.Context) {
 		d.node.SetAutoApply(c.IsChecked())
 	})
@@ -275,7 +305,7 @@ func (d *desktop) fillMenu() {
 	})
 	m.AddSeparator()
 
-	m.Add("快捷面板    " + hotkeyLabel()).OnClick(func(*application.Context) { d.togglePanel() })
+	m.Add("快捷面板    " + hotkeyLabel(hotkey)).OnClick(func(*application.Context) { d.togglePanel() })
 	m.Add("打开主窗口…").OnClick(func(*application.Context) { d.showMain() })
 	m.Add("配对码  " + d.node.Code()).SetEnabled(false)
 	m.AddSeparator()

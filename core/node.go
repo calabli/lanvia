@@ -105,7 +105,13 @@ func (a *App) PairURL() string {
 	return urls[0] + "/#k=" + a.cfgSnapshot().Code
 }
 
-func (a *App) SetWatch(on bool)     { a.updateCfg(func(c *Config) { c.Watch = on }) }
+// SetWatch 切换主动（复制即发送）/ 被动（手动发送）模式。
+func (a *App) SetWatch(on bool) {
+	if on {
+		a.clip.resync()
+	}
+	a.updateCfg(func(c *Config) { c.Watch = on })
+}
 func (a *App) SetAutoApply(on bool) { a.updateCfg(func(c *Config) { c.AutoApply = on }) }
 
 // Recent 返回最近的 n 条内容。

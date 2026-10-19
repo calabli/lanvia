@@ -837,17 +837,16 @@ function renderMode() {
   if (!S.local || !S.info) return;
   const active = isActive();
   document.querySelectorAll('input[name="sendMode"]').forEach(r => { r.checked = (r.value === 'active') === active; });
-  const hk = KIND === 'mac' ? '⌘⇧U' : 'Ctrl+Shift+U';
   $('#modeHint').textContent = active
     ? '在这台电脑上复制文字，会自动发送到所有设备。'
-    : `复制不会自动发送。需要时点“发送剪贴板”，或在任意应用里按 ${hk}（桌面版）。`;
+    : '复制不会自动发送。需要时点“发送剪贴板”，或在托盘菜单里选“发送当前剪贴板”（桌面版）。';
   const b = $('#modeBtn');
   b.hidden = PREVIEW;
   b.classList.toggle('passive', !active);
   b.innerHTML = `<span class="mode-dot"></span>${active ? '主动' : '被动'}`;
   b.title = active ? '主动模式：复制即发送。点击切换为被动模式' : '被动模式：手动发送。点击切换为主动模式';
   $('#clipCard').hidden = active || PREVIEW;
-  $('#clipHint').textContent = `也可以在任意应用里按 ${hk}`;
+  $('#clipHint').textContent = '也可以在托盘菜单里选“发送当前剪贴板”';
   if (!active) refreshClip();
 }
 

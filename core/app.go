@@ -24,10 +24,11 @@ type App struct {
 	onChange    func()
 	desktopHook func(action, id string) bool
 	saved       map[string]string // 已保存到“下载”的文件：id -> 路径
+	fetch       *fetcher          // 后台下载其他设备的文件
 }
 
 func newApp(dir string, cfg *Config, manualPeers []string) *App {
-	a := &App{dir: dir, cfg: *cfg, cr: deriveCreds(cfg.Code), hub: newHub(), saved: map[string]string{}}
+	a := &App{dir: dir, cfg: *cfg, cr: deriveCreds(cfg.Code), hub: newHub(), saved: map[string]string{}, fetch: newFetcher()}
 	a.store = openStore(dir)
 	a.store.setRetention(cfg.HistoryDays)
 	a.peers = newPeers(a, manualPeers)
@@ -78,6 +79,9 @@ func (a *App) ingest(it *Item, fromPeer string, apply bool) bool {
 		}
 	}
 	a.peers.relay(Envelope{Op: "add", Item: it}, fromPeer)
+	if fromPeer != "" && a.wantFetch(it) {
+		a.enqueueFetch(it.ID)
+	}
 	a.changed()
 	log.Printf("%s  %s", it.From, preview(it))
 	return true
@@ -131,6 +135,7 @@ func (a *App) merge(s storeFile) {
 			n++
 		}
 	}
+	go a.fetchMissing() // 新设备上线：顺便补下之前没取到的文件
 	if n > 0 {
 		a.changed()
 		log.Printf("从对端同步了 %d 条历史", n)
@@ -202,8 +207,11 @@ func (a *App) devices() []Device {
 
 // pruneLoop 定期清理过期历史。单条可以设成 1 小时后删除，所以每分钟检查一次（只是遍历内存里的列表）。
 func (a *App) pruneLoop() {
-	for {
+	for i := 0; ; i++ {
 		a.prune()
+		if i%5 == 4 {
+			a.fetchMissing() // 每 5 分钟重试一次没下载成功的文件
+		}
 		time.Sleep(time.Minute)
 	}
 }

@@ -73,6 +73,8 @@ func (a *App) Start() error {
 	go a.clip.run()
 	go a.presenceLoop()
 	go a.pruneLoop()
+	go a.fetchLoop()
+	go a.fetchLoop() // 两个并发，大文件不至于堵住小文件
 	go http.Serve(ln, a.routes(web))
 	return nil
 }

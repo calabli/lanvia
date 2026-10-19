@@ -941,6 +941,15 @@ function bindExpiryMenu() {
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !m.hidden) { e.stopPropagation(); m.hidden = true; } }, true);
 }
 
+function renderManual(list) {
+  $('#manualList').innerHTML = list.map(m => `<li>
+    <span class="dot${m.connected ? ' on' : ''}"></span>
+    <span class="mono">${esc(m.addr)}</span>
+    <span class="muted small">${m.connected ? '已连接 · ' + esc(m.name) : '未连接，会自动重试'}</span>
+    <button class="btn ghost sm" data-remove="${esc(m.addr)}">移除</button>
+  </li>`).join('');
+}
+
 /* ================= 本机仪表盘 ================= */
 
 async function loadInfo() {
@@ -977,6 +986,7 @@ curl -H "Authorization: Bearer ${i.token}" ${base}/api/latest
 # 发送文件
 curl -H "Authorization: Bearer ${i.token}" --data-binary @photo.jpg "${base}/api/upload?name=photo.jpg"`;
   $('#dataDir').textContent = '数据目录：' + i.dataDir;
+  renderManual(i.manual || []);
   $('#nearby').innerHTML = (i.nearby || []).map(n =>
     `<div class="nearby"><span>${kindIcon(osKind(n.os))} <b>${esc(n.name)}</b> 在同一网络，但配对码不同</span><span class="muted">${esc(n.addr.split(':')[0])}</span></div>`).join('');
 }
@@ -1159,6 +1169,26 @@ function bind() {
     if (n && !confirm(`将立即删除这台电脑上 ${n} 条超过 ${days} 天的内容，确定吗？`)) { e.target.value = String(S.info.settings.historyDays); return; }
     saveSettings({ historyDays: days });
   };
+  $('#manualForm').onsubmit = async e => {
+    e.preventDefault();
+    const input = $('#manualInput'), msg = $('#manualMsg'), btn = $('#manualForm button');
+    if (!input.value.trim()) return;
+    btn.disabled = true; msg.className = 'small muted'; msg.textContent = '正在连接…';
+    try {
+      const r = await api('POST', '/api/peers', { addr: input.value });
+      S.info = r.info; renderManual(r.info.manual || []);
+      if (r.error) { msg.className = 'small warn'; msg.textContent = r.error; }
+      else { msg.className = 'small ok-text'; msg.textContent = r.peer.connected ? `已连接：${r.peer.name}` : '已添加，正在连接…'; input.value = ''; }
+    } catch (err) { msg.className = 'small warn'; msg.textContent = err.message; }
+    btn.disabled = false;
+  };
+  $('#manualList').addEventListener('click', async e => {
+    const b = e.target.closest('[data-remove]');
+    if (!b) return;
+    S.info = await api('POST', '/api/peers', { addr: b.dataset.remove, remove: true });
+    renderManual(S.info.manual || []);
+    $('#manualMsg').textContent = '';
+  });
   $('#joinForm').onsubmit = async e => {
     e.preventDefault();
     const code = normCode($('#joinInput').value);

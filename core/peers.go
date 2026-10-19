@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -29,14 +31,17 @@ type Beacon struct {
 
 // Peer 是同一空间内的另一个 Lanvia 节点。
 type Peer struct {
-	ID      string       `json:"id"`
-	Name    string       `json:"name"`
-	OS      string       `json:"os"`
-	Addr    string       `json:"addr"`
-	Manual  bool         `json:"manual"`
-	Clients []ClientInfo `json:"clients"`
-	seen    time.Time
-	fails   int
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	OS     string `json:"os"`
+	Addr   string `json:"addr"`
+	Manual bool   `json:"manual"`
+	// 通过“手动添加”的哪个地址找到的（可能是主机名，和 Addr 不同）
+	ManualAddr string       `json:"manualAddr,omitempty"`
+	Clients    []ClientInfo `json:"clients"`
+	seen       time.Time
+	fails      int
+	beacon     bool // 也能通过广播发现
 }
 
 // Nearby 是广播里看到、但配对码不同的节点，展示在仪表盘上方便用户加入。
@@ -56,6 +61,8 @@ type Peers struct {
 	manual  []string
 	probing map[string]bool
 	hc      *http.Client
+
+	noDiscovery bool
 }
 
 func newPeers(a *App, manual []string) *Peers {
@@ -67,8 +74,10 @@ func newPeers(a *App, manual []string) *Peers {
 }
 
 func (p *Peers) start() {
-	go p.listen()
-	go p.beaconLoop()
+	if !p.noDiscovery {
+		go p.listen()
+		go p.beaconLoop()
+	}
 	go p.pollLoop()
 }
 
@@ -149,7 +158,7 @@ func (p *Peers) onBeacon(b Beacon, ip net.IP) {
 	}
 	delete(p.nearby, b.ID)
 	if x := p.m[b.ID]; x != nil {
-		x.Addr = addr
+		x.Addr, x.beacon = addr, true
 		return
 	}
 	if !p.probing[addr] {
@@ -178,12 +187,20 @@ func (p *Peers) beaconLoop() {
 	}
 }
 
+var (
+	errBadCode = errors.New("对方的配对码和本机不同")
+	errSelf    = errors.New("这是本机的地址")
+)
+
 // probe 用签名请求访问对方的 /api/info：只有配对码相同才会成功。
-func (p *Peers) probe(addr string, manual bool) {
+func (p *Peers) probe(addr string, manual bool) (*Info, error) {
 	defer func() { p.mu.Lock(); delete(p.probing, addr); p.mu.Unlock() }()
 	info, err := p.fetchInfo(addr)
-	if err != nil || info.ID == p.a.cfgSnapshot().ID {
-		return
+	if err != nil {
+		return nil, err
+	}
+	if info.ID == p.a.cfgSnapshot().ID {
+		return nil, errSelf
 	}
 	p.mu.Lock()
 	x, existed := p.m[info.ID]
@@ -193,10 +210,73 @@ func (p *Peers) probe(addr string, manual bool) {
 	}
 	x.Name, x.OS, x.Addr, x.Clients, x.seen, x.fails = info.Name, info.OS, addr, info.Clients, time.Now(), 0
 	x.Manual = x.Manual || manual
+	if manual {
+		x.ManualAddr = addr
+	}
 	p.mu.Unlock()
 	if !existed {
 		log.Printf("已连接设备: %s (%s)", info.Name, addr)
 		go p.syncHistory(x.ID, addr)
+	}
+	return info, nil
+}
+
+// noticeCaller 处理一个配对码相同、但本机还不认识的节点发来的请求：主动连回去。
+// 这样手动添加地址只需要在一边做，另一边的新内容也能发过去。
+func (p *Peers) noticeCaller(id, addr string) {
+	if id == "" || id == p.a.cfgSnapshot().ID {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.m[id] != nil || p.probing[addr] {
+		return
+	}
+	p.probing[addr] = true
+	go p.probe(addr, false)
+}
+
+// ---- 手动添加的地址 ----
+
+type ManualPeer struct {
+	Addr      string `json:"addr"`
+	Connected bool   `json:"connected"`
+	Name      string `json:"name,omitempty"`
+}
+
+func (p *Peers) ManualList() []ManualPeer {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := []ManualPeer{}
+	for _, addr := range p.manual {
+		mp := ManualPeer{Addr: addr}
+		for _, x := range p.m {
+			if x.ManualAddr == addr || x.Addr == addr {
+				mp.Connected, mp.Name = true, x.Name
+			}
+		}
+		out = append(out, mp)
+	}
+	return out
+}
+
+func (p *Peers) setManual(list []string) {
+	p.mu.Lock()
+	p.manual = append([]string(nil), list...)
+	p.mu.Unlock()
+}
+
+// forget 移除手动地址后，断开只靠这个地址连上、广播里也看不到的设备。
+func (p *Peers) forget(addr string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for id, x := range p.m {
+		if x.ManualAddr == addr {
+			x.ManualAddr, x.Manual = "", false
+			if !x.beacon {
+				delete(p.m, id)
+			}
+		}
 	}
 }
 
@@ -208,6 +288,9 @@ func (p *Peers) pollLoop() {
 		var ps []*Peer
 		for _, x := range p.m {
 			known[x.Addr] = true
+			if x.ManualAddr != "" {
+				known[x.ManualAddr] = true
+			}
 			c := *x
 			ps = append(ps, &c)
 		}
@@ -259,7 +342,9 @@ func (p *Peers) newReq(ctx context.Context, method, addr, path string, body []by
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	signRequest(req, p.a.creds(), p.a.cfgSnapshot().ID)
+	c := p.a.cfgSnapshot()
+	signRequest(req, p.a.creds(), c.ID)
+	req.Header.Set("X-Lanvia-Port", strconv.Itoa(c.Port)) // 让对方知道怎么连回来
 	return req
 }
 
@@ -269,6 +354,9 @@ func (p *Peers) getJSON(addr, path string, v any) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized {
+		return errBadCode
+	}
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("%s: HTTP %d", path, resp.StatusCode)
 	}
@@ -313,4 +401,78 @@ func (p *Peers) relay(env Envelope, except string) {
 			resp.Body.Close()
 		}(x.Addr)
 	}
+}
+
+// normalizeAddr 把用户填的地址整理成 host:port。可以带 http://、不带端口（默认 8686）。
+func normalizeAddr(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(strings.TrimPrefix(s, "http://"), "https://")
+	if i := strings.IndexAny(s, "/#?"); i >= 0 {
+		s = s[:i]
+	}
+	if s == "" {
+		return "", errors.New("请填写对方的 IP 地址")
+	}
+	host, port, err := net.SplitHostPort(s)
+	if err != nil {
+		host, port = strings.Trim(s, "[]"), strconv.Itoa(defaultPort)
+	}
+	n, err := strconv.Atoi(port)
+	if host == "" || err != nil || n < 1 || n > 65535 || strings.ContainsAny(host, " ,;") {
+		return "", errors.New("地址格式不对，例如 192.168.1.20 或 192.168.1.20:8686")
+	}
+	return net.JoinHostPort(host, strconv.Itoa(n)), nil
+}
+
+func contains(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+// AddManualPeer 保存一个手动地址并立即试连；连不上也会保存，之后自动重试。
+func (a *App) AddManualPeer(raw string) (ManualPeer, error) {
+	addr, err := normalizeAddr(raw)
+	if err != nil {
+		return ManualPeer{}, err
+	}
+	a.peers.mu.Lock()
+	busy := a.peers.probing[addr]
+	a.peers.probing[addr] = true
+	a.peers.mu.Unlock()
+	var info *Info
+	if !busy {
+		info, err = a.peers.probe(addr, true)
+	}
+	if err == errSelf || err == errBadCode { // 这两种重试也没用，不保存
+		return ManualPeer{Addr: addr}, err
+	}
+	a.updateCfg(func(c *Config) {
+		if !contains(c.Peers, addr) {
+			c.Peers = append(c.Peers, addr)
+		}
+	})
+	a.peers.setManual(a.cfgSnapshot().Peers)
+	mp := ManualPeer{Addr: addr}
+	if info != nil {
+		mp.Connected, mp.Name = true, info.Name
+	}
+	return mp, err
+}
+
+func (a *App) RemoveManualPeer(addr string) {
+	a.updateCfg(func(c *Config) {
+		kept := c.Peers[:0]
+		for _, x := range c.Peers {
+			if x != addr {
+				kept = append(kept, x)
+			}
+		}
+		c.Peers = kept
+	})
+	a.peers.setManual(a.cfgSnapshot().Peers)
+	a.peers.forget(addr)
 }

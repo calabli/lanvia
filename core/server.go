@@ -32,15 +32,16 @@ type Info struct {
 	Clients []ClientInfo `json:"clients"`
 
 	// 以下字段只返回给本机仪表盘
-	Local     bool      `json:"local,omitempty"`
-	Code      string    `json:"code,omitempty"`
-	Token     string    `json:"token,omitempty"`
-	URLs      []string  `json:"urls,omitempty"`
-	Settings  *Settings `json:"settings,omitempty"`
-	Clipboard bool      `json:"clipboard,omitempty"`
-	Peers     []*Peer   `json:"peers,omitempty"`
-	Nearby    []Nearby  `json:"nearby,omitempty"`
-	DataDir   string    `json:"dataDir,omitempty"`
+	Local     bool         `json:"local,omitempty"`
+	Code      string       `json:"code,omitempty"`
+	Token     string       `json:"token,omitempty"`
+	URLs      []string     `json:"urls,omitempty"`
+	Settings  *Settings    `json:"settings,omitempty"`
+	Clipboard bool         `json:"clipboard,omitempty"`
+	Peers     []*Peer      `json:"peers,omitempty"`
+	Nearby    []Nearby     `json:"nearby,omitempty"`
+	Manual    []ManualPeer `json:"manual,omitempty"`
+	DataDir   string       `json:"dataDir,omitempty"`
 }
 
 func (a *App) routes(web fs.FS) http.Handler {
@@ -92,6 +93,27 @@ func (a *App) routes(web fs.FS) http.Handler {
 			return
 		}
 		writeJSON(w, 200, it)
+	}))
+	m.HandleFunc("POST /api/peers", local(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Addr   string `json:"addr"`
+			Remove bool   `json:"remove"`
+		}
+		if json.NewDecoder(r.Body).Decode(&req) != nil {
+			errJSON(w, 400, "bad json")
+			return
+		}
+		if req.Remove {
+			a.RemoveManualPeer(req.Addr)
+			writeJSON(w, 200, a.info(true))
+			return
+		}
+		mp, err := a.AddManualPeer(req.Addr)
+		res := map[string]any{"peer": mp, "info": a.info(true)}
+		if err != nil {
+			res["error"] = manualErrText(err)
+		}
+		writeJSON(w, 200, res)
 	}))
 	m.HandleFunc("GET /api/clipboard", local(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, a.ClipboardState())
@@ -182,7 +204,19 @@ func errJSON(w http.ResponseWriter, code int, msg string) {
 
 func (a *App) requireAuth(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if isLocalAdmin(r) || checkSigned(r, a.creds()) {
+		if isLocalAdmin(r) {
+			h(w, r)
+			return
+		}
+		if checkSigned(r, a.creds()) {
+			// 配对码相同的节点发来签名请求：如果还不认识它，就连回去（只在一边手动添加也能双向同步）
+			if r.Header.Get("X-Lanvia-Sig") != "" {
+				if port := r.Header.Get("X-Lanvia-Port"); port != "" {
+					if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+						a.peers.noticeCaller(r.Header.Get("X-Lanvia-Node"), net.JoinHostPort(host, port))
+					}
+				}
+			}
 			h(w, r)
 			return
 		}
@@ -207,6 +241,7 @@ func (a *App) info(local bool) *Info {
 		s := c.Settings
 		in.Local, in.Code, in.Token, in.Settings = true, formatCode(c.Code), a.creds().token, &s
 		in.Clipboard, in.Peers, in.Nearby, in.DataDir = a.clip.ok, a.peers.List(), a.peers.NearbyList(), a.dir
+		in.Manual = a.peers.ManualList()
 		for _, l := range lanAddrs() {
 			in.URLs = append(in.URLs, "http://"+net.JoinHostPort(l.IP.String(), strconv.Itoa(c.Port)))
 		}
@@ -549,6 +584,19 @@ func handleQR(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, 200, map[string]any{"size": c.Size, "bits": sb.String()})
+}
+
+// manualErrText 把试连失败的原因翻译成用户看得懂的话。
+func manualErrText(err error) string {
+	switch {
+	case err == errBadCode:
+		return "对方的配对码和本机不同（未保存）。请先在“加入另一台电脑”里统一配对码"
+	case err == errSelf:
+		return err.Error()
+	case strings.Contains(err.Error(), "地址") || strings.Contains(err.Error(), "请填写"):
+		return err.Error()
+	}
+	return "暂时连不上（地址已保存，会自动重试）。请确认对方的 Lanvia 正在运行、IP 和端口正确，以及防火墙允许连接"
 }
 
 func sanitizeName(s string) string {

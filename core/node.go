@@ -24,6 +24,8 @@ type Options struct {
 	Join    string   // 另一台设备的配对码
 	NoWatch bool     // 不监听本机剪贴板
 	Peers   []string // 手动指定的对端 host:port
+	// 不发送也不收听局域网广播，只连接手动添加的设备
+	NoDiscovery bool
 }
 
 func DefaultDataDir() string { return defaultDataDir() }
@@ -56,7 +58,16 @@ func Open(o Options) (*App, error) {
 	if err := cfg.save(o.DataDir); err != nil {
 		return nil, err
 	}
-	return newApp(o.DataDir, cfg, o.Peers), nil
+	// 命令行的 --peer 只在本次运行有效，设置里添加的会保存
+	manual := append([]string(nil), cfg.Peers...)
+	for _, p := range o.Peers {
+		if a, err := normalizeAddr(p); err == nil && !contains(manual, a) {
+			manual = append(manual, a)
+		}
+	}
+	a := newApp(o.DataDir, cfg, manual)
+	a.peers.noDiscovery = o.NoDiscovery
+	return a, nil
 }
 
 // ErrPortInUse 通常意味着已经有一个 Lanvia 在运行（命令行版或桌面版）。

@@ -304,8 +304,8 @@ body.panel .item.sel { border-color: var(--accent); background: color-mix(in srg
 .mode-chip .mode-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent); }
 .mode-chip.passive .mode-dot { background: var(--muted); box-shadow: none; }
 .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border-radius: 14px; background: var(--surface-2); }
-.segmented label { cursor: pointer; }
-.segmented input { position: absolute; opacity: 0; pointer-events: none; }
+.segmented label { cursor: pointer; position: relative; }
+.segmented input { position: absolute; inset: 0; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; } /* 别被 .field input 的 width:100% 撑出弹窗 */
 .segmented span { display: grid; gap: 1px; padding: 8px 12px; border-radius: 10px; color: var(--muted); transition: background .15s, color .15s; }
 .segmented b { font-size: 13px; font-weight: 600; color: var(--text); }
 .segmented small { font-size: 11px; }
@@ -333,3 +333,10 @@ body.panel .item.sel { border-color: var(--accent); background: color-mix(in srg
 .pop-menu button.on { color: var(--accent); font-weight: 600; }
 .pop-menu button svg { width: 15px; height: 15px; }
 .pop-menu .pop-foot { padding: 6px 10px 4px; font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--border); margin-top: 4px; }
+
+/* ---- 手动添加设备 ---- */
+.manual-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.manual-list:empty { display: none; }
+.manual-list li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: var(--surface-2); font-size: 13px; }
+.manual-list li .muted { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ok-text { color: var(--ok); }

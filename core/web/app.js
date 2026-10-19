@@ -539,6 +539,35 @@ function uploadFile(file) {
   xhr.send(file);
 }
 
+/* ---- 发送文件夹：先在本机打包成 zip，再按普通文件上传 ---- */
+
+async function sendFolderEntry(entry) {
+  const out = [];
+  try { await Zip.readEntry(entry, '', out); }
+  catch { toast('读取文件夹失败'); return; }
+  sendFolder(entry.name, out);
+}
+
+async function sendFolder(name, entries) {
+  const row = document.createElement('div');
+  row.className = 'up';
+  const count = entries.filter(e => e.file).length;
+  row.innerHTML = `<div class="up-row"><span class="up-name">${esc(name)}/ · ${count} 个文件</span><span class="muted">正在打包…</span></div><div class="bar"><i></i></div>`;
+  $('#uploads').appendChild(row);
+  const pct = $('.muted', row), bar = $('i', row);
+  try {
+    const blob = await Zip.build(entries, (done, total) => {
+      const p = total ? Math.round(done / total * 100) : 100;
+      pct.textContent = `正在打包 ${p}%`; bar.style.width = p + '%';
+    });
+    row.remove();
+    uploadFile(new File([blob], name + '.zip', { type: 'application/zip' }));
+  } catch (e) {
+    row.remove();
+    toast(e.message || '打包失败');
+  }
+}
+
 function autosize() {
   const ta = $('#input');
   ta.style.height = 'auto';
@@ -1246,6 +1275,16 @@ function bind() {
 
   $('#fileInput').onchange = e => { [...e.target.files].forEach(uploadFile); e.target.value = ''; };
   $('#filePicker').onclick = () => $('#fileInput').click();
+  // 选择文件夹：手机浏览器大多不支持，只在电脑上显示
+  $('#folderPicker').hidden = isTouch || !('webkitdirectory' in document.createElement('input'));
+  $('#folderPicker').onclick = () => $('#folderInput').click();
+  $('#folderInput').onchange = e => {
+    const files = [...e.target.files];
+    e.target.value = '';
+    if (!files.length) return;
+    const root = (files[0].webkitRelativePath || '').split('/')[0] || '文件夹';
+    sendFolder(root, files.map(f => ({ path: f.webkitRelativePath || f.name, file: f })));
+  };
 
   // 粘贴截图/文件直接上传；在输入框之外按 ⌘V 直接发送文字
   document.addEventListener('paste', e => {
@@ -1263,7 +1302,15 @@ function bind() {
   addEventListener('dragover', e => e.preventDefault());
   addEventListener('drop', e => {
     e.preventDefault(); dragDepth = 0; $('#drop').hidden = true;
-    [...(e.dataTransfer?.files || [])].forEach(uploadFile);
+    // 目录要在 drop 事件里同步取出 entry，之后就拿不到了
+    const items = [...(e.dataTransfer?.items || [])].filter(i => i.kind === 'file');
+    const entries = items.map(i => i.webkitGetAsEntry?.());
+    if (!entries.some(en => en?.isDirectory)) { [...(e.dataTransfer?.files || [])].forEach(uploadFile); return; }
+    items.forEach((it, k) => {
+      const en = entries[k];
+      if (en?.isDirectory) sendFolderEntry(en);
+      else { const f = it.getAsFile(); if (f) uploadFile(f); }
+    });
   });
 
   $('#list').addEventListener('click', e => {

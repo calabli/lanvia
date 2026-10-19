@@ -114,6 +114,8 @@
         <button id="pasteBtn" class="btn ghost" hidden><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="6" y="5" width="12" height="16" rx="3"/><path d="M9 5V3h6v2M9 10h6M9 14h4"/></svg>粘贴</button>
         <button id="filePicker" class="btn ghost file-picker" type="button"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 12 5-5a3 3 0 0 1 4 4l-7 7a5 5 0 0 1-7-7l8-8"/></svg>添加文件</button>
         <input id="fileInput" type="file" multiple hidden>
+        <button id="folderPicker" class="btn ghost file-picker" type="button" hidden><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>添加文件夹</button>
+        <input id="folderInput" type="file" webkitdirectory hidden>
         <span class="hint" id="sendHint"></span>
         <button id="sendBtn" class="btn primary" disabled>发送 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
       </div>
@@ -283,6 +285,7 @@
 <div id="drop" class="drop" hidden><div>松开即可分享文件</div></div>
 
 <script src="highlight.js"></script>
+<script src="zip.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

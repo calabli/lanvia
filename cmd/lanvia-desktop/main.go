@@ -2,6 +2,7 @@
 //
 //   - 点托盘图标（或按 ⌘⇧Y / Ctrl+Shift+Y）弹出快捷面板：输入即搜索，↑↓ 选择，回车写入剪贴板
 //   - 右键托盘图标：最近内容一键复制、同步开关、开机启动、退出
+//   - 预览：面板里按空格或 ⌘Y，长内容在独立的悬浮窗口里查看和复制
 //   - 主窗口：配对二维码、设置、完整历史
 //
 // 节点（core）运行在同一个进程里，窗口加载的是它在 localhost 上提供的页面。
@@ -38,12 +39,13 @@ func hotkeyLabel() string {
 }
 
 type desktop struct {
-	node  *core.App
-	app   *application.App
-	tray  *application.SystemTray
-	menu  *application.Menu
-	panel *application.WebviewWindow
-	main  *application.WebviewWindow
+	node    *core.App
+	app     *application.App
+	tray    *application.SystemTray
+	menu    *application.Menu
+	panel   *application.WebviewWindow
+	main    *application.WebviewWindow
+	preview *application.WebviewWindow
 
 	mu      sync.Mutex
 	pending bool
@@ -108,13 +110,34 @@ func (d *desktop) build() {
 		URL:       base + "/?desktop=main",
 		Hidden:    true,
 	})
+	// 预览窗口像访达的“快速查看”：可拖动、可调整大小，默认悬浮在最上层
+	d.preview = d.app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name:         "preview",
+		Title:        "Lanvia 预览",
+		Width:        760,
+		Height:       620,
+		MinWidth:     360,
+		MinHeight:    240,
+		URL:          base + "/?desktop=preview",
+		Hidden:       true,
+		AlwaysOnTop:  true,
+		HideOnEscape: true,
+	})
 	// 关闭窗口只是隐藏，Lanvia 继续在后台同步
-	for _, w := range []*application.WebviewWindow{d.panel, d.main} {
+	for _, w := range []*application.WebviewWindow{d.panel, d.main, d.preview} {
 		w := w
 		w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 			w.Hide()
 			e.Cancel()
 		})
+	}
+
+	// macOS 上 WebView 的 ⌘C / ⌘V / ⌘A 依赖“编辑”菜单；菜单栏应用看不到这个菜单，但快捷键需要它
+	if runtime.GOOS == "darwin" {
+		appMenu := d.app.NewMenu()
+		appMenu.AddRole(application.AppMenu)
+		appMenu.AddRole(application.EditMenu)
+		d.app.Menu.SetApplicationMenu(appMenu)
 	}
 
 	d.tray = d.app.SystemTray.New()
@@ -135,14 +158,27 @@ func (d *desktop) build() {
 		log.Printf("无法注册快捷键 %s: %v", hotkey, err)
 	}
 
-	// 网页里的“收起”“打开主窗口”
-	d.node.SetDesktopHook(func(action string) bool {
+	// 网页里的“收起”“打开主窗口”“预览”
+	d.node.SetDesktopHook(func(action, id string) bool {
 		switch action {
 		case "hide":
 			d.panel.Hide()
 		case "main":
 			d.panel.Hide()
 			d.showMain()
+		case "preview":
+			if id == "" {
+				return false
+			}
+			d.panel.Hide()
+			d.preview.SetURL(base + "/?desktop=preview&id=" + id)
+			d.preview.SetAlwaysOnTop(true)
+			d.preview.Show()
+			d.preview.Focus()
+		case "hide-preview":
+			d.preview.Hide()
+		case "pin", "unpin":
+			d.preview.SetAlwaysOnTop(action == "pin")
 		default:
 			return false
 		}

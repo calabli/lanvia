@@ -21,7 +21,7 @@ type App struct {
 	clip  *ClipWatcher
 
 	onChange    func()
-	desktopHook func(action string) bool
+	desktopHook func(action, id string) bool
 	saved       map[string]string // 已保存到“下载”的文件：id -> 路径
 }
 

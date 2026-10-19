@@ -138,8 +138,9 @@ func (a *App) OnChange(fn func()) {
 	a.mu.Unlock()
 }
 
-// SetDesktopHook 让桌面客户端处理网页发来的窗口操作（如 hide、main）。
-func (a *App) SetDesktopHook(fn func(action string) bool) {
+// SetDesktopHook 让桌面客户端处理网页发来的窗口操作（如 hide、main、preview）。
+// id 是操作针对的内容（预览时使用），可能为空。
+func (a *App) SetDesktopHook(fn func(action, id string) bool) {
 	a.mu.Lock()
 	a.desktopHook = fn
 	a.mu.Unlock()

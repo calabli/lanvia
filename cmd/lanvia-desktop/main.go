@@ -196,9 +196,9 @@ func (d *desktop) showMain() {
 
 // sendClipboard 手动发送当前剪贴板。没有窗口可以提示，所以在菜单栏图标旁边短暂显示结果。
 func (d *desktop) sendClipboard() {
-	msg := "已发送"
+	msg := d.tr("已发送")
 	if _, err := d.node.SendClipboard(); err != nil {
-		msg = err.Error()
+		msg = d.tr(err.Error())
 		log.Printf("发送剪贴板: %v", err)
 	}
 	d.flash(msg)
@@ -243,7 +243,7 @@ func (d *desktop) fillMenu() {
 
 	recent := d.node.Recent(6)
 	if len(recent) == 0 {
-		m.Add("还没有内容").SetEnabled(false)
+		m.Add(d.tr("还没有内容")).SetEnabled(false)
 	}
 	for _, it := range recent {
 		it := it
@@ -263,7 +263,7 @@ func (d *desktop) fillMenu() {
 	}
 	// 收藏的常用片段：点一下就复制
 	if favs := d.node.Favorites(); len(favs) > 0 {
-		sub := m.AddSubmenu("收藏")
+		sub := m.AddSubmenu(d.tr("收藏"))
 		for _, it := range favs {
 			it := it
 			label := it.Title
@@ -276,7 +276,7 @@ func (d *desktop) fillMenu() {
 			sub.Add(menuLabel(label)).OnClick(func(*application.Context) {
 				if it.Kind == "text" {
 					d.node.CopyToClipboard(it.ID)
-					d.flash("已复制")
+					d.flash(d.tr("已复制"))
 				} else if p, err := d.node.SaveFile(it.ID); err == nil {
 					core.RevealFile(p)
 				}
@@ -286,15 +286,15 @@ func (d *desktop) fillMenu() {
 	m.AddSeparator()
 
 	s := d.node.Settings()
-	m.AddRadio("主动模式 · 复制即发送", s.Watch).OnClick(func(*application.Context) { d.node.SetWatch(true) })
-	m.AddRadio("被动模式 · 手动发送", !s.Watch).OnClick(func(*application.Context) { d.node.SetWatch(false) })
-	m.Add("发送当前剪贴板").OnClick(func(*application.Context) { d.sendClipboard() })
+	m.AddRadio(d.tr("主动模式 · 复制即发送"), s.Watch).OnClick(func(*application.Context) { d.node.SetWatch(true) })
+	m.AddRadio(d.tr("被动模式 · 手动发送"), !s.Watch).OnClick(func(*application.Context) { d.node.SetWatch(false) })
+	m.Add(d.tr("发送当前剪贴板")).OnClick(func(*application.Context) { d.sendClipboard() })
 	m.AddSeparator()
-	m.AddCheckbox("自动写入本机剪贴板", s.AutoApply).OnClick(func(c *application.Context) {
+	m.AddCheckbox(d.tr("自动写入本机剪贴板"), s.AutoApply).OnClick(func(c *application.Context) {
 		d.node.SetAutoApply(c.IsChecked())
 	})
 	auto, _ := d.app.Autostart.IsEnabled()
-	m.AddCheckbox("开机时启动", auto).OnClick(func(c *application.Context) {
+	m.AddCheckbox(d.tr("开机时启动"), auto).OnClick(func(c *application.Context) {
 		var err error
 		if c.IsChecked() {
 			err = d.app.Autostart.Enable()
@@ -307,11 +307,11 @@ func (d *desktop) fillMenu() {
 	})
 	m.AddSeparator()
 
-	m.Add("打开快捷面板").OnClick(func(*application.Context) { d.togglePanel() })
-	m.Add("打开主窗口…").OnClick(func(*application.Context) { d.showMain() })
-	m.Add("配对码  " + d.node.Code()).SetEnabled(false)
+	m.Add(d.tr("打开快捷面板")).OnClick(func(*application.Context) { d.togglePanel() })
+	m.Add(d.tr("打开主窗口…")).OnClick(func(*application.Context) { d.showMain() })
+	m.Add(d.tr("配对码  ") + d.node.Code()).SetEnabled(false)
 	m.AddSeparator()
-	m.Add("退出 Lanvia").OnClick(func(*application.Context) { d.app.Quit() })
+	m.Add(d.tr("退出 Lanvia")).OnClick(func(*application.Context) { d.app.Quit() })
 }
 
 // menuLabel 取第一行并截断，菜单项太长会被系统撑得很宽。

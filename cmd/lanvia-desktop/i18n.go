@@ -1,0 +1,51 @@
+package main
+
+import "strings"
+
+// 托盘菜单的中英文。界面语言在设置里选，留空时跟随系统。
+
+var trayEN = map[string]string{
+	"还没有内容":        "Nothing yet",
+	"收藏":           "Favorites",
+	"已复制":          "Copied",
+	"已发送":          "Sent",
+	"主动模式 · 复制即发送": "Active mode · copy to send",
+	"被动模式 · 手动发送":  "Passive mode · send manually",
+	"发送当前剪贴板":      "Send current clipboard",
+	"自动写入本机剪贴板":    "Write to this clipboard automatically",
+	"开机时启动":        "Launch at login",
+	"打开快捷面板":       "Open quick panel",
+	"打开主窗口…":       "Open main window…",
+	"配对码  ":        "Pairing code  ",
+	"退出 Lanvia":    "Quit Lanvia",
+	"Lanvia 预览":    "Lanvia Preview",
+	"（空白）":         "(blank)",
+	"Lanvia 无法启动":  "Lanvia can't start",
+	"这台电脑不支持读取剪贴板": "This computer can't read the clipboard",
+	"剪贴板里是文件或敏感内容，不会发送": "File or sensitive content, not sent",
+	"读取剪贴板失败":           "Couldn't read the clipboard",
+	"剪贴板里没有文字":          "No text on the clipboard",
+	"内容太长":              "Too long",
+}
+
+func (d *desktop) lang() string {
+	if l := d.node.Settings().Lang; l != "" {
+		return l
+	}
+	return sysLang()
+}
+
+// tr 翻译托盘里的文字；中文是源文本。
+func (d *desktop) tr(s string) string {
+	if d.lang() != "en" {
+		return s
+	}
+	if v, ok := trayEN[s]; ok {
+		return v
+	}
+	return s
+}
+
+func isZh(locale string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(locale)), "zh")
+}

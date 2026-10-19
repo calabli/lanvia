@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -104,14 +105,18 @@ func (a *App) clear(ts int64, fromPeer string) {
 }
 
 // merge 合并对方的历史：只补齐缺失的记录，不写剪贴板。
-func (a *App) merge(s storeFile) {
+// 合并得到的新内容会再转发给其他设备（除了 from）：手动添加设备时网络可能是一条链（C–A–B），
+// 只靠各自连上时拉一次历史，C 的内容到不了 B。转发用同样的“历史”格式，接收方同样走 merge，
+// 只转发自己第一次见到的部分，所以不会无限循环。
+func (a *App) merge(s storeFile, from string) {
 	if s.ClearedAt > 0 {
 		a.clear(s.ClearedAt, "")
 	}
 	for id := range s.Tomb {
 		a.remove(id, "")
 	}
-	n := 0
+	var fresh []*Item            // 本机新增或更新过的内容（当前状态）
+	touched := map[string]bool{} // 需要连同版本一起转发的内容
 	for i := len(s.Items) - 1; i >= 0; i-- {
 		it := s.Items[i]
 		if !validItem(it) {
@@ -119,12 +124,20 @@ func (a *App) merge(s storeFile) {
 		}
 		if a.store.Add(it) {
 			a.hub.Broadcast("item", it)
-			n++
-		} else if it.MetaTS > 0 {
-			// 已有的内容：补上对方更新过的保留设置
+			touched[it.ID] = true
+			continue
+		}
+		// 已有的内容：补上对方更新过的保留设置和收藏
+		if it.MetaTS > 0 {
 			if u := a.store.applyMeta(it.ID, it.ExpiresAt, it.Keep, it.MetaTS); u != nil {
 				a.hub.Broadcast("update", u)
-				n++
+				touched[it.ID] = true
+			}
+		}
+		if it.FavTS > 0 {
+			if u := a.store.applyFav(it.ID, it.Fav, it.Title, it.FavTS); u != nil {
+				a.hub.Broadcast("update", u)
+				touched[it.ID] = true
 			}
 		}
 	}
@@ -132,14 +145,50 @@ func (a *App) merge(s storeFile) {
 	for id, vs := range s.Versions {
 		if it, added, _ := a.store.applyVersions(id, vs, false); added {
 			a.hub.Broadcast("update", it)
-			n++
+			touched[id] = true
+		}
+	}
+	for id := range touched {
+		if it := a.store.Get(id); it != nil {
+			fresh = append(fresh, it)
 		}
 	}
 	go a.fetchMissing() // 新设备上线：顺便补下之前没取到的文件
-	if n > 0 {
-		a.changed()
-		log.Printf("从对端同步了 %d 条历史", n)
+	if len(fresh) == 0 {
+		return
 	}
+	a.changed()
+	log.Printf("从对端同步了 %d 条历史", len(fresh))
+	a.relaySync(fresh, from)
+}
+
+// relaySync 把一批内容（连同各自的全部版本）转发给其他设备，按大小分批，避免单个请求过大。
+func (a *App) relaySync(items []*Item, from string) {
+	const batchLimit = 1 << 20
+	batch, size := storeFile{Versions: map[string][]*TextVersion{}}, 0
+	flush := func() {
+		if len(batch.Items) > 0 {
+			b := batch
+			a.peers.relay(Envelope{Op: "sync", Snap: &b}, from)
+		}
+		batch, size = storeFile{Versions: map[string][]*TextVersion{}}, 0
+	}
+	for _, it := range items {
+		vs := a.store.Versions(it.ID)
+		n := len(it.Text) + 300
+		for _, v := range vs {
+			n += len(v.Text) + 100
+		}
+		if size > 0 && size+n > batchLimit {
+			flush()
+		}
+		batch.Items = append(batch.Items, it)
+		if it.Rev > 0 {
+			batch.Versions[it.ID] = vs
+		}
+		size += n
+	}
+	flush()
 }
 
 func validItem(it *Item) bool {
@@ -233,6 +282,36 @@ func (a *App) SetItemExpiry(id string, ttl time.Duration, keep bool) (*Item, err
 	}
 	a.afterMeta(it, "")
 	return it, nil
+}
+
+// SetFavorite 收藏 / 取消收藏一条内容并命名，同步到所有设备。
+func (a *App) SetFavorite(id string, fav bool, title string) (*Item, error) {
+	if a.store.Get(id) == nil {
+		return nil, errors.New("内容不存在")
+	}
+	it := a.store.applyFav(id, fav, trimRunes(strings.TrimSpace(title), 60), nowMs())
+	if it == nil {
+		return nil, errors.New("设置失败，请重试")
+	}
+	a.afterFav(it, "")
+	return it, nil
+}
+
+func (a *App) afterFav(it *Item, fromPeer string) {
+	a.hub.Broadcast("update", it)
+	a.peers.relay(Envelope{Op: "fav", ID: it.ID, Item: &Item{Fav: it.Fav, Title: it.Title, FavTS: it.FavTS}}, fromPeer)
+	a.changed()
+}
+
+// Favorites 返回所有收藏，最新的在前。
+func (a *App) Favorites() []Item {
+	var out []Item
+	for _, it := range a.store.List() {
+		if it.Fav {
+			out = append(out, *it)
+		}
+	}
+	return out
 }
 
 func (a *App) afterMeta(it *Item, fromPeer string) {

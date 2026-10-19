@@ -32,12 +32,20 @@ type Item struct {
 	ExpiresAt int64 `json:"expiresAt,omitempty"` // 到期时间（毫秒）
 	Keep      bool  `json:"keep,omitempty"`      // 永久保留：不受全局设置和数量上限影响
 	MetaTS    int64 `json:"metaTs,omitempty"`    // 最近一次修改保留设置的时间
+
+	// 收藏（常用片段），同步到所有设备，以 FavTS 较新的为准。收藏的内容不会过期，也不受数量上限影响。
+	Fav   bool   `json:"fav,omitempty"`
+	Title string `json:"title,omitempty"` // 片段名称，例如“家里 WiFi”，可用于搜索
+	FavTS int64  `json:"favTs,omitempty"`
 }
+
+// pinned 表示这条内容不应被自动清理：永久保留或已收藏。
+func (it *Item) pinned() bool { return it.Keep || it.Fav }
 
 // expired 判断一条内容是否已过期：单条设置优先，否则按本机的全局保留时长。
 func (it *Item) expired(now, keepMs int64) bool {
 	switch {
-	case it.Keep:
+	case it.pinned():
 		return false
 	case it.ExpiresAt > 0:
 		return it.ExpiresAt <= now
@@ -129,7 +137,7 @@ func (s *Store) Add(it *Item) bool {
 	s.items[i] = it
 	// 超过上限时从最旧的开始删，跳过“永久保留”的
 	for i := len(s.items) - 1; len(s.items) > maxItems && i >= 0; i-- {
-		if old := s.items[i]; !old.Keep {
+		if old := s.items[i]; !old.pinned() {
 			s.items = append(s.items[:i], s.items[i+1:]...)
 			os.Remove(s.blobPath(old.ID))
 			delete(s.versions, old.ID)
@@ -224,6 +232,30 @@ func newerMeta(ts, expiresAt int64, keep bool, x *Item) bool {
 		return keep
 	}
 	return !keep && expiresAt > x.ExpiresAt
+}
+
+// applyFav 更新收藏状态和名称，只接受更新的修改；时间相同时收藏优先、名称较大的优先，各设备结果一致。
+func (s *Store) applyFav(id string, fav bool, title string, ts int64) *Item {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, x := range s.items {
+		if x.ID != id {
+			continue
+		}
+		newer := ts > x.FavTS || (ts == x.FavTS && (fav && !x.Fav || fav == x.Fav && title > x.Title))
+		if !newer {
+			return nil
+		}
+		n := *x
+		n.Fav, n.Title, n.FavTS = fav, title, ts
+		if !fav {
+			n.Title = ""
+		}
+		s.items[i] = &n
+		s.markDirty()
+		return &n
+	}
+	return nil
 }
 
 // applyMeta 更新一条内容的保留设置，只接受比现有设置更新的修改。

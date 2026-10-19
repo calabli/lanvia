@@ -349,3 +349,18 @@ body.panel .item.sel { border-color: var(--accent); background: color-mix(in srg
 #stRep { background: color-mix(in srgb, var(--accent) 40%, transparent); }
 .storage-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--muted); }
 .storage-row b { color: var(--text); font-weight: 600; }
+
+/* ---- 收藏 ---- */
+.fav-title { display: flex; align-items: center; gap: 6px; margin: 2px 0 6px; font-weight: 650; font-size: 13.5px; color: var(--text); }
+.fav-title svg { width: 14px; height: 14px; color: #f2b01e; }
+.icon-btn.on svg { color: #f2b01e; }
+.fav-title mark, .text mark { background: color-mix(in srgb, #f2b01e 35%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+
+/* ---- 页内确认 / 输入框 ---- */
+dialog.ask { width: min(420px, calc(100vw - 32px)); padding: 20px; }
+dialog.ask p { font-size: 14px; line-height: 1.6; margin: 0 0 14px; white-space: pre-wrap; }
+.ask-input { width: 100%; height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); outline: 0; margin-bottom: 14px; }
+.ask-input:focus { border-color: var(--accent); }
+.ask-bar { display: flex; justify-content: flex-end; gap: 8px; }
+.btn.primary.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+@media (max-width: 600px) { dialog.ask { margin: auto; width: calc(100vw - 32px); border-radius: 18px; } }

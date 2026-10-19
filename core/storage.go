@@ -97,8 +97,8 @@ func (a *App) makeRoom(need int64) bool {
 	}
 	// 先删普通的，再删“永久保留”的；同类里先删旧的
 	sort.Slice(reps, func(i, j int) bool {
-		if reps[i].it.Keep != reps[j].it.Keep {
-			return !reps[i].it.Keep
+		if reps[i].it.pinned() != reps[j].it.pinned() {
+			return !reps[i].it.pinned()
 		}
 		return reps[i].it.TS < reps[j].it.TS
 	})

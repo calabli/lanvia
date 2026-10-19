@@ -374,15 +374,16 @@ func (p *Peers) syncHistory(id, addr string) {
 		log.Printf("同步历史失败: %v", err)
 		return
 	}
-	p.a.merge(snap)
+	p.a.merge(snap, id)
 }
 
 type Envelope struct {
-	Op      string       `json:"op"` // add | delete | clear | edit
+	Op      string       `json:"op"` // add | delete | clear | edit | meta | fav | sync
 	Item    *Item        `json:"item,omitempty"`
 	ID      string       `json:"id,omitempty"`
 	TS      int64        `json:"ts,omitempty"`
 	Version *TextVersion `json:"version,omitempty"` // edit：新版本
+	Snap    *storeFile   `json:"snap,omitempty"`    // sync：从其他设备同步来、需要继续转发的内容
 }
 
 // relay 把变更转发给除 except 以外的所有节点。

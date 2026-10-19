@@ -261,6 +261,28 @@ func (d *desktop) fillMenu() {
 			})
 		}
 	}
+	// 收藏的常用片段：点一下就复制
+	if favs := d.node.Favorites(); len(favs) > 0 {
+		sub := m.AddSubmenu("收藏")
+		for _, it := range favs {
+			it := it
+			label := it.Title
+			if label == "" {
+				label = it.Text
+				if it.Kind == "file" {
+					label = it.Name
+				}
+			}
+			sub.Add(menuLabel(label)).OnClick(func(*application.Context) {
+				if it.Kind == "text" {
+					d.node.CopyToClipboard(it.ID)
+					d.flash("已复制")
+				} else if p, err := d.node.SaveFile(it.ID); err == nil {
+					core.RevealFile(p)
+				}
+			})
+		}
+	}
 	m.AddSeparator()
 
 	s := d.node.Settings()

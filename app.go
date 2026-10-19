@@ -1,0 +1,184 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"log"
+	"runtime"
+	"sync"
+	"time"
+	"unicode/utf8"
+)
+
+type App struct {
+	dir   string
+	mu    sync.RWMutex
+	cfg   Config
+	cr    creds
+	store *Store
+	hub   *Hub
+	peers *Peers
+	clip  *ClipWatcher
+}
+
+func newApp(dir string, cfg *Config, manualPeers []string) *App {
+	a := &App{dir: dir, cfg: *cfg, cr: deriveCreds(cfg.Code), hub: newHub()}
+	a.store = openStore(dir)
+	a.peers = newPeers(a, manualPeers)
+	a.clip = newClipWatcher(a)
+	return a
+}
+
+func (a *App) cfgSnapshot() Config {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.cfg
+}
+
+func (a *App) creds() creds {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.cr
+}
+
+func (a *App) updateCfg(fn func(*Config)) error {
+	a.mu.Lock()
+	fn(&a.cfg)
+	a.cr = deriveCreds(a.cfg.Code)
+	c := a.cfg
+	a.mu.Unlock()
+	return c.save(a.dir)
+}
+
+// ---- 内容变更：本地产生、远端转发、历史合并都汇集到这里 ----
+
+func (a *App) newText(text, from string, apply bool) *Item {
+	it := &Item{ID: randHex(8), Kind: "text", Text: text, From: from, Origin: a.cfgSnapshot().ID, TS: nowMs()}
+	a.ingest(it, "", apply)
+	return it
+}
+
+// ingest 加入一条新内容。apply 表示内容来自别的设备，应写入本机剪贴板。
+func (a *App) ingest(it *Item, fromPeer string, apply bool) bool {
+	if !a.store.Add(it) {
+		return false
+	}
+	a.hub.Broadcast("item", it)
+	if apply && it.Kind == "text" && a.cfgSnapshot().AutoApply {
+		if err := a.clip.Apply(it.Text); err != nil && a.clip.ok {
+			log.Printf("写入剪贴板失败: %v", err)
+		}
+	}
+	a.peers.relay(Envelope{Op: "add", Item: it}, fromPeer)
+	log.Printf("%s  %s", it.From, preview(it))
+	return true
+}
+
+func (a *App) remove(id, fromPeer string) {
+	if a.store.Delete(id) {
+		a.hub.Broadcast("delete", map[string]string{"id": id})
+		a.peers.relay(Envelope{Op: "delete", ID: id}, fromPeer)
+	}
+}
+
+func (a *App) clear(ts int64, fromPeer string) {
+	if a.store.Clear(ts) {
+		a.hub.Broadcast("clear", map[string]int64{"ts": ts})
+		a.peers.relay(Envelope{Op: "clear", TS: ts}, fromPeer)
+	}
+}
+
+// merge 合并对方的历史：只补齐缺失的记录，不写剪贴板。
+func (a *App) merge(s storeFile) {
+	if s.ClearedAt > 0 {
+		a.clear(s.ClearedAt, "")
+	}
+	for id := range s.Tomb {
+		a.remove(id, "")
+	}
+	n := 0
+	for i := len(s.Items) - 1; i >= 0; i-- {
+		if it := s.Items[i]; validItem(it) && a.store.Add(it) {
+			a.hub.Broadcast("item", it)
+			n++
+		}
+	}
+	if n > 0 {
+		log.Printf("从对端同步了 %d 条历史", n)
+	}
+}
+
+func validItem(it *Item) bool {
+	if it == nil || !idRe.MatchString(it.ID) || it.Origin == "" {
+		return false
+	}
+	switch it.Kind {
+	case "text":
+		return len(it.Text) <= maxTextLen && utf8.ValidString(it.Text)
+	case "file":
+		return it.Name != ""
+	}
+	return false
+}
+
+func preview(it *Item) string {
+	if it.Kind == "file" {
+		return "[文件] " + it.Name
+	}
+	r := []rune(it.Text)
+	if len(r) > 40 {
+		return string(r[:40]) + "…"
+	}
+	return string(r)
+}
+
+// ---- 在线设备 ----
+
+type Device struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	Node bool   `json:"node"` // 运行 Lanvia 的电脑
+	Host bool   `json:"host"` // 当前浏览器连接的那台
+	Via  string `json:"via,omitempty"`
+}
+
+func osKind(goos string) string {
+	switch goos {
+	case "darwin":
+		return "mac"
+	case "windows", "linux":
+		return goos
+	}
+	return "web"
+}
+
+func (a *App) devices() []Device {
+	c := a.cfgSnapshot()
+	out := []Device{{ID: c.ID, Name: c.Name, Kind: osKind(runtime.GOOS), Node: true, Host: true}}
+	addClients := func(cs []ClientInfo, via string) {
+		for _, x := range cs {
+			if !x.Local { // 电脑上自己的仪表盘不重复显示
+				out = append(out, Device{ID: x.ID, Name: x.Name, Kind: x.Kind, Via: via})
+			}
+		}
+	}
+	addClients(a.hub.List(), c.Name)
+	for _, p := range a.peers.List() {
+		out = append(out, Device{ID: p.ID, Name: p.Name, Kind: osKind(p.OS), Node: true})
+		addClients(p.Clients, p.Name)
+	}
+	return out
+}
+
+func (a *App) presenceLoop() {
+	var last []byte
+	for {
+		time.Sleep(time.Second)
+		b, _ := json.Marshal(a.devices())
+		if !bytes.Equal(b, last) {
+			last = b
+			a.hub.Broadcast("devices", json.RawMessage(b))
+		}
+	}
+}

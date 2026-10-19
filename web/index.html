@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f6f6f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121314" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Lanvia">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>Lanvia</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- 配对 -->
+<section id="pair" class="pair" hidden>
+  <div class="pair-inner">
+    <div class="logo-lg" aria-hidden="true"></div>
+    <h1>加入 Lanvia</h1>
+    <p class="muted">在电脑上运行 Lanvia，用相机扫描终端或仪表盘里的二维码；<br>或者在下方输入电脑上显示的配对码。</p>
+    <form id="pairForm" autocomplete="off">
+      <input id="pairInput" inputmode="text" autocapitalize="characters" spellcheck="false" placeholder="XXXXX-XXXXX" maxlength="11" aria-label="配对码">
+      <button class="btn primary" type="submit">加入</button>
+    </form>
+    <p id="pairError" class="error" role="alert"></p>
+  </div>
+</section>
+
+<!-- 主界面 -->
+<div id="app" hidden>
+  <header class="top">
+    <div class="brand"><span class="logo" aria-hidden="true"></span>Lanvia</div>
+    <div class="top-actions">
+      <button id="devicesBtn" class="chip" aria-label="在线设备">
+        <span id="connDot" class="dot"></span><span id="devCount">连接中</span>
+      </button>
+      <button id="settingsBtn" class="icon-btn" aria-label="设置"></button>
+    </div>
+  </header>
+
+  <main>
+    <section id="pairCard" class="card pair-card" hidden>
+      <div class="pair-card-head">
+        <div>
+          <h2>连接手机或平板</h2>
+          <p class="muted">用相机扫码，在浏览器中打开即可，无需安装。</p>
+        </div>
+        <button id="pairCollapse" class="icon-btn" aria-label="收起"></button>
+      </div>
+      <div class="pair-card-body">
+        <div id="qr" class="qr" aria-label="配对二维码"></div>
+        <div class="pair-meta">
+          <div class="label">配对码</div>
+          <div id="pairCode" class="code"></div>
+          <div class="label">地址</div>
+          <select id="urlSelect" aria-label="局域网地址"></select>
+          <p class="muted small">配对码相当于这个空间的密码。所有使用同一配对码的设备会自动互相同步。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="composer card" id="composer">
+      <textarea id="input" rows="3" placeholder="输入或粘贴要分享的内容…" aria-label="要分享的内容"></textarea>
+      <div class="composer-bar">
+        <button id="pasteBtn" class="btn ghost" hidden>粘贴</button>
+        <label class="btn ghost" for="fileInput">文件</label>
+        <input id="fileInput" type="file" multiple hidden>
+        <span class="hint" id="sendHint"></span>
+        <button id="sendBtn" class="btn primary" disabled>发送</button>
+      </div>
+      <div id="uploads"></div>
+    </section>
+
+    <div class="list-head">
+      <h2>最近</h2>
+      <input id="search" type="search" placeholder="搜索" aria-label="搜索历史">
+    </div>
+    <ul id="list" class="list"></ul>
+    <div id="empty" class="empty" hidden>
+      <div class="empty-art" aria-hidden="true"></div>
+      <p>还没有内容</p>
+      <p class="muted small">在任何一台已连接的设备上复制文字，它就会出现在这里。</p>
+    </div>
+  </main>
+</div>
+
+<!-- 在线设备 -->
+<dialog id="devicesDlg" class="sheet">
+  <div class="sheet-head"><h2>在线设备</h2><button class="icon-btn close" data-close aria-label="关闭"></button></div>
+  <ul id="deviceList" class="device-list"></ul>
+  <div id="remoteOnly" class="sheet-section">
+    <label class="field"><span>这台设备的名称</span><input id="myName" maxlength="40"></label>
+    <button id="forgetBtn" class="btn danger-ghost">退出配对</button>
+  </div>
+</dialog>
+
+<!-- 设置（仅本机仪表盘） -->
+<dialog id="settingsDlg" class="sheet">
+  <div class="sheet-head"><h2>设置</h2><button class="icon-btn close" data-close aria-label="关闭"></button></div>
+  <div class="sheet-section">
+    <label class="field"><span>本机名称</span><input id="nodeName" maxlength="40"></label>
+    <label class="switch"><input type="checkbox" id="optWatch"><span><b>分享本机复制的内容</b><small>在这台电脑上复制文字后自动发送到其他设备</small></span></label>
+    <label class="switch"><input type="checkbox" id="optApply"><span><b>自动写入本机剪贴板</b><small>其他设备发来的文字直接可以 ⌘V / Ctrl+V 粘贴</small></span></label>
+    <p id="clipWarn" class="warn small" hidden>未找到系统剪贴板工具，只能通过网页手动复制。</p>
+  </div>
+  <div class="sheet-section">
+    <h3>加入另一台电脑</h3>
+    <div id="nearby"></div>
+    <form id="joinForm" class="row">
+      <input id="joinInput" placeholder="对方的配对码" autocapitalize="characters" spellcheck="false" maxlength="11">
+      <button class="btn">加入</button>
+    </form>
+    <p class="muted small">两台电脑使用同一个配对码后会自动同步。加入后，本机原来的配对码失效。</p>
+  </div>
+  <div class="sheet-section">
+    <h3>自动化</h3>
+    <p class="muted small">iOS 快捷指令、安卓 HTTP Shortcuts、脚本可用这个令牌调用接口：</p>
+    <code id="token" class="mono block"></code>
+    <pre id="curl" class="mono block small"></pre>
+  </div>
+  <div class="sheet-section">
+    <h3>危险操作</h3>
+    <div class="row wrap">
+      <button id="resetCode" class="btn danger-ghost">重新生成配对码</button>
+      <button id="clearAll" class="btn danger-ghost">清空所有设备的历史</button>
+    </div>
+    <p class="muted small" id="dataDir"></p>
+  </div>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="drop" class="drop" hidden><div>松开即可分享文件</div></div>
+
+<script src="app.js"></script>
+</body>
+</html>

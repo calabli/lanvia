@@ -1,0 +1,10 @@
+{
+  "name": "Lanvia",
+  "short_name": "Lanvia",
+  "description": "局域网内多设备即时共享剪贴板与文件",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f6f3",
+  "theme_color": "#0f766e",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

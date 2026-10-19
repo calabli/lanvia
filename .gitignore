@@ -1,0 +1,12 @@
+# 构建产物
+/dist/
+/lanvia
+*.exe
+
+# 本地运行数据
+*.part
+.DS_Store
+
+# IDE
+.idea/
+.vscode/

@@ -8,7 +8,7 @@ Instantly share clipboard text and files between devices on the same local netwo
 - **Phones / tablets**: nothing to install. Scan a QR code with the camera and it opens in the browser (you can "Add to Home Screen").
 - **Several computers**: give them the same pairing code and they find each other via UDP broadcast and stay in sync. No server, no internet required.
 
-> The app's interface is currently in Chinese. Menu and setting names below are given in English with the Chinese label in brackets.
+> The interface is available in English and Chinese and follows your system language by default (change it under Settings → Language). Some names below also give the Chinese label in brackets.
 
 ## Download and run
 
@@ -22,9 +22,14 @@ Instantly share clipboard text and files between devices on the same local netwo
 | **⌘E** in the panel, or Edit (编辑) in the preview | Edit the content; ⌘S saves it as a new version and syncs it to every device |
 | Clock button in the preview | Version history: who changed what and when, line-by-line diff, copy or restore any version |
 | Timer button on an item | Retention for this item: delete after 1 hour / 1 day / 7 days / 30 days, or keep forever — synced to every device |
-| Tray menu → Open main window (打开主窗口) | Pairing QR code, settings (send mode, history retention, auto-download files, storage limit, add device manually) and the full history |
+| Star on an item | Save it as a favorite snippet, optionally named (e.g. "Home Wi-Fi"); it never expires, and the tray's Favorites menu copies it in one click |
+| Search box | Space-separated keywords must all match; with no exact match it falls back to fuzzy matching (`wfmm` finds "WiFi 密码"); filter by type, device and time |
+| Drop a folder / Add folder | Packs it into a zip on this device and sends it |
+| Tray menu → Open main window (打开主窗口) | Pairing QR code, settings (language, send mode, history retention, auto-download files, storage limit, encryption, add device manually) and the full history |
 
 **Can't see the other computer?** If both use the same pairing code but never show up (the router blocks broadcast, they are on different subnets, etc.), enter the other computer's IP under **Settings → Add device manually (手动添加设备)**. Adding it on one computer is enough. If the router has AP / client isolation enabled, devices cannot reach each other at all and this won't help.
+
+The preview window detects and highlights JSON, JavaScript, Go, Python, Shell, SQL, HTML, CSS and YAML, and formats JSON in one click.
 
 **Send mode**: in active mode, anything you copy is sent automatically; in passive mode nothing is sent until you choose **Send current clipboard (发送当前剪贴板)** in the tray menu or on the page. Files copied in Finder and passwords copied from a password manager are never sent automatically — drag files into the window instead.
 
@@ -91,6 +96,7 @@ scripts/build.sh      Build script
 - **Files**: stored on the node they were uploaded to; other computers each keep a backup copy in the background (100 MB and under by default, adjustable in settings; each computer's file storage is capped at 2 GB by default and only copies are evicted, never originals). Downloads go to the sender first and fall back to any computer that has a copy, so the sender being off doesn't matter. Range requests are supported (videos can seek).
 - **Retention**: the global retention period applies to this computer only, and expired items won't sync back from other devices; per-item retention syncs to every device — concurrent changes are resolved by time, with a fixed tie-break when times are equal.
 - **Editing and versions**: every edit creates a version with its author and time, and the original is kept as the first version. Nodes merge version sets by ID and show the newest version, so concurrent edits on several devices converge to the same result without losing any version.
+- **Encryption**: requests between computers, relayed content and files are encrypted with AES-256-GCM (key derived from the pairing code), in 64 KB frames so tampering, truncation and reordering are all detected. Older nodes without encryption fall back to plaintext for compatibility; turn on "Encrypted connections only" in settings to refuse them.
 - **Clipboard**: macOS calls NSPasteboard directly (polling only reads the change count, so it uses almost no power; without cgo it falls back to `pbpaste`/`pbcopy`), Windows calls the Win32 API directly, Linux uses `wl-clipboard`/`xclip`/`xsel`. Copied files and content marked sensitive by password managers are not sent. Content written by a remote device is remembered so it isn't broadcast again as a new copy.
 
 ## Security
@@ -100,7 +106,8 @@ scripts/build.sh      Build script
 - The LAN uses plain http, where browsers don't provide `crypto.subtle`, so the web client ships its own SHA-256/HMAC implementation (verified to match Go's output).
 - The local dashboard doesn't need signatures, but requests must come from the loopback address with `Host` set to localhost, and writes must have an `Origin` matching the host — protecting against DNS rebinding and cross-site requests.
 - Uploaded files are served with `Content-Security-Policy: sandbox`, and SVG/HTML are always downloads, so they can't run scripts on this origin.
-- **Limitation**: the content itself travels over plain http, so anyone able to sniff the same Wi-Fi can read it (but not the pairing code). Optional TLS or end-to-end encryption is planned.
+- Content, history and files between computers are encrypted with AES-256-GCM; with "Encrypted connections only" on, a man in the middle can't strip the encryption either.
+- **Limitation**: phone browsers still talk to computers over plain http (http pages on a LAN can't use the browser's crypto APIs), so anyone able to sniff the same Wi-Fi can read what phones send and receive (but not the pairing code).
 
 ## Phone automation (optional)
 
@@ -122,7 +129,6 @@ scripts/build.sh      Build script
 ## Ideas for later
 
 - System notifications
-- Encrypting content between nodes
 - Optional HTTPS (with a self-signed certificate installed, browsers can read the clipboard and use PWA offline mode and share targets)
 - Writing images directly to the system clipboard (macOS NSPasteboard, Windows CF_DIB)
 - Sending to a specific device

@@ -28,6 +28,7 @@ type App struct {
 func newApp(dir string, cfg *Config, manualPeers []string) *App {
 	a := &App{dir: dir, cfg: *cfg, cr: deriveCreds(cfg.Code), hub: newHub(), saved: map[string]string{}}
 	a.store = openStore(dir)
+	a.store.setRetention(cfg.HistoryDays)
 	a.peers = newPeers(a, manualPeers)
 	a.clip = newClipWatcher(a)
 	return a
@@ -185,6 +186,25 @@ func (a *App) devices() []Device {
 		addClients(p.Clients, p.Name)
 	}
 	return out
+}
+
+// pruneLoop 定期清理过期历史。
+func (a *App) pruneLoop() {
+	for {
+		a.prune()
+		time.Sleep(10 * time.Minute)
+	}
+}
+
+func (a *App) prune() {
+	gone := a.store.Prune()
+	for _, id := range gone {
+		a.hub.Broadcast("delete", map[string]string{"id": id})
+	}
+	if len(gone) > 0 {
+		log.Printf("已清理 %d 条过期历史", len(gone))
+		a.changed()
+	}
 }
 
 func (a *App) presenceLoop() {

@@ -1,3 +1,8 @@
+//go:build darwin && !cgo
+
+// 没有 cgo 时（例如在其他平台交叉编译的命令行版）退回到 pbpaste / pbcopy / osascript。
+// 原生实现见 clipboard_darwin_cgo.go。
+
 package core
 
 import (

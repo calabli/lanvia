@@ -18,6 +18,15 @@ build_cli() {
     os=${t%/*}; arch=${t#*/}; name=lanvia-cli-${os/darwin/macos}-$arch
     if [ "$os" = windows ]; then
       GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "$LDFLAGS" -o "$DIST/$name.exe" ./cmd/lanvia
+    elif [ "$os" = darwin ]; then
+      # Mac 用 cgo 编译，剪贴板走原生 NSPasteboard（不必每次轮询都启动 pbpaste）
+      tmp=$(mktemp -d)
+      clang_arch=$([ $arch = amd64 ] && echo x86_64 || echo arm64)
+      MACOSX_DEPLOYMENT_TARGET=13.0 GOOS=$os GOARCH=$arch CGO_ENABLED=1 CC="clang -arch $clang_arch" \
+        CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" \
+        go build -trimpath -ldflags "$LDFLAGS" -o "$tmp/lanvia" ./cmd/lanvia
+      codesign --force -s - "$tmp/lanvia" >/dev/null
+      tar -czf "$DIST/$name.tar.gz" -C "$tmp" lanvia && rm -rf "$tmp"
     else
       tmp=$(mktemp -d)
       GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "$LDFLAGS" -o "$tmp/lanvia" ./cmd/lanvia

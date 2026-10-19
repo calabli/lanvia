@@ -15,7 +15,11 @@ import (
 type Settings struct {
 	AutoApply bool `json:"autoApply"` // 收到其他设备的文本时写入本机剪贴板
 	Watch     bool `json:"watch"`     // 监听本机剪贴板并自动分享
+	// 历史保留天数，0 表示永久。只对本机生效：过期内容会被删除，也不会再从其他设备同步回来。
+	HistoryDays int `json:"historyDays"`
 }
+
+const defaultHistoryDays = 30
 
 type Config struct {
 	ID   string `json:"id"`
@@ -46,8 +50,15 @@ func loadConfig(dir string) (*Config, error) {
 		if err := json.Unmarshal(b, c); err != nil {
 			return nil, err
 		}
+		// 旧版本的配置里没有这一项：默认不再永久保存
+		var raw map[string]json.RawMessage
+		if json.Unmarshal(b, &raw) == nil {
+			if _, ok := raw["historyDays"]; !ok {
+				c.HistoryDays = defaultHistoryDays
+			}
+		}
 	case errors.Is(err, fs.ErrNotExist):
-		c.Settings = Settings{AutoApply: true, Watch: true}
+		c.Settings = Settings{AutoApply: true, Watch: true, HistoryDays: defaultHistoryDays}
 	default:
 		return nil, err
 	}

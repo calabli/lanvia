@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -36,6 +37,7 @@ type Peer struct {
 	OS     string `json:"os"`
 	Addr   string `json:"addr"`
 	Manual bool   `json:"manual"`
+	Enc    bool   `json:"enc"` // 对方支持加密（v0.5 起）
 	// 通过“手动添加”的哪个地址找到的（可能是主机名，和 Addr 不同）
 	ManualAddr string       `json:"manualAddr,omitempty"`
 	Clients    []ClientInfo `json:"clients"`
@@ -209,6 +211,7 @@ func (p *Peers) probe(addr string, manual bool) (*Info, error) {
 		p.m[info.ID] = x
 	}
 	x.Name, x.OS, x.Addr, x.Clients, x.seen, x.fails = info.Name, info.OS, addr, info.Clients, time.Now(), 0
+	x.Enc = info.Enc
 	x.Manual = x.Manual || manual
 	if manual {
 		x.ManualAddr = addr
@@ -333,6 +336,7 @@ func (p *Peers) refresh(id, addr string) {
 		return
 	}
 	x.Name, x.OS, x.Clients, x.seen, x.fails = info.Name, info.OS, info.Clients, time.Now(), 0
+	x.Enc = info.Enc
 }
 
 // ---- 节点间请求 ----
@@ -345,11 +349,33 @@ func (p *Peers) newReq(ctx context.Context, method, addr, path string, body []by
 	c := p.a.cfgSnapshot()
 	signRequest(req, p.a.creds(), c.ID)
 	req.Header.Set("X-Lanvia-Port", strconv.Itoa(c.Port)) // 让对方知道怎么连回来
+	req.Header.Set("X-Lanvia-Enc", "1")                   // 请对方加密响应；旧版本会忽略，照常返回明文
 	return req
 }
 
+var errPlaintext = errors.New("对方未加密（旧版本），而本机设置为只允许加密连接")
+
+// do 发出节点间请求，并透明地解密响应。
+func (p *Peers) do(client *http.Client, req *http.Request) (*http.Response, error) {
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.Header.Get("X-Lanvia-Enc") == "1" {
+		resp.Body = openReadCloser{newOpenReader(resp.Body, p.a.creds().enc), resp.Body}
+		resp.ContentLength = -1
+		resp.Header.Del("Content-Length")
+		return resp, nil
+	}
+	if p.a.cfgSnapshot().StrictEnc && resp.StatusCode != http.StatusUnauthorized {
+		resp.Body.Close()
+		return nil, errPlaintext
+	}
+	return resp, nil
+}
+
 func (p *Peers) getJSON(addr, path string, v any) error {
-	resp, err := p.hc.Do(p.newReq(context.Background(), "GET", addr, path, nil))
+	resp, err := p.do(p.hc, p.newReq(context.Background(), "GET", addr, path, nil))
 	if err != nil {
 		return err
 	}
@@ -390,17 +416,28 @@ type Envelope struct {
 // 每个节点只转发“自己第一次见到”的变更，所以即使不是全连通也能覆盖整个网络，且不会形成环路。
 func (p *Peers) relay(env Envelope, except string) {
 	body, _ := json.Marshal(env)
+	strict := p.a.cfgSnapshot().StrictEnc
 	for _, x := range p.List() {
-		if x.ID == except {
+		if x.ID == except || (strict && !x.Enc) {
 			continue
 		}
-		go func(addr string) {
-			resp, err := p.hc.Do(p.newReq(context.Background(), "POST", addr, "/api/relay", body))
+		go func(x *Peer) {
+			b := body
+			if x.Enc { // 对方支持时，请求体也加密
+				b = sealAll(body, p.a.creds().enc)
+			}
+			req := p.newReq(context.Background(), "POST", x.Addr, "/api/relay", b)
+			if x.Enc {
+				req.Header.Set("X-Lanvia-Body-Enc", "1")
+				req.Header.Set("Content-Type", "application/octet-stream")
+			}
+			resp, err := p.do(p.hc, req)
 			if err != nil {
 				return
 			}
+			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
-		}(x.Addr)
+		}(x)
 	}
 }
 

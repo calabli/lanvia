@@ -21,6 +21,8 @@ type Settings struct {
 	AutoFetchMB int `json:"autoFetchMB"`
 	// 文件占用上限（MB），0 不限。超出时只删其他设备文件的副本，本机的原件不删。
 	StorageMB int `json:"storageMB"`
+	// 只允许加密连接：拒绝不支持加密的旧版本节点，也防止中间人去掉加密
+	StrictEnc bool `json:"strictEnc"`
 }
 
 const (

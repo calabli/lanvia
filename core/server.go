@@ -30,6 +30,7 @@ type Info struct {
 	Port    int          `json:"port"`
 	Now     int64        `json:"now"`
 	Clients []ClientInfo `json:"clients"`
+	Enc     bool         `json:"enc"` // 支持节点间加密
 
 	// 以下字段只返回给本机仪表盘
 	Local     bool          `json:"local,omitempty"`
@@ -229,7 +230,23 @@ func (a *App) requireAuth(h http.HandlerFunc) http.HandlerFunc {
 			h(w, r)
 			return
 		}
-		if checkSigned(r, a.creds()) {
+		if c := a.creds(); checkSigned(r, c) {
+			// 其他节点的请求：按需解密请求体、加密响应
+			if r.Header.Get("X-Lanvia-Sig") != "" {
+				if r.Header.Get("X-Lanvia-Enc") != "1" && a.cfgSnapshot().StrictEnc {
+					errJSON(w, 403, "这台电脑只允许加密连接，请把对方升级到最新版本")
+					return
+				}
+				if r.Header.Get("X-Lanvia-Body-Enc") == "1" {
+					r.Body = openReadCloser{newOpenReader(r.Body, c.enc), r.Body}
+					r.ContentLength = -1
+				}
+				if r.Header.Get("X-Lanvia-Enc") == "1" {
+					ew := newEncResponseWriter(w, c.enc)
+					defer ew.Close()
+					w = ew
+				}
+			}
 			// 配对码相同的节点发来签名请求：如果还不认识它，就连回去（只在一边手动添加也能双向同步）
 			if r.Header.Get("X-Lanvia-Sig") != "" {
 				if port := r.Header.Get("X-Lanvia-Port"); port != "" {
@@ -257,7 +274,7 @@ func (a *App) requireLocal(h http.HandlerFunc) http.HandlerFunc {
 
 func (a *App) info(local bool) *Info {
 	c := a.cfgSnapshot()
-	in := &Info{ID: c.ID, Name: c.Name, OS: runtime.GOOS, Version: Version, Port: c.Port, Now: nowMs(), Clients: a.hub.List()}
+	in := &Info{ID: c.ID, Name: c.Name, OS: runtime.GOOS, Version: Version, Port: c.Port, Now: nowMs(), Clients: a.hub.List(), Enc: true}
 	if local {
 		s := c.Settings
 		in.Local, in.Code, in.Token, in.Settings = true, formatCode(c.Code), a.creds().token, &s
@@ -543,6 +560,7 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		Watch       *bool   `json:"watch"`
 		Name        *string `json:"name"`
 		HistoryDays *int    `json:"historyDays"`
+		StrictEnc   *bool   `json:"strictEnc"`
 	}
 	if json.NewDecoder(r.Body).Decode(&req) != nil {
 		errJSON(w, 400, "bad json")
@@ -566,6 +584,9 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	a.updateCfg(func(c *Config) {
 		if req.HistoryDays != nil {
 			c.HistoryDays = *req.HistoryDays
+		}
+		if req.StrictEnc != nil {
+			c.StrictEnc = *req.StrictEnc
 		}
 		if req.AutoFetchMB != nil {
 			c.AutoFetchMB = *req.AutoFetchMB

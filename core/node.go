@@ -72,6 +72,7 @@ func (a *App) Start() error {
 	go a.peers.start()
 	go a.clip.run()
 	go a.presenceLoop()
+	go a.pruneLoop()
 	go http.Serve(ln, a.routes(web))
 	return nil
 }

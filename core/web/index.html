@@ -147,6 +147,15 @@
     <label class="switch"><input type="checkbox" id="optWatch"><span><b>分享本机复制的内容</b><small>在这台电脑上复制文字后自动发送到其他设备</small></span></label>
     <label class="switch"><input type="checkbox" id="optApply"><span><b>自动写入本机剪贴板</b><small>其他设备发来的文字直接可以 ⌘V / Ctrl+V 粘贴</small></span></label>
     <p id="clipWarn" class="warn small" hidden>未找到系统剪贴板工具，只能通过网页手动复制。</p>
+    <label class="field"><span>历史保留时间</span>
+      <select id="optKeep">
+        <option value="1">1 天</option>
+        <option value="7">7 天</option>
+        <option value="30">30 天</option>
+        <option value="0">永久</option>
+      </select>
+    </label>
+    <p class="muted small">到期的内容、文件和历史版本会从这台电脑上删除，也不会再从其他设备同步回来。只对这台电脑生效。</p>
   </div>
   <div class="sheet-section">
     <h3>加入另一台电脑</h3>

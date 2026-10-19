@@ -837,6 +837,9 @@ async function loadInfo() {
   $('#nodeName').value = i.name;
   $('#optWatch').checked = i.settings.watch;
   $('#optApply').checked = i.settings.autoApply;
+  const keep = String(i.settings.historyDays ?? 30), ks = $('#optKeep');
+  if (![...ks.options].some(o => o.value === keep)) ks.add(new Option(`${keep} 天`, keep)); // 手动改过配置文件的情况
+  ks.value = keep;
   $('#clipWarn').hidden = !!i.clipboard;
   $('#token').textContent = i.token;
   const base = (i.urls || [])[0] || `http://localhost:${i.port}`;
@@ -1017,6 +1020,12 @@ function bind() {
   $('#nodeName').addEventListener('change', e => e.target.value.trim() && saveSettings({ name: e.target.value.trim() }));
   $('#optWatch').onchange = e => saveSettings({ watch: e.target.checked });
   $('#optApply').onchange = e => saveSettings({ autoApply: e.target.checked });
+  $('#optKeep').onchange = e => {
+    const days = +e.target.value;
+    const n = days && S.items.filter(it => it.ts < Date.now() + S.offset - days * 864e5).length;
+    if (n && !confirm(`将立即删除这台电脑上 ${n} 条超过 ${days} 天的内容，确定吗？`)) { e.target.value = String(S.info.settings.historyDays); return; }
+    saveSettings({ historyDays: days });
+  };
   $('#joinForm').onsubmit = async e => {
     e.preventDefault();
     const code = normCode($('#joinInput').value);

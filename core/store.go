@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -44,6 +45,7 @@ type Store struct {
 	tomb      map[string]int64
 	clearedAt int64
 	versions  map[string][]*TextVersion // 内容 ID -> 历史版本（含原始版本），只有被编辑过的才有
+	keepMs    atomic.Int64              // 历史保留时长（毫秒），0 表示永久
 	dirty     chan struct{}
 }
 
@@ -94,6 +96,9 @@ func (s *Store) Add(it *Item) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, dead := s.tomb[it.ID]; dead || it.TS <= s.clearedAt {
+		return false
+	}
+	if k := s.keepMs.Load(); k > 0 && it.TS < nowMs()-k { // 已过期的不再收（包括其他设备同步来的）
 		return false
 	}
 	for _, x := range s.items {
@@ -157,6 +162,41 @@ func (s *Store) Clear(ts int64) bool {
 	s.items = kept
 	s.markDirty()
 	return true
+}
+
+func (s *Store) setRetention(days int) {
+	s.keepMs.Store(int64(days) * 24 * int64(time.Hour/time.Millisecond))
+}
+
+// Prune 删除过期的内容（连同文件和历史版本），返回被删除的 ID。
+// 过期是本机的设置，不写墓碑、不通知其他设备。
+func (s *Store) Prune() []string {
+	k := s.keepMs.Load()
+	if k <= 0 {
+		return nil
+	}
+	cut := nowMs() - k
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var gone []string
+	kept := s.items[:0]
+	for _, x := range s.items {
+		if x.TS < cut {
+			gone = append(gone, x.ID)
+			os.Remove(s.blobPath(x.ID))
+			delete(s.versions, x.ID)
+		} else {
+			kept = append(kept, x)
+		}
+	}
+	for i := len(kept); i < len(s.items); i++ {
+		s.items[i] = nil
+	}
+	s.items = kept
+	if len(gone) > 0 {
+		s.markDirty()
+	}
+	return gone
 }
 
 func (s *Store) Get(id string) *Item {

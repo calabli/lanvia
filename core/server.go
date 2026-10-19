@@ -435,15 +435,23 @@ func (a *App) handleRelay(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		AutoApply *bool   `json:"autoApply"`
-		Watch     *bool   `json:"watch"`
-		Name      *string `json:"name"`
+		AutoApply   *bool   `json:"autoApply"`
+		Watch       *bool   `json:"watch"`
+		Name        *string `json:"name"`
+		HistoryDays *int    `json:"historyDays"`
 	}
 	if json.NewDecoder(r.Body).Decode(&req) != nil {
 		errJSON(w, 400, "bad json")
 		return
 	}
+	if d := req.HistoryDays; d != nil && (*d < 0 || *d > 3650) {
+		errJSON(w, 400, "保留天数应在 0 到 3650 之间")
+		return
+	}
 	a.updateCfg(func(c *Config) {
+		if req.HistoryDays != nil {
+			c.HistoryDays = *req.HistoryDays
+		}
 		if req.AutoApply != nil {
 			c.AutoApply = *req.AutoApply
 		}
@@ -454,6 +462,10 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 			c.Name = trimRunes(strings.TrimSpace(*req.Name), 40)
 		}
 	})
+	if req.HistoryDays != nil {
+		a.store.setRetention(*req.HistoryDays)
+		a.prune()
+	}
 	writeJSON(w, 200, a.info(true))
 }
 

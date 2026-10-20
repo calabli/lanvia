@@ -178,17 +178,59 @@ function renderFromFilter() {
   sel.value = S.from;
 }
 
+/* ---- 列表渲染：增量更新 + 分页 ----
+   每张卡片按“渲染结果”做缓存，只有内容真正变化的卡片才重建，其余原样保留（不重新解析、不重播动画）。
+   先显示 PAGE 条，滚动到底部再加载更多。 */
+
+const PAGE = 50;
+const ROWS = new Map(); // id -> { key, el }
+S.limit = PAGE;
+
 function renderList() {
+  // 页面不可见（桌面版隐藏的窗口、切到后台的标签页）时先不渲染，回到前台再补
+  if (document.hidden) { S.renderPending = true; return; }
+  S.renderPending = false;
   renderFromFilter();
   const items = searchItems();
   const f = S.filter.trim() || S.from || S.since;
-  const list = $('#list');
-  const open = new Set([...list.querySelectorAll('.item.open')].map(li => li.dataset.id));
+  const fkey = [S.filter, S.kind, S.from, S.since].join('\u0001');
+  if (fkey !== S.lastFilter) { S.lastFilter = fkey; S.limit = PAGE; } // 换了筛选条件就回到第一页
   S.view = items;
   S.sel = Math.max(0, Math.min(S.sel, items.length - 1));
-  list.innerHTML = items.map((it, i) =>
-    `<li class="item card${i === 0 && !f ? ' latest' : ''}${open.has(it.id) ? ' open' : ''}${PANEL && i === S.sel ? ' sel' : ''}${isLong(it) ? ' long' : ''}" data-id="${it.id}">${itemHTML(it, i === 0 && !f)}</li>`).join('');
-  if (!S.fuzzy) markTerms(list, S.terms || []);
+  if (PANEL && S.sel >= S.limit) S.limit = S.sel + PAGE;
+  const list = $('#list');
+  const terms = S.fuzzy ? '' : (S.terms || []).join('\u0002');
+  const wanted = [];
+  items.slice(0, S.limit).forEach((it, i) => {
+    const prev = ROWS.get(it.id);
+    const latest = i === 0 && !f;
+    const cls = `item card${latest ? ' latest' : ''}${prev?.el.classList.contains('open') ? ' open' : ''}${PANEL && i === S.sel ? ' sel' : ''}${isLong(it) ? ' long' : ''}`;
+    const html = itemHTML(it, latest);
+    const key = cls + '\u0001' + terms + '\u0001' + html;
+    let el = prev?.el;
+    if (!prev || prev.key !== key) {
+      el = document.createElement('li');
+      el.className = cls;
+      el.dataset.id = it.id;
+      el.innerHTML = html;
+      if (terms) markTerms(el, S.terms);
+      if (prev) el.style.animation = 'none'; // 只是内容更新，不重播出现动画
+      ROWS.set(it.id, { key, el });
+    }
+    wanted.push(el);
+  });
+  // 删掉不再显示的，再按顺序就位（已在正确位置的不动）
+  const keep = new Set(wanted);
+  for (const [id, r] of ROWS) if (!keep.has(r.el)) { r.el.remove(); ROWS.delete(id); }
+  for (const c of [...list.children]) if (!keep.has(c)) c.remove();
+  let cur = list.firstElementChild;
+  for (const el of wanted) {
+    if (el === cur) { cur = cur.nextElementSibling; continue; }
+    list.insertBefore(el, cur);
+  }
+  const rest = items.length - Math.min(items.length, S.limit);
+  $('#listMore').hidden = rest <= 0;
+  $('#listMoreBtn').textContent = `显示更多（还有 ${rest} 条）`;
   $('#itemCount').textContent = String(items.length);
   const cap = $('.history-caption');
   if (cap) { cap.textContent = S.fuzzy ? '没有完全匹配的内容，以下是相近的结果' : '每一份灵感，都有迹可循。'; cap.classList.toggle('fuzzy', S.fuzzy); }

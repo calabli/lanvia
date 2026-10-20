@@ -402,3 +402,7 @@ button.chip-item.add:hover { background: var(--accent-soft); }
 .deep-hit { margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); font-size: 12.5px; color: var(--muted); }
 .deep-hit .deep-snip { display: block; margin-top: 3px; color: var(--text); font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-all; }
 .deep-hit mark { background: color-mix(in srgb, #f2b01e 35%, transparent); color: inherit; border-radius: 3px; }
+
+/* ---- 分页 ---- */
+.list-more { display: flex; justify-content: center; padding: 14px 0 4px; }
+.list-more .btn { color: var(--muted); }

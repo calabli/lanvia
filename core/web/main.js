@@ -98,6 +98,14 @@ function bind() {
   });
 
   $('#search').addEventListener('input', e => { S.filter = e.target.value; renderList(); deepSearch(); });
+  // 分页：滚动到列表底部自动加载下一页
+  const loadMore = () => { S.limit += PAGE; renderList(); };
+  $('#listMoreBtn').onclick = loadMore;
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(es => { if (es.some(e => e.isIntersecting) && !$('#listMore').hidden) loadMore(); }, { rootMargin: '600px' }).observe($('#listMore'));
+  }
+  // 回到前台时补上隐藏期间跳过的渲染
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && S.renderPending) renderList(); });
   $('#fromFilter').onchange = e => { S.from = e.target.value; renderList(); };
   $('#timeFilter').onchange = e => { S.since = +e.target.value; renderList(); };
   $('#list').addEventListener('dblclick', e => {
@@ -266,7 +274,7 @@ function bindPanel() {
   const move = d => {
     if (!S.view.length) return;
     S.sel = (S.sel + d + S.view.length) % S.view.length;
-    document.querySelectorAll('#list .item').forEach((li, i) => li.classList.toggle('sel', i === S.sel));
+    renderList(); // 增量渲染：只有选中状态变化的两张卡片会更新
     $('#list .item.sel')?.scrollIntoView({ block: 'nearest' });
   };
   document.addEventListener('keydown', e => {

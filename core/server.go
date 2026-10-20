@@ -62,7 +62,11 @@ func (a *App) routes(web fs.FS) http.Handler {
 	local := a.requireLocal
 	m.HandleFunc("GET /api/info", auth(a.handleInfo))
 	m.HandleFunc("GET /api/events", auth(a.handleEvents))
-	m.HandleFunc("GET /api/history", auth(func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, a.store.Snapshot()) }))
+	// 历史同步：since 是上次同步时响应方的时间（本机时钟），只返回之后有变化的部分；不带则返回全部
+	m.HandleFunc("GET /api/history", auth(func(w http.ResponseWriter, r *http.Request) {
+		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+		writeJSON(w, 200, a.store.Snapshot(since))
+	}))
 	m.HandleFunc("GET /api/latest", auth(a.handleLatest))
 	m.HandleFunc("POST /api/clip", auth(a.handleClip))
 	m.HandleFunc("POST /api/upload", auth(a.handleUpload))

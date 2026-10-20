@@ -216,37 +216,54 @@ function openExpiryMenu(it, anchor) {
 
 function openFontMenu(anchor) {
   const m = $('#fontMenu'), cur = applyFont(store.get('fontSize'));
-  m.innerHTML = `<div class="pop-title">字体大小 <span class="muted">· 仅本设备</span></div>` + FONT_SIZES.map(f =>
-    `<button role="menuitemradio" aria-checked="${f.v === cur}" data-fs="${f.v}" class="${f.v === cur ? 'on' : ''}"><span style="font-size:${Math.round(14 * f.v)}px">${f.label}</span>${f.v === cur ? ICON.check : ''}</button>`).join('');
+  m.innerHTML = `<div class="pop-title">字体大小 <span class="muted">· 仅本设备</span></div>
+    <div class="fs-row"><span class="fs-a" aria-hidden="true">A</span>
+      <input id="fsRange" type="range" min="${FS_MIN}" max="${FS_MAX}" step="${FS_STEP}" value="${cur}" aria-label="字体大小">
+      <span class="fs-a big" aria-hidden="true">A</span></div>
+    <div class="fs-foot"><span id="fsVal" class="fs-val"></span><button id="fsReset" class="btn ghost sm">恢复默认</button></div>
+    ${DESKTOP ? `<div class="pop-foot">快捷键：<kbd>${KIND === 'mac' ? '⌘' : 'Ctrl'}</kbd> + <kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd></div>` : ''}`;
+  showFont(cur);
   m.hidden = false;
   const r = anchor.getBoundingClientRect(), w = m.offsetWidth;
   m.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
   m.style.top = r.bottom + 6 + 'px';
-  $('button.on', m)?.focus();
+  $('#fsRange').focus();
+}
+
+function showFont(v) {
+  const val = $('#fsVal'), range = $('#fsRange');
+  if (val) val.textContent = Math.round(v * 100) + '%';
+  if (range && +range.value !== v) range.value = v;
+  if (range) range.style.setProperty('--p', ((v - FS_MIN) / (FS_MAX - FS_MIN) * 100) + '%');
 }
 
 function bindFontMenu() {
   const m = $('#fontMenu'), btn = $('#fontBtn');
   btn.innerHTML = ICON.fontSize;
   btn.onclick = () => (m.hidden ? openFontMenu(btn) : (m.hidden = true));
-  m.addEventListener('click', e => {
-    const b = e.target.closest('[data-fs]');
-    if (!b) return;
-    store.set('fontSize', b.dataset.fs);
-    applyFont(b.dataset.fs);
-    openFontMenu(btn); // 留着菜单，方便连续调整、对比效果
-  });
-  m.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { m.hidden = true; btn.focus(); }
-    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const bs = [...m.querySelectorAll('button')], i = bs.indexOf(document.activeElement);
-      bs[(i + (e.key === 'ArrowDown' ? 1 : bs.length - 1)) % bs.length]?.focus();
-    }
-  });
+  // 拖动时实时生效（字号变了，菜单和按钮的位置也会变，所以每次都重新定位）
+  m.addEventListener('input', e => { if (e.target.id === 'fsRange') { showFont(setFont(e.target.value)); place(); } });
+  m.addEventListener('click', e => { if (e.target.closest('#fsReset')) { showFont(setFont(1)); place(); } });
+  const place = () => { const r = btn.getBoundingClientRect(), w = m.offsetWidth; m.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px'; m.style.top = r.bottom + 6 + 'px'; };
+  m.addEventListener('keydown', e => { if (e.key === 'Escape') { m.hidden = true; btn.focus(); } });
   document.addEventListener('mousedown', e => { if (!m.hidden && !m.contains(e.target) && !btn.contains(e.target)) m.hidden = true; });
+  // 桌面版：⌘/Ctrl + 加号、减号、0 调整字号（浏览器里保留浏览器自己的缩放）
+  if (DESKTOP) addEventListener('keydown', e => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    const cur = applyFont(store.get('fontSize'));
+    let v;
+    if (e.key === '=' || e.key === '+') v = cur + 0.1;
+    else if (e.key === '-' || e.key === '_') v = cur - 0.1;
+    else if (e.key === '0') v = 1;
+    else return;
+    e.preventDefault();
+    v = setFont(v);
+    showFont(v);
+    if (!m.hidden) place();
+    toast(`字体大小 ${Math.round(v * 100)}%`);
+  });
   // 桌面版的几个窗口共用设置：一个窗口里改了，其他窗口跟着变
-  addEventListener('storage', e => { if (e.key === 'lanvia.fontSize') applyFont(e.newValue); });
+  addEventListener('storage', e => { if (e.key === 'lanvia.fontSize') showFont(applyFont(e.newValue)); });
 }
 
 function bindExpiryMenu() {

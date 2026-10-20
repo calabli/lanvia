@@ -263,11 +263,18 @@ const ICON = {
 };
 const kindIcon = k => ({ ios: ICON.phone, android: ICON.phone, ipad: ICON.tablet, mac: ICON.laptop, windows: ICON.laptop, linux: ICON.laptop }[k] || ICON.globe);
 
-// 字体大小：只放大或缩小内容文字（卡片、预览、编辑、评论、清单），每台设备各自保存
-const FONT_SIZES = [{ v: 0.88, label: '小' }, { v: 1, label: '标准' }, { v: 1.15, label: '大' }, { v: 1.3, label: '特大' }, { v: 1.5, label: '超大' }];
+// 字体大小：所有文字乘以同一个倍数（80%–160%），每台设备各自保存
+const FS_MIN = 0.8, FS_MAX = 1.6, FS_STEP = 0.05;
 function applyFont(v) {
-  v = FONT_SIZES.some(f => f.v === +v) ? +v : 1;
+  v = Math.round(Math.min(FS_MAX, Math.max(FS_MIN, +v || 1)) / FS_STEP) * FS_STEP;
+  v = +v.toFixed(2);
   document.documentElement.style.setProperty('--fs', String(v));
+  document.documentElement.style.setProperty('--fs-bar', String(Math.min(v, 1.1)));
+  return v;
+}
+function setFont(v) {
+  v = applyFont(v);
+  if (v === 1) store.del('fontSize'); else store.set('fontSize', String(v));
   return v;
 }
 

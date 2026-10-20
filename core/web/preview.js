@@ -85,13 +85,29 @@ function renderPreview() {
   if (m !== 'edit') renderPreviewBody();
 }
 
+const ROW_CHUNK = 1500;
+const rowsHTML = (from, to) => PVS.rows.slice(from, to).map(l => `<div class="ln">${l || ' '}</div>`).join('');
+
+// 预览滚动到底部附近时追加下一批行（行号由 CSS 计数器自动接续）
+function moreRows() {
+  const box = $('#pvBody'), code = $('.pv-code', box);
+  if (!code || !PVS.rows || PVS.shown >= PVS.rows.length) return;
+  if (box.scrollTop + box.clientHeight < box.scrollHeight - 1200) return;
+  const to = Math.min(PVS.rows.length, PVS.shown + ROW_CHUNK);
+  code.insertAdjacentHTML('beforeend', rowsHTML(PVS.shown, to));
+  PVS.shown = to;
+}
+
 function textHTML(text) {
   const lines = text.split('\n');
-  if (PVS.mono && lines.length <= 20000) {
+  if (PVS.mono && lines.length <= 200000) { // 分批渲染，几万行也不卡
     // 识别出语言时按语法着色，否则只加行号和链接
     const rows = PVS.lang ? HL.lines(text, PVS.lang) : lines.map(linkify);
+    // 每行一个元素，几万行一次性放进页面会很卡：先放一批，滚动到底部附近再接着放
+    PVS.rows = rows;
+    PVS.shown = Math.min(rows.length, ROW_CHUNK);
     return `<div class="pv-code${PVS.wrap ? ' wrap' : ''}" data-raw style="--gutter:${String(lines.length).length + 1}ch">${
-      rows.map(l => `<div class="ln">${l || ' '}</div>`).join('')}</div>`;
+      rowsHTML(0, PVS.shown)}</div>`;
   }
   return `<div class="pv-text${PVS.mono ? ' mono' : ''}${PVS.wrap ? '' : ' nowrap'}" data-raw>${linkify(text)}</div>`;
 }
@@ -335,6 +351,7 @@ function bindPreview() {
   $('#pvMono').innerHTML = ICON.code;
   $('#pvPin').innerHTML = ICON.pin;
   $('#pvEdit').innerHTML = ICON.pencil;
+  $('#pvBody').addEventListener('scroll', moreRows, { passive: true });
   $('#pvWrap').onclick = () => { PVS.wrap = !PVS.wrap; store.set('pv.wrap', PVS.wrap ? '1' : '0'); renderPreviewBody(); };
   $('#pvFmt').onclick = () => { PVS.fmt = !PVS.fmt; renderPreview(); };
   $('#pvMono').onclick = () => {

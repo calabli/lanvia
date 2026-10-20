@@ -28,6 +28,8 @@ type App struct {
 	saved       map[string]string // 已保存到“下载”的文件：id -> 路径
 	fetch       *fetcher          // 后台下载其他设备的文件
 
+	lower lowerCache // 全文搜索用的小写正文缓存
+
 	quotaMu  sync.Mutex // 保护 reserved，以及“腾空间”这一步
 	reserved int64      // 正在下载、还没落盘的副本预留的空间（.part 文件不计入占用）
 }

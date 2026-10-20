@@ -214,6 +214,67 @@ function openExpiryMenu(it, anchor) {
   $('button', m)?.focus();
 }
 
+/* ================= 标签编辑 ================= */
+
+let tagItem = null, tagAnchor = null;
+function openTagMenu(it, anchor) {
+  tagItem = it; tagAnchor = anchor;
+  const m = $('#tagMenu');
+  m.innerHTML = `<div class="pop-title">标签 <span class="muted">· 同步到所有设备</span></div>
+    <div class="tag-cur"></div>
+    <form class="tag-form"><input id="tagInput" placeholder="输入标签，回车添加" maxlength="30" autocomplete="off" enterkeyhint="done" aria-label="新标签"></form>
+    <div class="tag-sugg"></div>`;
+  m.hidden = false;
+  renderTagMenu();
+  placeTagMenu();
+  $('#tagInput').focus();
+}
+function placeTagMenu() {
+  const m = $('#tagMenu');
+  if (m.hidden) return;
+  // 卡片可能因为标签变化被重建，按钮要重新找
+  if (!tagAnchor?.isConnected) tagAnchor = $(`.item[data-id="${tagItem?.id}"] [data-act="tags"]`);
+  if (!tagAnchor) return;
+  const r = tagAnchor.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
+  m.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
+  m.style.top = (r.bottom + h + 8 > innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+}
+function renderTagMenu() {
+  const m = $('#tagMenu');
+  if (m.hidden || !tagItem) return;
+  const it = S.items.find(x => x.id === tagItem.id) || tagItem;
+  const cur = liveTags(it), q = ($('#tagInput')?.value || '').trim().replace(/^[#＃]/, '').toLowerCase();
+  $('.tag-cur', m).innerHTML = cur.length ? cur.map(t => `<span class="tag on"><span data-raw>#${esc(t)}</span><button data-rm="${esc(t)}" aria-label="移除标签" title="移除标签">${ICON.close}</button></span>`).join('')
+    : '<span class="muted small">还没有标签</span>';
+  const sugg = allTags().map(([t]) => t).filter(t => !cur.includes(t) && (!q || t.toLowerCase().includes(q))).slice(0, 12);
+  $('.tag-sugg', m).innerHTML = sugg.map(t => `<button class="tag" data-add="${esc(t)}"><span data-raw>#${esc(t)}</span></button>`).join('');
+}
+async function changeTags(add, remove) {
+  if (!tagItem) return;
+  try { upsertItem(await api('POST', `/api/items/${tagItem.id}/tags`, { add, remove })); }
+  catch (e) { toast('设置失败：' + e.message); }
+  renderTagMenu();
+  placeTagMenu();
+}
+function bindTagMenu() {
+  const m = $('#tagMenu');
+  m.addEventListener('submit', e => {
+    e.preventDefault();
+    const inp = $('#tagInput'), v = inp.value.trim();
+    if (!v) return;
+    inp.value = '';
+    changeTags(v.split(/[,，]/), []);
+  });
+  m.addEventListener('input', renderTagMenu);
+  m.addEventListener('click', e => {
+    const rm = e.target.closest('[data-rm]'), add = e.target.closest('[data-add]');
+    if (rm) changeTags([], [rm.dataset.rm]);
+    else if (add) changeTags([add.dataset.add], []);
+  });
+  m.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); m.hidden = true; } });
+  document.addEventListener('mousedown', e => { if (!m.hidden && !m.contains(e.target) && !e.target.closest('[data-act="tags"]')) m.hidden = true; });
+}
+
 function openFontMenu(anchor) {
   const m = $('#fontMenu'), cur = applyFont(store.get('fontSize'));
   m.innerHTML = `<div class="pop-title">字体大小 <span class="muted">· 仅本设备</span></div>

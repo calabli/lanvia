@@ -35,7 +35,7 @@ function findCode(text) {
 
 function itemHTML(it, latest) {
   const fromDev = S.devices.find(d => d.name === it.from);
-  const meta = `<div class="meta">${kindIcon(fromDev?.kind)}<span class="from" data-raw>${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${latest ? '<span class="badge">最新</span>' : ''}${it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改">已编辑</span>` : ''}${it.comments ? `<button class="badge soft com-badge" data-act="comments" title="${it.comments} 条评论">${ICON.comment}${it.comments}</button>` : ''}${it.fav ? '' : expiryBadge(it)}</div>${it.fav ? `<div class="fav-title">${ICON.starOn}${it.title ? `<span data-raw>${esc(it.title)}</span>` : '<span>已收藏</span>'}</div>` : ''}`;
+  const meta = `<div class="meta">${kindIcon(fromDev?.kind)}<span class="from" data-raw>${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${latest ? '<span class="badge">最新</span>' : ''}${it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改">已编辑</span>` : ''}${it.comments ? `<button class="badge soft com-badge" data-act="comments" title="${it.comments} 条评论">${ICON.comment}${it.comments}</button>` : ''}${it.fav ? '' : expiryBadge(it)}</div>${it.fav ? `<div class="fav-title">${ICON.starOn}${it.title ? `<span data-raw>${esc(it.title)}</span>` : '<span>已收藏</span>'}</div>` : ''}${tagsHTML(it)}`;
   if (it.kind === 'todo') return todoHTML(it, meta);
   if (it.kind === 'file') {
     const mime = it.mime || '';
@@ -54,7 +54,8 @@ function itemHTML(it, latest) {
         <button class="btn sm" data-act="download">${ICON.download}下载</button>
         <span class="spacer"></span>
         <button class="icon-btn" data-act="comments" aria-label="评论" title="评论">${ICON.comment}</button>
-        <button class="icon-btn${it.fav ? ' on' : ''}" data-act="fav" aria-label="收藏" title="收藏">${it.fav ? ICON.starOn : ICON.star}</button>
+        <button class="icon-btn" data-act="tags" aria-label="标签" title="标签">${ICON.tag}</button>
+      <button class="icon-btn${it.fav ? ' on' : ''}" data-act="fav" aria-label="收藏" title="收藏">${it.fav ? ICON.starOn : ICON.star}</button>
         <button class="icon-btn" data-act="expiry" aria-label="保留时长" title="保留时长">${ICON.timer}</button>
         <button class="icon-btn" data-act="delete" aria-label="删除">${ICON.trash}</button>
       </div>`;
@@ -82,6 +83,7 @@ function itemHTML(it, latest) {
       <span class="muted small">${long ? itemStats(it) : it.text.length > 60 ? it.text.length + ' 字' : ''}</span>
       <button class="icon-btn" data-act="edit" aria-label="编辑" title="编辑">${ICON.pencil}</button>
       <button class="icon-btn" data-act="comments" aria-label="评论" title="评论">${ICON.comment}</button>
+      <button class="icon-btn" data-act="tags" aria-label="标签" title="标签">${ICON.tag}</button>
       <button class="icon-btn${it.fav ? ' on' : ''}" data-act="fav" aria-label="收藏" title="收藏">${it.fav ? ICON.starOn : ICON.star}</button>
       <button class="icon-btn" data-act="expiry" aria-label="保留时长" title="保留时长">${ICON.timer}</button>
       <button class="icon-btn" data-act="delete" aria-label="删除">${ICON.trash}</button>
@@ -114,6 +116,7 @@ function todoHTML(it, meta) {
       <span class="spacer"></span>
       <button class="icon-btn" data-act="todo-title" aria-label="重命名" title="重命名">${ICON.pencil}</button>
       <button class="icon-btn" data-act="comments" aria-label="评论" title="评论">${ICON.comment}</button>
+      <button class="icon-btn" data-act="tags" aria-label="标签" title="标签">${ICON.tag}</button>
       <button class="icon-btn${it.fav ? ' on' : ''}" data-act="fav" aria-label="收藏" title="收藏">${it.fav ? ICON.starOn : ICON.star}</button>
       <button class="icon-btn" data-act="delete" aria-label="删除">${ICON.trash}</button>
     </div>`;
@@ -143,6 +146,34 @@ async function newTodo() {
   } catch (e) { toast('创建失败：' + e.message); }
 }
 
+/* ---- 标签 ---- */
+
+// 当前的标签（tags 里正数是添加时间，负数是删除的墓碑）
+const liveTags = it => Object.keys(it.tags || {}).filter(k => it.tags[k] > 0).sort((a, b) => a.localeCompare(b));
+// 所有在用的标签和次数，次数多的在前
+function allTags() {
+  const cnt = new Map();
+  for (const it of S.items) for (const t of liveTags(it)) cnt.set(t, (cnt.get(t) || 0) + 1);
+  return [...cnt].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+function tagsHTML(it) {
+  const ts = liveTags(it);
+  return ts.length ? `<div class="tags">${ts.map(t => `<button class="tag${S.tag === t ? ' on' : ''}" data-act="tag-filter" data-tag="${esc(t)}" title="只看这个标签"><span data-raw>#${esc(t)}</span></button>`).join('')}</div>` : '';
+}
+// 列表上方的标签栏：点一下只看这个标签，再点一下取消
+function renderTagBar() {
+  const bar = $('#tagBar'), tags = allTags();
+  if (S.tag && !tags.some(([t]) => t === S.tag)) S.tag = '';
+  bar.hidden = !tags.length;
+  const html = tags.map(([t, n]) => `<button class="tag${S.tag === t ? ' on' : ''}" data-tag="${esc(t)}" aria-pressed="${S.tag === t}"><span data-raw>#${esc(t)}</span><span class="tag-n">${n}</span></button>`).join('');
+  if (bar.dataset.html !== html) { bar.innerHTML = html; bar.dataset.html = html; }
+}
+function setTagFilter(t) {
+  S.tag = S.tag === t ? '' : t;
+  S.sel = 0;
+  renderList();
+}
+
 const isLong = it => it.kind === 'text' && (it.text.length > 280 || it.text.split('\n').length > 4);
 const textStats = t => { const n = t.split('\n').length; return (n > 1 ? n + ' 行 · ' : '') + t.length + ' 字'; };
 // 列表里的长正文是截断的：字数用全文的，行数只能说“以上”
@@ -150,7 +181,7 @@ const itemStats = it => it.textLen ? `${it.text.split('\n').length}+ 行 · ${it
 
 /* ---- 搜索：多个关键词（空格分隔）同时匹配；找不到时退回模糊匹配；按类型、设备、时间筛选 ---- */
 
-const haystack = it => ((it.title || '') + '\n' + (it.text || it.name || '') + '\n' + it.from + (it.todo ? '\n' + todoLive(it).map(e => e.text).join('\n') : '')).toLowerCase();
+const haystack = it => ((it.title || '') + '\n' + (it.text || it.name || '') + '\n' + it.from + (it.todo ? '\n' + todoLive(it).map(e => e.text).join('\n') : '') + '\n' + liveTags(it).map(t => '#' + t).join(' ')).toLowerCase();
 
 // 模糊匹配：关键词的字符按顺序出现即可，间隔越小越相关；间隔太大（长文本里碰巧凑齐）不算
 function fuzzyScore(h, q) {
@@ -190,10 +221,19 @@ function searchItems() {
   const base = S.items.filter(it =>
     (S.kind === 'all' || (S.kind === 'fav' ? it.fav : it.kind === S.kind)) &&
     (!S.from || it.from === S.from) &&
-    (!S.since || it.ts >= now - S.since));
-  const terms = S.filter.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    (!S.since || it.ts >= now - S.since) &&
+    (!S.tag || liveTags(it).includes(S.tag)));
+  const words = S.filter.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  // 搜索框里的 #xx 按标签筛选（标签以 xx 开头即可），其余是普通关键词
+  const tagTerms = words.filter(w => /^[#＃]./.test(w)).map(w => w.slice(1));
+  const terms = words.filter(w => !/^[#＃]./.test(w));
   S.terms = terms; S.fuzzy = false;
-  if (!terms.length) return base;
+  const tagged = tagTerms.length ? base.filter(it => { const ts = liveTags(it).map(t => t.toLowerCase()); return tagTerms.every(q => ts.some(t => t.startsWith(q))); }) : base;
+  if (!terms.length) return tagged;
+  return searchTerms(tagged, terms);
+}
+
+function searchTerms(base, terms) {
   const exact = base.filter(it => { const h = haystack(it); return terms.every(t => h.includes(t)) || deepHit(it); });
   if (exact.length) return exact;
   const q = terms.join('');
@@ -264,9 +304,10 @@ function renderList() {
   if (document.hidden) { S.renderPending = true; return; }
   S.renderPending = false;
   renderFromFilter();
+  renderTagBar();
   const items = searchItems();
-  const f = S.filter.trim() || S.from || S.since;
-  const fkey = [S.filter, S.kind, S.from, S.since].join('\u0001');
+  const f = S.filter.trim() || S.from || S.since || S.tag;
+  const fkey = [S.filter, S.kind, S.from, S.since, S.tag].join('\u0001');
   if (fkey !== S.lastFilter) { S.lastFilter = fkey; S.limit = PAGE; } // 换了筛选条件就回到第一页
   S.view = items;
   S.sel = Math.max(0, Math.min(S.sel, items.length - 1));
@@ -309,6 +350,8 @@ function renderList() {
     const inp = $(`.item[data-id="${refocus.id}"] .todo-add input`);
     if (inp) { inp.value = refocus.value; inp.focus(); }
   }
+  // 标签菜单开着时（例如别的设备刚改了这条的标签），跟着刷新、重新定位
+  if (!$('#tagMenu').hidden) { renderTagMenu(); placeTagMenu(); }
   const rest = items.length - Math.min(items.length, S.limit);
   $('#listMore').hidden = rest <= 0;
   $('#listMoreBtn').textContent = `显示更多（还有 ${rest} 条）`;

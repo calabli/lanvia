@@ -452,7 +452,7 @@ func (p *Peers) syncHistory(id, addr string) {
 }
 
 type Envelope struct {
-	Op      string       `json:"op"` // add | delete | clear | edit | meta | fav | comment | sync
+	Op      string       `json:"op"` // add | delete | clear | edit | meta | fav | tags | todo | comment | sync
 	Item    *Item        `json:"item,omitempty"`
 	ID      string       `json:"id,omitempty"`
 	TS      int64        `json:"ts,omitempty"`

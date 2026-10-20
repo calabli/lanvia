@@ -74,7 +74,7 @@ const PREVIEW = DESKTOP === 'preview'; // 桌面端的悬浮预览窗口
 const PREVIEW_ID = QS.get('id');
 const S = {
   key: null, ek: null, strict: false, offset: 0, items: [], devices: [], you: null, node: null, local: false,
-  info: null, filter: '', kind: 'all', from: '', since: 0, fuzzy: false, es: null, connected: false, retry: 0, unseen: 0,
+  info: null, filter: '', tag: '', kind: 'all', from: '', since: 0, fuzzy: false, es: null, connected: false, retry: 0, unseen: 0,
   view: [], sel: 0, // 当前显示的列表和键盘选中项（快捷面板）
 };
 const desktop = (action, id) => api('POST', '/api/desktop/' + action + (id ? '?id=' + id : '')).catch(() => {});
@@ -243,6 +243,7 @@ const ICON = {
   chevron: I('<path d="m6 15 6-6 6 6"/>'),
   comment: I('<path d="M4.5 6.5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H10l-4 3.5V16.5h.5a2 2 0 0 1-2-2z"/>'),
   fontSize: I('<path d="M3.5 18 8 6l4.5 12M5.3 13.5h5.4"/><path d="m14 18 3.25-8.5L20.5 18M15.3 15.4h3.9"/>'),
+  tag: I('<path d="M3.5 12.2V5a1.5 1.5 0 0 1 1.5-1.5h7.2a1.5 1.5 0 0 1 1 .44l7.3 7.3a1.5 1.5 0 0 1 0 2.12l-7.2 7.2a1.5 1.5 0 0 1-2.12 0l-7.3-7.3a1.5 1.5 0 0 1-.38-1.06z"/><circle cx="8.2" cy="8.2" r="1.4"/>'),
   play: I('<path fill="currentColor" d="M8 5.5v13l10.5-6.5z"/>'),
   phone: I('<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 18h2"/>'),
   tablet: I('<rect x="4.5" y="3" width="15" height="18" rx="2.5"/><path d="M11 18h2"/>'),

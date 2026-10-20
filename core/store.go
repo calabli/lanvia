@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -41,6 +42,8 @@ type Item struct {
 
 	// 只出现在推给网页的副本里：正文被截断时的全文字数
 	TextLen int `json:"textLen,omitempty"`
+	// 只出现在 history.json 里：正文太长，存在 texts/<id>.txt
+	TextFile bool `json:"textFile,omitempty"`
 }
 
 // 推给网页的列表里每条最多带这么多字节的正文；更长的在预览、编辑时再取全文（GET /api/items/{id}）。
@@ -92,6 +95,10 @@ type Store struct {
 	tomb      map[string]int64
 	clearedAt int64
 	versions  map[string][]*TextVersion // 内容 ID -> 历史版本（含原始版本），只有被编辑过的才有
+	textDir   string                    // 长正文：texts/<id>.txt
+	verDir    string                    // 历史版本：versions/<id>.json
+	dirtyText map[string]bool           // 需要写入（或删除）长正文文件的内容
+	dirtyVer  map[string]bool           // 需要写入版本文件的内容
 	keepMs    atomic.Int64              // 历史保留时长（毫秒），0 表示永久
 	dirty     chan struct{}
 }
@@ -103,29 +110,109 @@ type storeFile struct {
 	Versions  map[string][]*TextVersion `json:"versions,omitempty"`
 }
 
+// 保存方式：history.json 只放索引（各条内容的元数据和短正文）；超过 16 KB 的正文放在 texts/<id>.txt，
+// 编辑历史放在 versions/<id>.json。每次变化只重写改动过的小文件，最后再写索引，
+// 所以即使中途断电，索引引用的文件也都已经在了。
 func openStore(dir string) *Store {
 	s := &Store{
-		path:     filepath.Join(dir, "history.json"),
-		blobDir:  filepath.Join(dir, "blobs"),
-		tomb:     map[string]int64{},
-		versions: map[string][]*TextVersion{},
-		dirty:    make(chan struct{}, 1),
+		path:      filepath.Join(dir, "history.json"),
+		blobDir:   filepath.Join(dir, "blobs"),
+		textDir:   filepath.Join(dir, "texts"),
+		verDir:    filepath.Join(dir, "versions"),
+		tomb:      map[string]int64{},
+		versions:  map[string][]*TextVersion{},
+		dirtyText: map[string]bool{},
+		dirtyVer:  map[string]bool{},
+		dirty:     make(chan struct{}, 1),
 	}
-	os.MkdirAll(s.blobDir, 0o700)
-	if b, err := os.ReadFile(s.path); err == nil {
-		var f storeFile
-		if json.Unmarshal(b, &f) == nil {
-			s.items, s.clearedAt = f.Items, f.ClearedAt
-			if f.Tomb != nil {
-				s.tomb = f.Tomb
+	for _, d := range []string{s.blobDir, s.textDir, s.verDir} {
+		os.MkdirAll(d, 0o700)
+	}
+	s.load()
+	go s.saver()
+	return s
+}
+
+func (s *Store) textPath(id string) string { return filepath.Join(s.textDir, id+".txt") }
+func (s *Store) verPath(id string) string  { return filepath.Join(s.verDir, id+".json") }
+
+func (s *Store) load() {
+	b, err := os.ReadFile(s.path)
+	if err != nil {
+		return
+	}
+	var f storeFile
+	if json.Unmarshal(b, &f) != nil {
+		return
+	}
+	s.clearedAt = f.ClearedAt
+	if f.Tomb != nil {
+		s.tomb = f.Tomb
+	}
+	migrate := len(f.Versions) > 0 // 旧版本把历史版本都放在 history.json 里
+	for _, it := range f.Items {
+		if it.TextFile {
+			t, err := os.ReadFile(s.textPath(it.ID))
+			if err != nil {
+				log.Printf("找不到正文文件，跳过：%s", it.ID)
+				continue
 			}
-			if f.Versions != nil {
-				s.versions = f.Versions
+			it.Text, it.TextFile = string(t), false
+		} else if len(it.Text) > previewBytes {
+			s.dirtyText[it.ID] = true // 旧格式的长正文：下次保存时移到单独的文件
+			migrate = true
+		}
+		s.items = append(s.items, it)
+	}
+	known := map[string]bool{}
+	for _, it := range s.items {
+		known[it.ID] = true
+	}
+	for id, vs := range f.Versions {
+		if known[id] {
+			s.versions[id], s.dirtyVer[id] = vs, true
+		}
+	}
+	// 读取版本文件，顺便清理没有对应内容的残留文件
+	if ents, err := os.ReadDir(s.verDir); err == nil {
+		for _, e := range ents {
+			id := strings.TrimSuffix(e.Name(), ".json")
+			if !known[id] {
+				os.Remove(filepath.Join(s.verDir, e.Name()))
+				continue
+			}
+			if _, done := s.versions[id]; done {
+				continue
+			}
+			if b, err := os.ReadFile(filepath.Join(s.verDir, e.Name())); err == nil {
+				var vs []*TextVersion
+				if json.Unmarshal(b, &vs) == nil && len(vs) > 0 {
+					s.versions[id] = vs
+				}
 			}
 		}
 	}
-	go s.saver()
-	return s
+	if ents, err := os.ReadDir(s.textDir); err == nil {
+		for _, e := range ents {
+			if !known[strings.TrimSuffix(e.Name(), ".txt")] {
+				os.Remove(filepath.Join(s.textDir, e.Name()))
+			}
+		}
+	}
+	if migrate {
+		log.Printf("正在把历史记录迁移为新的存储格式")
+		s.markDirty()
+	}
+}
+
+// dropFiles 删除一条内容在磁盘上的所有附属文件（调用方持有锁）。
+func (s *Store) dropFiles(id string) {
+	os.Remove(s.blobPath(id))
+	os.Remove(s.textPath(id))
+	os.Remove(s.verPath(id))
+	delete(s.versions, id)
+	delete(s.dirtyText, id)
+	delete(s.dirtyVer, id)
 }
 
 func (s *Store) blobPath(id string) string { return filepath.Join(s.blobDir, id) }
@@ -157,12 +244,14 @@ func (s *Store) Add(it *Item) bool {
 	s.items = append(s.items, nil)
 	copy(s.items[i+1:], s.items[i:])
 	s.items[i] = it
+	if len(it.Text) > previewBytes {
+		s.dirtyText[it.ID] = true
+	}
 	// 超过上限时从最旧的开始删，跳过“永久保留”的
 	for i := len(s.items) - 1; len(s.items) > maxItems && i >= 0; i-- {
 		if old := s.items[i]; !old.pinned() {
 			s.items = append(s.items[:i], s.items[i+1:]...)
-			os.Remove(s.blobPath(old.ID))
-			delete(s.versions, old.ID)
+			s.dropFiles(old.ID)
 		}
 	}
 	s.markDirty()
@@ -186,8 +275,7 @@ func (s *Store) Delete(id string) bool {
 			break
 		}
 	}
-	os.Remove(s.blobPath(id))
-	delete(s.versions, id)
+	s.dropFiles(id)
 	s.markDirty()
 	return true
 }
@@ -204,8 +292,7 @@ func (s *Store) Clear(ts int64) bool {
 		if x.TS > ts {
 			kept = append(kept, x)
 		} else {
-			os.Remove(s.blobPath(x.ID))
-			delete(s.versions, x.ID)
+			s.dropFiles(x.ID)
 		}
 	}
 	s.items = kept
@@ -228,8 +315,7 @@ func (s *Store) Prune() []string {
 	for _, x := range s.items {
 		if x.expired(now, k) {
 			gone = append(gone, x.ID)
-			os.Remove(s.blobPath(x.ID))
-			delete(s.versions, x.ID)
+			s.dropFiles(x.ID)
 		} else {
 			kept = append(kept, x)
 		}
@@ -361,6 +447,10 @@ func (s *Store) saver() {
 }
 
 func (s *Store) Flush() {
+	type textJob struct {
+		id, text string
+		large    bool
+	}
 	s.mu.Lock()
 	cut := time.Now().Add(-tombTTL).UnixMilli()
 	for k, v := range s.tomb {
@@ -368,15 +458,75 @@ func (s *Store) Flush() {
 			delete(s.tomb, k)
 		}
 	}
-	b, err := json.Marshal(storeFile{Items: s.items, Tomb: s.tomb, ClearedAt: s.clearedAt, Versions: s.versions})
+	// 在锁里整理好要写的数据，写文件放到锁外
+	index := make([]*Item, len(s.items))
+	byID := make(map[string]*Item, len(s.items))
+	for i, it := range s.items {
+		byID[it.ID] = it
+		if len(it.Text) > previewBytes {
+			c := *it
+			c.Text, c.TextFile = "", true
+			index[i] = &c
+		} else {
+			index[i] = it
+		}
+	}
+	var texts []textJob
+	for id := range s.dirtyText {
+		if it := byID[id]; it != nil {
+			texts = append(texts, textJob{id, it.Text, len(it.Text) > previewBytes})
+		}
+	}
+	vers := map[string][]*TextVersion{}
+	for id := range s.dirtyVer {
+		if vs, ok := s.versions[id]; ok && byID[id] != nil {
+			vers[id] = append([]*TextVersion(nil), vs...)
+		}
+	}
+	s.dirtyText, s.dirtyVer = map[string]bool{}, map[string]bool{}
+	b, err := json.Marshal(storeFile{Items: index, Tomb: s.tomb, ClearedAt: s.clearedAt})
 	s.mu.Unlock()
 	if err != nil {
 		return
 	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		log.Printf("保存历史失败: %v", err)
+
+	failed := false
+	for _, t := range texts {
+		if !t.large {
+			os.Remove(s.textPath(t.id)) // 编辑后变短了
+		} else if writeAtomic(s.textPath(t.id), []byte(t.text)) != nil {
+			failed = true
+		}
+	}
+	for id, vs := range vers {
+		vb, _ := json.Marshal(vs)
+		if writeAtomic(s.verPath(id), vb) != nil {
+			failed = true
+		}
+	}
+	if failed { // 附属文件没写成功就不更新索引，避免索引指向不存在的文件；下次再试
+		log.Printf("保存历史失败：写入正文或版本文件出错")
+		s.mu.Lock()
+		for _, t := range texts {
+			s.dirtyText[t.id] = true
+		}
+		for id := range vers {
+			s.dirtyVer[id] = true
+		}
+		s.mu.Unlock()
+		s.markDirty()
 		return
 	}
-	os.Rename(tmp, s.path)
+	if err := writeAtomic(s.path, b); err != nil {
+		log.Printf("保存历史失败: %v", err)
+	}
+}
+
+func writeAtomic(path string, b []byte) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, path)
 }

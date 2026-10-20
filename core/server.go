@@ -72,6 +72,10 @@ func (a *App) routes(web fs.FS) http.Handler {
 		writeJSON(w, 200, ok)
 	}))
 	m.HandleFunc("POST /api/items/{id}/edit", auth(a.handleEdit))
+	// 在被截断的长正文里全文搜索（短内容网页自己搜）
+	m.HandleFunc("GET /api/search", auth(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, a.SearchFull(trimRunes(r.URL.Query().Get("q"), 200)))
+	}))
 	// 单条内容的全文（列表里的长正文是截断的）
 	m.HandleFunc("GET /api/items/{id}", auth(func(w http.ResponseWriter, r *http.Request) {
 		it := a.store.Get(r.PathValue("id"))

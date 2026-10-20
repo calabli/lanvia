@@ -164,7 +164,7 @@ const I18N = (() => {
     '发送方和其他设备都不在线，或都没有这个文件': "Neither the sender nor any other device is online with this file",
     '快捷指令': 'Shortcuts',
     '正在加载全文…': 'Loading the full text…', '全文已加载（{0} 字），点此复制': 'Full text loaded ({0} chars). Tap to copy',
-    '加载失败：{0}': 'Loading failed: {0}', '{0}+ 行 · {1} 字': '{0}+ lines · {1} chars',
+    '加载失败：{0}': 'Loading failed: {0}', '在全文第 {0} 行找到：': 'Found on line {0} of the full text:', '{0}+ 行 · {1} 字': '{0}+ lines · {1} chars',
     // ---- 暂停、黑名单、通知 ----
     '暂停同步': 'Pause syncing', '15 分钟': '15 minutes', '1 小时': '1 hour', '直到手动恢复': 'Until I resume',
     '暂停期间本机复制的不发送，收到的不写入剪贴板（仍会出现在列表里）。': "While paused, copies here aren't sent and incoming items aren't written to the clipboard (they still appear in the list).",

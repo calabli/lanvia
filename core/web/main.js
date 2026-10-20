@@ -82,7 +82,7 @@ function bind() {
     switch (el.dataset.act) {
       case 'copy':
         if (el.classList.contains('text') && getSelection().toString()) return; // 正在选择文字
-        doCopy(it.text, el.classList.contains('btn') ? el : $('[data-act="copy"].btn', li), it.id);
+        copyItem(it, el.classList.contains('btn') ? el : $('[data-act="copy"].btn', li));
         break;
       case 'code': doCopy(el.dataset.v, el); break;
       case 'expand': li.classList.toggle('open'); el.textContent = li.classList.contains('open') ? '收起' : '展开全部'; break;
@@ -284,7 +284,7 @@ function bindPanel() {
       const it = S.view[S.sel];
       if (!it) return;
       e.preventDefault();
-      it.kind === 'text' ? doCopy(it.text, null, it.id) : saveLocal(it, 'reveal');
+      it.kind === 'text' ? copyItem(it) : saveLocal(it, 'reveal');
     } else if (e.key === 'Escape') { desktop('hide'); }
   });
   // 每次弹出都回到初始状态

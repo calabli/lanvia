@@ -67,7 +67,7 @@ function itemHTML(it, latest) {
       ${long ? `<button class="btn sm" data-act="preview">${ICON.expand}<span>预览</span></button>` : ''}
       <span class="smart">${smart}</span>
       <span class="spacer"></span>
-      <span class="muted small">${long ? textStats(it.text) : it.text.length > 60 ? it.text.length + ' 字' : ''}</span>
+      <span class="muted small">${long ? itemStats(it) : it.text.length > 60 ? it.text.length + ' 字' : ''}</span>
       <button class="icon-btn" data-act="edit" aria-label="编辑" title="编辑">${ICON.pencil}</button>
       <button class="icon-btn${it.fav ? ' on' : ''}" data-act="fav" aria-label="收藏" title="收藏">${it.fav ? ICON.starOn : ICON.star}</button>
       <button class="icon-btn" data-act="expiry" aria-label="保留时长" title="保留时长">${ICON.timer}</button>
@@ -77,6 +77,8 @@ function itemHTML(it, latest) {
 
 const isLong = it => it.kind === 'text' && (it.text.length > 280 || it.text.split('\n').length > 4);
 const textStats = t => { const n = t.split('\n').length; return (n > 1 ? n + ' 行 · ' : '') + t.length + ' 字'; };
+// 列表里的长正文是截断的：字数用全文的，行数只能说“以上”
+const itemStats = it => it.textLen ? `${it.text.split('\n').length}+ 行 · ${it.textLen} 字` : textStats(it.text);
 
 /* ---- 搜索：多个关键词（空格分隔）同时匹配；找不到时退回模糊匹配；按类型、设备、时间筛选 ---- */
 
@@ -278,10 +280,35 @@ function onIncoming(it) {
     const preview = it.text.replace(/\s+/g, ' ').slice(0, 36);
     // 电脑端已自动写入系统剪贴板，就不必再点
     if (S.local && S.info?.settings?.autoApply && S.info?.clipboard) toast(`来自 ${it.from}：已写入剪贴板`);
-    else toast(`${it.from}：${preview}`, { label: '复制', run: () => doCopy(it.text, null, it.id) });
+    else toast(`${it.from}：${preview}`, { label: '复制', run: () => copyItem(it) });
   } else {
     toast(`${it.from} 发来文件 ${it.name}`, { label: '下载', run: () => download(it) });
   }
+}
+
+/* ---- 长内容：列表里只有前 16 KB，全文按需加载 ---- */
+
+const FULL = new Map(); // id -> 完整内容
+
+async function loadFull(it) {
+  if (!it.textLen) return it;
+  const hit = FULL.get(it.id);
+  if (hit && hit.rev === it.rev) return hit;
+  const full = await api('GET', `/api/items/${it.id}`);
+  FULL.set(it.id, full);
+  return full;
+}
+
+// 复制一条文本。电脑上由 Lanvia 按 ID 写入系统剪贴板（总是全文）；
+// 手机上写剪贴板必须在点击的同一时刻完成，长内容第一次要先加载全文，再点一次“复制”。
+function copyItem(it, btn) {
+  if (!it.textLen || S.local) return doCopy(it.text, btn, it.id);
+  const hit = FULL.get(it.id);
+  if (hit && hit.rev === it.rev) return doCopy(hit.text, btn);
+  toast('正在加载全文…');
+  loadFull(it).then(
+    f => toast(`全文已加载（${f.text.length} 字），点此复制`, { label: '复制', run: () => doCopy(f.text) }),
+    e => toast('加载失败：' + e.message));
 }
 
 async function doCopy(text, btn, id) {

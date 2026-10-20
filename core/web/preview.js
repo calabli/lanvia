@@ -30,7 +30,11 @@ function openPreview(it, mode = 'view') {
   showPreview(it, mode);
 }
 
-function showPreview(it, mode = 'view') {
+async function showPreview(it, mode = 'view') {
+  // 列表里的长正文是截断的，预览前先取全文
+  if (it.textLen) {
+    try { it = await loadFull(it); } catch (e) { toast('加载失败：' + e.message); return; }
+  }
   PV = it;
   PVS.lang = it.kind === 'text' ? HL.detect(it.text) : null;
   PVS.mono = it.kind === 'text' ? (!!PVS.lang || looksLikeCode(it.text)) : false;
@@ -300,14 +304,17 @@ function diffHTML(ops) {
 /* ---- 列表数据更新（编辑同步过来时） ---- */
 
 function upsertItem(it) {
+  if (!it.textLen) FULL.delete(it.id); // 内容变了，缓存的全文作废（API 返回的完整内容另存）
+  else if (FULL.get(it.id)?.rev !== it.rev) FULL.delete(it.id);
   const i = S.items.findIndex(x => x.id === it.id);
   if (i >= 0) S.items[i] = it;
   renderList();
 }
 
-function onItemUpdated(it) {
+async function onItemUpdated(it) {
   upsertItem(it);
   if (PV?.id !== it.id) return;
+  if (it.textLen) { try { it = await loadFull(it); } catch { return; } }
   if (PVS.mode === 'edit') {
     // 正在编辑时别人改了：提示，不打断
     if (it.text !== PVS.base) {

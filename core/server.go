@@ -72,6 +72,15 @@ func (a *App) routes(web fs.FS) http.Handler {
 		writeJSON(w, 200, ok)
 	}))
 	m.HandleFunc("POST /api/items/{id}/edit", auth(a.handleEdit))
+	// 单条内容的全文（列表里的长正文是截断的）
+	m.HandleFunc("GET /api/items/{id}", auth(func(w http.ResponseWriter, r *http.Request) {
+		it := a.store.Get(r.PathValue("id"))
+		if it == nil {
+			errJSON(w, 404, "内容不存在")
+			return
+		}
+		writeJSON(w, 200, it)
+	}))
 	m.HandleFunc("GET /api/items/{id}/versions", auth(func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		it := a.store.Get(id)
@@ -328,7 +337,7 @@ func (a *App) handleEvents(w http.ResponseWriter, r *http.Request) {
 	w.Write(sseFrame("hello", map[string]any{
 		"you":   c.ID,
 		"node":  map[string]string{"id": self.ID, "name": self.Name, "os": runtime.GOOS},
-		"items": a.store.List(),
+		"items": clientItems(a.store.List()),
 		// 设备列表只在变化时推送；本机窗口连上时列表不变，所以首次连接必须带上当前列表
 		"devices": a.devices(),
 		"local":   c.Local,

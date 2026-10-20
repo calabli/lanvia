@@ -70,3 +70,14 @@ func (h *Hub) Broadcast(event string, v any) {
 }
 
 func nowMs() int64 { return time.Now().UnixMilli() }
+
+// bcastItem 把新增 / 更新的内容推给网页（长正文截断）。
+func (a *App) bcastItem(event string, it *Item) { a.hub.Broadcast(event, it.forClient()) }
+
+func clientItems(items []*Item) []*Item {
+	out := make([]*Item, len(items))
+	for i, it := range items {
+		out[i] = it.forClient()
+	}
+	return out
+}

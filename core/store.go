@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 )
 
 type Item struct {
@@ -37,6 +38,27 @@ type Item struct {
 	Fav   bool   `json:"fav,omitempty"`
 	Title string `json:"title,omitempty"` // 片段名称，例如“家里 WiFi”，可用于搜索
 	FavTS int64  `json:"favTs,omitempty"`
+
+	// 只出现在推给网页的副本里：正文被截断时的全文字数
+	TextLen int `json:"textLen,omitempty"`
+}
+
+// 推给网页的列表里每条最多带这么多字节的正文；更长的在预览、编辑时再取全文（GET /api/items/{id}）。
+// 节点之间同步历史仍然传全文。
+const previewBytes = 16 << 10
+
+// forClient 返回给网页列表用的副本：正文过长时截断，TextLen 记下全文字数。
+func (it *Item) forClient() *Item {
+	if it.Kind != "text" || len(it.Text) <= previewBytes {
+		return it
+	}
+	c := *it
+	cut := previewBytes
+	for cut > 0 && !utf8.RuneStart(c.Text[cut]) { // 不切断多字节字符
+		cut--
+	}
+	c.Text, c.TextLen = c.Text[:cut], utf8.RuneCountInString(it.Text)
+	return &c
 }
 
 // pinned 表示这条内容不应被自动清理：永久保留或已收藏。

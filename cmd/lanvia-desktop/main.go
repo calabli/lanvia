@@ -302,8 +302,12 @@ func (d *desktop) fillMenu() {
 	}
 	for _, it := range recent {
 		it := it
-		if it.Kind == "text" {
-			m.Add(menuLabel(it.Text)).OnClick(func(*application.Context) {
+		if it.Kind != "file" {
+			label := it.Text
+			if it.Kind == "todo" {
+				label = "☑ " + it.Text
+			}
+			m.Add(menuLabel(label)).OnClick(func(*application.Context) {
 				if err := d.node.CopyToClipboard(it.ID); err != nil {
 					log.Printf("复制失败: %v", err)
 				}
@@ -329,7 +333,7 @@ func (d *desktop) fillMenu() {
 				}
 			}
 			sub.Add(menuLabel(label)).OnClick(func(*application.Context) {
-				if it.Kind == "text" {
+				if it.Kind != "file" {
 					d.node.CopyToClipboard(it.ID)
 					d.flash(d.tr("已复制"))
 				} else if p, err := d.node.SaveFile(it.ID); err == nil {

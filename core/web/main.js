@@ -73,6 +73,17 @@ function bind() {
     });
   });
 
+  // 清单卡片里的“添加一项”
+  $('#list').addEventListener('submit', e => {
+    const form = e.target.closest('.todo-add');
+    if (!form) return;
+    e.preventDefault();
+    const inp = $('input', form), text = inp.value.trim(), it = S.items.find(x => x.id === form.closest('.item').dataset.id);
+    if (!text || !it) return;
+    inp.value = '';
+    todoChange(it, { add: [text] });
+  });
+  $('#todoBtn').onclick = newTodo;
   $('#list').addEventListener('click', e => {
     const el = e.target.closest('[data-act]');
     if (!el || e.target.closest('a')) return;
@@ -90,6 +101,17 @@ function bind() {
       case 'view': case 'preview': openPreview(it); break;
       case 'edit': openPreview(it, 'edit'); break;
       case 'comments': openPreview(it, 'comments'); break;
+      case 'todo-check': todoChange(it, { id: el.closest('[data-eid]').dataset.eid, done: el.checked }); break;
+      case 'todo-del': todoChange(it, { id: el.closest('[data-eid]').dataset.eid, del: true }); break;
+      case 'todo-edit': {
+        const eid = el.closest('[data-eid]').dataset.eid, cur = (it.todo || []).find(x => x.id === eid);
+        uiPrompt('修改这一项', { value: cur?.text || '', ok: '保存' }).then(v => { if (v !== null && v.trim() !== cur?.text) todoChange(it, { id: eid, text: v }); });
+        break;
+      }
+      case 'todo-title':
+        uiPrompt('清单名称', { value: it.text || '', ok: '保存' }).then(v => { if (v !== null && v.trim() !== it.text) todoChange(it, { title: v }); });
+        break;
+      case 'todo-clear': todoChange(it, { clear: true }); break;
       case 'expiry': openExpiryMenu(it, el); break;
       case 'fav': toggleFav(it, el); break;
       case 'delete':
@@ -302,7 +324,7 @@ function bindPanel() {
       const it = S.view[S.sel];
       if (!it) return;
       e.preventDefault();
-      it.kind === 'text' ? copyItem(it) : saveLocal(it, 'reveal');
+      it.kind === 'file' ? saveLocal(it, 'reveal') : copyItem(it);
     } else if (e.key === 'Escape') { desktop('hide'); }
   });
   // 每次弹出都回到初始状态

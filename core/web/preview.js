@@ -10,6 +10,7 @@ const PVS = { com: false, coms: null, comFor: null, mono: null, wrap: store.get(
 
 // 预览里显示的文本：JSON 可以切换为格式化后的样子
 function pvText() {
+  if (PV.kind === 'todo') return todoText(PV);
   if (PVS.fmt && PVS.lang === 'json' && PVS.mode === 'view') {
     try { return JSON.stringify(JSON.parse(PV.text), null, 2); } catch {}
   }
@@ -113,7 +114,7 @@ function renderPreview() {
   const edited = it.rev ? `<span class="badge soft"><span>已编辑</span> · <span data-raw>${esc(it.editedBy || '')}</span> <span>${relTime(it.editedAt)}</span></span>` : '';
   $('#pvMeta').innerHTML = `${kindIcon(fromDev?.kind)}<span class="from" data-raw>${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${edited}${expiryBadge(it)}
     ${PVS.lang ? `<span class="badge soft lang">${esc(HL.name(PVS.lang))}</span>` : ''}
-    <span class="pv-stat">${isText ? textStats(it.text) : esc(it.name) + ' · ' + fmtSize(it.size || 0)}</span>`;
+    <span class="pv-stat">${isText ? textStats(it.text) : it.kind === 'todo' ? `${todoLive(it).filter(e => e.done).length}/${todoLive(it).length}` : esc(it.name) + ' · ' + fmtSize(it.size || 0)}</span>`;
   const show = (id, on) => { $(id).hidden = !on; };
   show('#pvWrap', isText && m !== 'edit');
   show('#pvMono', isText);
@@ -133,7 +134,7 @@ function renderPreview() {
   renderComPanel();
   $('#pvHist').innerHTML = ICON.history + (it.rev ? `<span class="count">${it.rev + 1}</span>` : '');
   $('#pvDiff').textContent = PVS.diff ? '看全文' : '看改动';
-  $('#pvCopy').innerHTML = !isText ? `${ICON.download}<span>${S.local ? '保存' : '下载'}</span>`
+  $('#pvCopy').innerHTML = it.kind === 'todo' ? `${ICON.copy}<span>复制全部</span>` : !isText ? `${ICON.download}<span>${S.local ? '保存' : '下载'}</span>`
     : m === 'history' ? `${ICON.copy}<span>复制此版本</span>` : `${ICON.copy}<span>复制全部</span>`;
   const mod = KIND === 'mac' ? '⌘' : 'Ctrl+';
   $('#pvFoot').innerHTML = !isText ? '<span><kbd>esc</kbd> 关闭</span>'
@@ -214,10 +215,10 @@ async function closePreview() {
 
 async function previewCopyAll(andClose) {
   if (!PV) return;
-  if (PV.kind !== 'text') { download(PV); return; }
+  if (PV.kind === 'file') { download(PV); return; }
   const text = PVS.mode === 'history' ? (PVS.hist.find(v => v.id === PVS.sel)?.text ?? PV.text) : pvText();
   // 历史版本、格式化后的 JSON 和原文不同，不能按条目 ID 让服务端复制
-  const sameAsItem = PVS.mode !== 'history' && text === PV.text;
+  const sameAsItem = PV.kind === 'todo' || (PVS.mode !== 'history' && text === PV.text);
   await doCopy(text, andClose ? null : $('#pvCopy'), sameAsItem ? PV.id : null);
   if (andClose) closePreview();
 }

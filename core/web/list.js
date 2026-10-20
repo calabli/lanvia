@@ -36,6 +36,7 @@ function findCode(text) {
 function itemHTML(it, latest) {
   const fromDev = S.devices.find(d => d.name === it.from);
   const meta = `<div class="meta">${kindIcon(fromDev?.kind)}<span class="from" data-raw>${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${latest ? '<span class="badge">最新</span>' : ''}${it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改">已编辑</span>` : ''}${it.comments ? `<button class="badge soft com-badge" data-act="comments" title="${it.comments} 条评论">${ICON.comment}${it.comments}</button>` : ''}${it.fav ? '' : expiryBadge(it)}</div>${it.fav ? `<div class="fav-title">${ICON.starOn}${it.title ? `<span data-raw>${esc(it.title)}</span>` : '<span>已收藏</span>'}</div>` : ''}`;
+  if (it.kind === 'todo') return todoHTML(it, meta);
   if (it.kind === 'file') {
     const mime = it.mime || '';
     const isVid = /^video\//.test(mime);
@@ -87,6 +88,61 @@ function itemHTML(it, latest) {
     </div>`;
 }
 
+/* ---- 清单：直接在卡片上勾选、添加、修改、删除 ---- */
+
+const TODO_FOLD = 10; // 超过这么多项时先折叠
+const todoLive = it => (it.todo || []).filter(e => !e.del);
+// 纯文本形式（复制用），与 Go 端 Item.PlainText 相同
+const todoText = it => [it.text, ...todoLive(it).map(e => (e.done ? '- [x] ' : '- [ ] ') + e.text)].filter(Boolean).join('\n');
+
+function todoHTML(it, meta) {
+  const es = todoLive(it), open = es.filter(e => !e.done), done = es.filter(e => e.done);
+  const row = e => `<li class="todo-e${e.done ? ' done' : ''}" data-eid="${e.id}">
+      <label><input type="checkbox" data-act="todo-check"${e.done ? ' checked' : ''}><span class="todo-t" data-raw>${linkify(e.text)}</span></label>
+      <button class="icon-btn todo-x" data-act="todo-edit" aria-label="修改这一项" title="修改这一项">${ICON.pencil}</button>
+      <button class="icon-btn todo-x" data-act="todo-del" aria-label="删除这一项" title="删除这一项">${ICON.close}</button></li>`;
+  const pct = es.length ? Math.round(done.length / es.length * 100) : 0;
+  return `${meta}<div class="todo-head"><span class="todo-title" data-raw>${esc(it.text || '')}</span>${it.text ? '' : '<span class="todo-title muted">清单</span>'}
+      <span class="todo-prog muted small">${done.length}/${es.length}</span></div>
+    <div class="todo-bar" aria-hidden="true"><i style="width:${pct}%"></i></div>
+    <ul class="todo${es.length > TODO_FOLD ? ' fold' : ''}">${open.map(row).join('')}${done.map(row).join('')}</ul>
+    ${es.length > TODO_FOLD && !PANEL ? `<button class="more" data-act="expand">展开全部</button>` : ''}
+    ${PANEL ? '' : '<form class="todo-add"><input placeholder="添加一项…" maxlength="1000" autocomplete="off" enterkeyhint="done" aria-label="添加一项"></form>'}
+    <div class="actions">
+      <button class="btn sm" data-act="copy">${ICON.copy}<span>复制</span></button>
+      ${done.length ? '<button class="btn sm ghost" data-act="todo-clear">清除已完成</button>' : ''}
+      <span class="spacer"></span>
+      <button class="icon-btn" data-act="todo-title" aria-label="重命名" title="重命名">${ICON.pencil}</button>
+      <button class="icon-btn" data-act="comments" aria-label="评论" title="评论">${ICON.comment}</button>
+      <button class="icon-btn${it.fav ? ' on' : ''}" data-act="fav" aria-label="收藏" title="收藏">${it.fav ? ICON.starOn : ICON.star}</button>
+      <button class="icon-btn" data-act="delete" aria-label="删除">${ICON.trash}</button>
+    </div>`;
+}
+
+async function todoChange(it, change) {
+  try { upsertItem(await api('POST', `/api/items/${it.id}/todo`, { ...change, by: myName() })); }
+  catch (e) { toast('操作失败：' + e.message); renderList(); }
+}
+
+async function newTodo() {
+  const ta = $('#input'), lines = ta.value.split('\n').map(s => s.trim()).filter(Boolean);
+  let title = '';
+  if (lines.length) {
+    // 多行时，第一行不像清单项（没有 - [ ] 1. 之类的标记）就当标题
+    if (lines.length > 1 && !/^([-*•+]\s|\d{1,3}\.\s|\[.?\]|[☐☑✅])/.test(lines[0])) title = lines.shift();
+  } else {
+    title = await uiPrompt('清单名称', { placeholder: '例如：周末购物', ok: '创建' });
+    if (title === null) return;
+    title = title.trim() || '清单';
+  }
+  try {
+    const it = await api('POST', '/api/todo', { title, items: lines, from: myName() });
+    ta.value = ''; autosize(); updateSend();
+    upsertItem(it);
+    setTimeout(() => $(`.item[data-id="${it.id}"] .todo-add input`)?.focus(), 50);
+  } catch (e) { toast('创建失败：' + e.message); }
+}
+
 const isLong = it => it.kind === 'text' && (it.text.length > 280 || it.text.split('\n').length > 4);
 const textStats = t => { const n = t.split('\n').length; return (n > 1 ? n + ' 行 · ' : '') + t.length + ' 字'; };
 // 列表里的长正文是截断的：字数用全文的，行数只能说“以上”
@@ -94,7 +150,7 @@ const itemStats = it => it.textLen ? `${it.text.split('\n').length}+ 行 · ${it
 
 /* ---- 搜索：多个关键词（空格分隔）同时匹配；找不到时退回模糊匹配；按类型、设备、时间筛选 ---- */
 
-const haystack = it => ((it.title || '') + '\n' + (it.text || it.name || '') + '\n' + it.from).toLowerCase();
+const haystack = it => ((it.title || '') + '\n' + (it.text || it.name || '') + '\n' + it.from + (it.todo ? '\n' + todoLive(it).map(e => e.text).join('\n') : '')).toLowerCase();
 
 // 模糊匹配：关键词的字符按顺序出现即可，间隔越小越相关；间隔太大（长文本里碰巧凑齐）不算
 function fuzzyScore(h, q) {
@@ -218,6 +274,9 @@ function renderList() {
   const list = $('#list');
   const terms = S.fuzzy ? '' : (S.terms || []).join('\u0002');
   const wanted = [];
+  // 正在清单卡片里输入时卡片被重建（例如刚添加的一项同步回来）：重建后把焦点和输入的文字还回去
+  const ae = document.activeElement;
+  let refocus = ae?.matches?.('.todo-add input') ? { id: ae.closest('.item')?.dataset.id, value: ae.value } : null;
   items.slice(0, S.limit).forEach((it, i) => {
     const prev = ROWS.get(it.id);
     const latest = i === 0 && !f;
@@ -245,6 +304,10 @@ function renderList() {
   for (const el of wanted) {
     if (el === cur) { cur = cur.nextElementSibling; continue; }
     list.insertBefore(el, cur);
+  }
+  if (refocus && document.activeElement !== ae) {
+    const inp = $(`.item[data-id="${refocus.id}"] .todo-add input`);
+    if (inp) { inp.value = refocus.value; inp.focus(); }
   }
   const rest = items.length - Math.min(items.length, S.limit);
   $('#listMore').hidden = rest <= 0;
@@ -391,6 +454,7 @@ async function loadFull(it) {
 // 复制一条文本。电脑上由 Lanvia 按 ID 写入系统剪贴板（总是全文）；
 // 手机上写剪贴板必须在点击的同一时刻完成，长内容第一次要先加载全文，再点一次“复制”。
 function copyItem(it, btn) {
+  if (it.kind === 'todo') return doCopy(todoText(it), btn, it.id);
   if (!it.textLen || S.local) return doCopy(it.text, btn, it.id);
   const hit = FULL.get(it.id);
   if (hit && hit.rev === it.rev) return doCopy(hit.text, btn);

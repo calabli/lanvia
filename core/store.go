@@ -16,7 +16,7 @@ import (
 
 type Item struct {
 	ID     string `json:"id"`
-	Kind   string `json:"kind"` // text | file
+	Kind   string `json:"kind"` // text | file | todo（清单，见 todo.go）
 	Text   string `json:"text,omitempty"`
 	Name   string `json:"name,omitempty"`
 	Mime   string `json:"mime,omitempty"`
@@ -43,6 +43,10 @@ type Item struct {
 	// 未删除的评论数（见 comments.go），由本机根据评论计算
 	Comments int `json:"comments,omitempty"`
 
+	// 清单（Kind 为 todo）：各项，以及标题（Text）最近一次修改的时间
+	Todo   []*TodoEntry `json:"todo,omitempty"`
+	TextTS int64        `json:"textTs,omitempty"`
+
 	// 只出现在推给网页的副本里：正文被截断时的全文字数
 	TextLen int `json:"textLen,omitempty"`
 	// 只出现在 history.json 里：正文太长，存在 texts/<id>.txt
@@ -67,8 +71,8 @@ func (it *Item) forClient() *Item {
 	return &c
 }
 
-// pinned 表示这条内容不应被自动清理：永久保留或已收藏。
-func (it *Item) pinned() bool { return it.Keep || it.Fav }
+// pinned 表示这条内容不应被自动清理：永久保留、已收藏，或者是清单。
+func (it *Item) pinned() bool { return it.Keep || it.Fav || it.Kind == "todo" }
 
 // expired 判断一条内容是否已过期：单条设置优先，否则按本机的全局保留时长。
 func (it *Item) expired(now, keepMs int64) bool {
@@ -286,6 +290,9 @@ func (s *Store) Add(it *Item) bool {
 		}
 	}
 	it.Comments = liveComments(s.comments[it.ID]) // 对方算的评论数不作数，评论随后单独合并
+	if it.Kind == "todo" {
+		it.Todo, _ = mergeTodo(nil, it.Todo) // 整理顺序、去掉墓碑里的文字
+	}
 	i := sort.Search(len(s.items), func(i int) bool { return s.items[i].TS < it.TS })
 	s.items = append(s.items, nil)
 	copy(s.items[i+1:], s.items[i:])

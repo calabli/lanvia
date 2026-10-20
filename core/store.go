@@ -40,6 +40,9 @@ type Item struct {
 	Title string `json:"title,omitempty"` // 片段名称，例如“家里 WiFi”，可用于搜索
 	FavTS int64  `json:"favTs,omitempty"`
 
+	// 未删除的评论数（见 comments.go），由本机根据评论计算
+	Comments int `json:"comments,omitempty"`
+
 	// 只出现在推给网页的副本里：正文被截断时的全文字数
 	TextLen int `json:"textLen,omitempty"`
 	// 只出现在 history.json 里：正文太长，存在 texts/<id>.txt
@@ -97,6 +100,9 @@ type Store struct {
 	versions  map[string][]*TextVersion // 内容 ID -> 历史版本（含原始版本），只有被编辑过的才有
 	textDir   string                    // 长正文：texts/<id>.txt
 	verDir    string                    // 历史版本：versions/<id>.json
+	comments  map[string][]*Comment     // 内容 ID -> 评论（含已删除的墓碑），旧的在前
+	comDir    string                    // 评论：comments/<id>.json
+	dirtyCom  map[string]bool           // 需要写入评论文件的内容
 	dirtyText map[string]bool           // 需要写入（或删除）长正文文件的内容
 	dirtyVer  map[string]bool           // 需要写入版本文件的内容
 	seen      map[string]int64          // 每条内容在本机最后一次变化（新增、编辑、收藏、保留设置）的时间，用于增量同步
@@ -109,6 +115,7 @@ type storeFile struct {
 	Tomb      map[string]int64          `json:"tomb"`
 	ClearedAt int64                     `json:"clearedAt"`
 	Versions  map[string][]*TextVersion `json:"versions,omitempty"`
+	Comments  map[string][]*Comment     `json:"comments,omitempty"`
 	Seen      map[string]int64          `json:"seen,omitempty"` // 仅 history.json：每条内容在本机最后一次变化的时间
 	Now       int64                     `json:"now,omitempty"`  // 仅同步响应：响应方此刻的时间，下次增量同步从这里开始
 }
@@ -122,6 +129,9 @@ func openStore(dir string) *Store {
 		blobDir:   filepath.Join(dir, "blobs"),
 		textDir:   filepath.Join(dir, "texts"),
 		verDir:    filepath.Join(dir, "versions"),
+		comDir:    filepath.Join(dir, "comments"),
+		comments:  map[string][]*Comment{},
+		dirtyCom:  map[string]bool{},
 		tomb:      map[string]int64{},
 		versions:  map[string][]*TextVersion{},
 		dirtyText: map[string]bool{},
@@ -129,7 +139,7 @@ func openStore(dir string) *Store {
 		seen:      map[string]int64{},
 		dirty:     make(chan struct{}, 1),
 	}
-	for _, d := range []string{s.blobDir, s.textDir, s.verDir} {
+	for _, d := range []string{s.blobDir, s.textDir, s.verDir, s.comDir} {
 		os.MkdirAll(d, 0o700)
 	}
 	s.load()
@@ -139,6 +149,7 @@ func openStore(dir string) *Store {
 
 func (s *Store) textPath(id string) string { return filepath.Join(s.textDir, id+".txt") }
 func (s *Store) verPath(id string) string  { return filepath.Join(s.verDir, id+".json") }
+func (s *Store) comPath(id string) string  { return filepath.Join(s.comDir, id+".json") }
 
 func (s *Store) load() {
 	b, err := os.ReadFile(s.path)
@@ -202,6 +213,25 @@ func (s *Store) load() {
 			}
 		}
 	}
+	// 评论文件；评论数以文件为准重新计算
+	if ents, err := os.ReadDir(s.comDir); err == nil {
+		for _, e := range ents {
+			id := strings.TrimSuffix(e.Name(), ".json")
+			if !known[id] {
+				os.Remove(filepath.Join(s.comDir, e.Name()))
+				continue
+			}
+			if b, err := os.ReadFile(filepath.Join(s.comDir, e.Name())); err == nil {
+				var cs []*Comment
+				if json.Unmarshal(b, &cs) == nil {
+					s.comments[id] = cs
+				}
+			}
+		}
+	}
+	for _, it := range s.items {
+		it.Comments = liveComments(s.comments[it.ID])
+	}
 	if ents, err := os.ReadDir(s.textDir); err == nil {
 		for _, e := range ents {
 			if !known[strings.TrimSuffix(e.Name(), ".txt")] {
@@ -221,7 +251,10 @@ func (s *Store) dropFiles(id string) {
 	os.Remove(s.thumbPath(id))
 	os.Remove(s.textPath(id))
 	os.Remove(s.verPath(id))
+	os.Remove(s.comPath(id))
 	delete(s.versions, id)
+	delete(s.comments, id)
+	delete(s.dirtyCom, id)
 	delete(s.dirtyText, id)
 	delete(s.dirtyVer, id)
 	delete(s.seen, id)
@@ -252,6 +285,7 @@ func (s *Store) Add(it *Item) bool {
 			return false
 		}
 	}
+	it.Comments = liveComments(s.comments[it.ID]) // 对方算的评论数不作数，评论随后单独合并
 	i := sort.Search(len(s.items), func(i int) bool { return s.items[i].TS < it.TS })
 	s.items = append(s.items, nil)
 	copy(s.items[i+1:], s.items[i:])
@@ -438,7 +472,7 @@ func (s *Store) LatestText() *Item {
 func (s *Store) Snapshot(since int64) storeFile {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := storeFile{Items: []*Item{}, Tomb: map[string]int64{}, ClearedAt: s.clearedAt, Versions: map[string][]*TextVersion{}, Now: nowMs()}
+	out := storeFile{Items: []*Item{}, Tomb: map[string]int64{}, ClearedAt: s.clearedAt, Versions: map[string][]*TextVersion{}, Comments: map[string][]*Comment{}, Now: nowMs()}
 	for k, v := range s.tomb {
 		if v > since {
 			out.Tomb[k] = v
@@ -451,6 +485,9 @@ func (s *Store) Snapshot(since int64) storeFile {
 		out.Items = append(out.Items, it)
 		if vs, ok := s.versions[it.ID]; ok {
 			out.Versions[it.ID] = append([]*TextVersion(nil), vs...)
+		}
+		if cs, ok := s.comments[it.ID]; ok && len(cs) > 0 {
+			out.Comments[it.ID] = append([]*Comment(nil), cs...)
 		}
 	}
 	return out
@@ -510,7 +547,13 @@ func (s *Store) Flush() {
 			vers[id] = append([]*TextVersion(nil), vs...)
 		}
 	}
-	s.dirtyText, s.dirtyVer = map[string]bool{}, map[string]bool{}
+	coms := map[string][]*Comment{}
+	for id := range s.dirtyCom {
+		if cs, ok := s.comments[id]; ok && byID[id] != nil {
+			coms[id] = append([]*Comment(nil), cs...)
+		}
+	}
+	s.dirtyText, s.dirtyVer, s.dirtyCom = map[string]bool{}, map[string]bool{}, map[string]bool{}
 	b, err := json.Marshal(storeFile{Items: index, Tomb: s.tomb, ClearedAt: s.clearedAt, Seen: s.seen})
 	s.mu.Unlock()
 	if err != nil {
@@ -531,6 +574,12 @@ func (s *Store) Flush() {
 			failed = true
 		}
 	}
+	for id, cs := range coms {
+		cb, _ := json.Marshal(cs)
+		if writeAtomic(s.comPath(id), cb) != nil {
+			failed = true
+		}
+	}
 	if failed { // 附属文件没写成功就不更新索引，避免索引指向不存在的文件；下次再试
 		log.Print(L("保存历史失败：写入正文或版本文件出错", "Saving history failed: couldn't write text or version files"))
 		s.mu.Lock()
@@ -539,6 +588,9 @@ func (s *Store) Flush() {
 		}
 		for id := range vers {
 			s.dirtyVer[id] = true
+		}
+		for id := range coms {
+			s.dirtyCom[id] = true
 		}
 		s.mu.Unlock()
 		s.markDirty()

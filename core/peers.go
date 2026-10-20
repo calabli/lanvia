@@ -452,11 +452,12 @@ func (p *Peers) syncHistory(id, addr string) {
 }
 
 type Envelope struct {
-	Op      string       `json:"op"` // add | delete | clear | edit | meta | fav | sync
+	Op      string       `json:"op"` // add | delete | clear | edit | meta | fav | comment | sync
 	Item    *Item        `json:"item,omitempty"`
 	ID      string       `json:"id,omitempty"`
 	TS      int64        `json:"ts,omitempty"`
 	Version *TextVersion `json:"version,omitempty"` // edit：新版本
+	Comment *Comment     `json:"comment,omitempty"` // comment：新增或删除的评论
 	Snap    *storeFile   `json:"snap,omitempty"`    // sync：从其他设备同步来、需要继续转发的内容
 }
 

@@ -89,6 +89,7 @@ function bind() {
       case 'download': download(it); break;
       case 'view': case 'preview': openPreview(it); break;
       case 'edit': openPreview(it, 'edit'); break;
+      case 'comments': openPreview(it, 'comments'); break;
       case 'expiry': openExpiryMenu(it, el); break;
       case 'fav': toggleFav(it, el); break;
       case 'delete':

@@ -173,7 +173,8 @@ func (d *desktop) build() {
 		}
 		return true
 	})
-	d.node.OnChange(d.refreshMenu)
+	core.SetLanguage(d.lang()) // 日志跟随界面语言
+	d.node.OnChange(func() { core.SetLanguage(d.lang()); d.refreshMenu() })
 	d.node.OnIncoming(d.notify.incoming)
 	go d.update.loop()
 

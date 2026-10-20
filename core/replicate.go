@@ -145,6 +145,6 @@ func (a *App) fetchOne(id string) {
 		return
 	}
 	if err := os.Rename(part, a.store.blobPath(id)); err == nil {
-		log.Printf("已备份文件到本机: %s", it.Name)
+		log.Printf(L("已备份文件到本机: %s", "Backed up file: %s"), it.Name)
 	}
 }

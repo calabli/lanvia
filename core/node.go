@@ -37,7 +37,7 @@ func Open(o Options) (*App, error) {
 	}
 	cfg, err := loadConfig(o.DataDir)
 	if err != nil {
-		return nil, fmt.Errorf("读取配置失败: %w", err)
+		return nil, fmt.Errorf(L("读取配置失败: %w", "Reading configuration failed: %w"), err)
 	}
 	if o.Port != 0 {
 		cfg.Port = o.Port
@@ -48,7 +48,7 @@ func Open(o Options) (*App, error) {
 	if o.Join != "" {
 		c := normalizeCode(o.Join)
 		if len(c) != codeLen {
-			return nil, fmt.Errorf("配对码应为 %d 位", codeLen)
+			return nil, fmt.Errorf(L("配对码应为 %d 位", "The pairing code has %d characters"), codeLen)
 		}
 		cfg.Code = c
 	}
@@ -71,13 +71,25 @@ func Open(o Options) (*App, error) {
 }
 
 // ErrPortInUse 通常意味着已经有一个 Lanvia 在运行（命令行版或桌面版）。
-var ErrPortInUse = errors.New("端口已被占用")
+var ErrPortInUse = errors.New("port in use")
+
+// portError 的说明文字按当前语言显示，同时可以用 errors.Is(err, ErrPortInUse) 判断。
+type portError struct {
+	port int
+	err  error
+}
+
+func (e *portError) Error() string {
+	return fmt.Sprintf("%s (%d): %v", L("端口已被占用", "Port already in use"), e.port, e.err)
+}
+func (e *portError) Is(target error) bool { return target == ErrPortInUse }
+func (e *portError) Unwrap() error        { return e.err }
 
 // Start 监听端口并启动后台任务，成功后立即返回。
 func (a *App) Start() error {
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", a.Port()))
 	if err != nil {
-		return fmt.Errorf("%w（%d）: %v", ErrPortInUse, a.Port(), err)
+		return &portError{a.Port(), err}
 	}
 	web, _ := fs.Sub(webFS, "web")
 	go a.peers.start()

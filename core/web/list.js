@@ -60,7 +60,12 @@ function itemHTML(it, latest) {
     code ? `<button class="btn sm" data-act="code" data-v="${esc(code)}">${ICON.key}复制验证码 ${esc(code)}</button>` : '',
     url && url.length < it.text.length + 1 ? `<a class="btn sm" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${ICON.link}打开链接</a>` : '',
   ].join('');
-  return `${meta}<div class="text" data-act="copy" data-raw>${linkify(it.text)}</div>
+  // 只在全文（摘要之外）里搜到时，显示命中位置的前后文
+  const dh = deepHit(it);
+  const terms = S.terms || [];
+  const deep = dh && !terms.every(t => haystack(it).includes(t))
+    ? `<div class="deep-hit"><span>在全文第 ${dh.line} 行找到：</span><span class="deep-snip" data-raw>${esc(dh.snippet)}</span></div>` : '';
+  return `${meta}<div class="text" data-act="copy" data-raw>${linkify(it.text)}</div>${deep}
     ${long && !PANEL ? '<button class="more" data-act="expand">展开全部</button>' : ''}
     <div class="actions">
       <button class="btn sm" data-act="copy">${ICON.copy}<span>复制</span></button>
@@ -96,6 +101,27 @@ function fuzzyScore(h, q) {
   return gaps <= q.length * 6 ? gaps : -1;
 }
 
+// 长正文的列表里只有前 16 KB，超出部分请节点在全文里搜：{ q, hits: Map(id -> { line, snippet }) }
+S.deep = { q: '', hits: new Map() };
+let deepTimer;
+
+function deepSearch() {
+  const q = S.filter.trim();
+  clearTimeout(deepTimer);
+  if (!q || !S.items.some(it => it.textLen)) { S.deep = { q: '', hits: new Map() }; return; }
+  if (S.deep.q === q) return;
+  deepTimer = setTimeout(async () => {
+    try {
+      const hits = await api('GET', '/api/search?q=' + encodeURIComponent(q));
+      if (S.filter.trim() !== q) return; // 已经改了关键词
+      S.deep = { q, hits: new Map(hits.map(h => [h.id, h])) };
+      renderList();
+    } catch {}
+  }, 250);
+}
+
+const deepHit = it => (S.deep.q && S.deep.q === S.filter.trim() ? S.deep.hits.get(it.id) : undefined);
+
 function searchItems() {
   const now = Date.now() + S.offset;
   const base = S.items.filter(it =>
@@ -105,7 +131,7 @@ function searchItems() {
   const terms = S.filter.trim().toLowerCase().split(/\s+/).filter(Boolean);
   S.terms = terms; S.fuzzy = false;
   if (!terms.length) return base;
-  const exact = base.filter(it => { const h = haystack(it); return terms.every(t => h.includes(t)); });
+  const exact = base.filter(it => { const h = haystack(it); return terms.every(t => h.includes(t)) || deepHit(it); });
   if (exact.length) return exact;
   const q = terms.join('');
   const scored = base.map(it => [fuzzyScore(haystack(it), q), it]).filter(x => x[0] >= 0).sort((a, b) => a[0] - b[0]);
@@ -117,7 +143,7 @@ function searchItems() {
 function markTerms(root, terms) {
   if (!terms.length) return;
   const re = new RegExp(terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi');
-  root.querySelectorAll('.text, .fav-title span, .file-name').forEach(el => {
+  root.querySelectorAll('.text, .fav-title span, .file-name, .deep-snip').forEach(el => {
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     const nodes = [];
     while (walker.nextNode()) nodes.push(walker.currentNode);

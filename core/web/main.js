@@ -97,7 +97,7 @@ function bind() {
     }
   });
 
-  $('#search').addEventListener('input', e => { S.filter = e.target.value; renderList(); });
+  $('#search').addEventListener('input', e => { S.filter = e.target.value; renderList(); deepSearch(); });
   $('#fromFilter').onchange = e => { S.from = e.target.value; renderList(); };
   $('#timeFilter').onchange = e => { S.since = +e.target.value; renderList(); };
   $('#list').addEventListener('dblclick', e => {

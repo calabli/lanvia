@@ -2,6 +2,8 @@ package core
 
 import (
 	"errors"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -30,9 +32,17 @@ func (c *ClipWatcher) run() {
 	if !c.ok {
 		return
 	}
+	wasIdle := false
 	for {
 		time.Sleep(500 * time.Millisecond)
-		if !c.a.cfgSnapshot().Watch {
+		// 被动模式或暂停中不发送；恢复时把当前剪贴板记为已处理，不补发这段时间复制的内容
+		if !c.a.cfgSnapshot().Watch || c.a.Paused() {
+			wasIdle = true
+			continue
+		}
+		if wasIdle {
+			wasIdle = false
+			c.resync()
 			continue
 		}
 		c.mu.Lock()
@@ -51,6 +61,10 @@ func (c *ClipWatcher) run() {
 		}
 		// 只在内容变化时检查一次：复制的是文件（只共享拖拽进来的文件）或被标记为敏感的内容就不发送
 		if skipClipboardChange() {
+			continue
+		}
+		// 在黑名单里的应用中复制的不发送
+		if id, name := frontApp(); c.a.noteApp(id, name) {
 			continue
 		}
 		c.a.newText(txt, c.a.cfgSnapshot().Name, false)
@@ -131,4 +145,91 @@ func (a *App) SendClipboard() (*Item, error) {
 		return l, nil // 已经是最新一条，不重复发送
 	}
 	return a.newText(txt, a.cfgSnapshot().Name, false), nil
+}
+
+// ---- 暂停同步 ----
+
+// Paused 表示暂停中：本机复制的不发送，收到的不写入剪贴板（仍会出现在列表里）。
+func (a *App) Paused() bool {
+	pu := a.cfgSnapshot().PausedUntil
+	return pu == -1 || pu > nowMs()
+}
+
+// Pause 暂停一段时间；d < 0 表示直到手动恢复，d == 0 表示恢复。
+func (a *App) Pause(d time.Duration) {
+	var until int64
+	switch {
+	case d < 0:
+		until = -1
+	case d > 0:
+		until = nowMs() + d.Milliseconds()
+	}
+	if until == 0 {
+		a.clip.resync()
+	}
+	a.updateCfg(func(c *Config) { c.PausedUntil = until })
+}
+
+// autoResume 到点后清掉暂停状态（让界面和托盘及时更新）。
+func (a *App) autoResume() {
+	if pu := a.cfgSnapshot().PausedUntil; pu > 0 && pu <= nowMs() {
+		a.updateCfg(func(c *Config) { c.PausedUntil = 0 })
+	}
+}
+
+// ---- 应用黑名单 ----
+
+// SourceApp 是复制内容时位于最前面的应用。
+type SourceApp struct {
+	ID   string `json:"id"`   // macOS 为 bundle id，Windows 为进程名（如 chrome.exe）
+	Name string `json:"name"` // 显示名
+	Seen int64  `json:"seen"`
+}
+
+var (
+	recentMu   sync.Mutex
+	recentApps = map[string]*SourceApp{}
+)
+
+// noteApp 记下最近复制来源，返回这个应用是否在黑名单里。
+func (a *App) noteApp(id, name string) bool {
+	if id == "" && name == "" {
+		return false
+	}
+	key := strings.ToLower(id + "|" + name)
+	recentMu.Lock()
+	recentApps[key] = &SourceApp{ID: id, Name: name, Seen: nowMs()}
+	if len(recentApps) > 20 {
+		var oldest string
+		for k, v := range recentApps {
+			if oldest == "" || v.Seen < recentApps[oldest].Seen {
+				oldest = k
+			}
+		}
+		delete(recentApps, oldest)
+	}
+	recentMu.Unlock()
+	return a.blocked(id, name)
+}
+
+func (a *App) blocked(id, name string) bool {
+	for _, b := range a.cfgSnapshot().BlockApps {
+		b = strings.TrimSpace(b)
+		if b != "" && (strings.EqualFold(b, id) || strings.EqualFold(b, name)) {
+			return true
+		}
+	}
+	return false
+}
+
+// RecentApps 返回最近复制过内容的应用，新的在前。
+func (a *App) RecentApps() []SourceApp {
+	recentMu.Lock()
+	defer recentMu.Unlock()
+	out := make([]SourceApp, 0, len(recentApps))
+	for _, v := range recentApps {
+		out = append(out, *v)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Seen > out[j].Seen })
+	return out
 }

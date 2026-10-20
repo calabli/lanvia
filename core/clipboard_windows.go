@@ -3,6 +3,7 @@ package core
 import (
 	"errors"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -129,3 +130,37 @@ func writeClipboard(s string) error {
 
 // Windows 复制文件时剪贴板里没有文字，敏感内容在 readClipboard 里已经跳过。
 func skipClipboardChange() bool { return false }
+
+var (
+	pGetForegroundWindow        = user32.NewProc("GetForegroundWindow")
+	pGetWindowThreadProcessId   = user32.NewProc("GetWindowThreadProcessId")
+	pOpenProcess                = kernel32.NewProc("OpenProcess")
+	pCloseHandle                = kernel32.NewProc("CloseHandle")
+	pQueryFullProcessImageNameW = kernel32.NewProc("QueryFullProcessImageNameW")
+)
+
+// frontApp 返回前台窗口所属进程的文件名（例如 chrome.exe）。
+func frontApp() (id, name string) {
+	hwnd, _, _ := pGetForegroundWindow.Call()
+	if hwnd == 0 {
+		return "", ""
+	}
+	var pid uint32
+	pGetWindowThreadProcessId.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
+	const processQueryLimitedInformation = 0x1000
+	h, _, _ := pOpenProcess.Call(processQueryLimitedInformation, 0, uintptr(pid))
+	if h == 0 {
+		return "", ""
+	}
+	defer pCloseHandle.Call(h)
+	buf := make([]uint16, 1024)
+	size := uint32(len(buf))
+	if r, _, _ := pQueryFullProcessImageNameW.Call(h, 0, uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size))); r == 0 {
+		return "", ""
+	}
+	path := syscall.UTF16ToString(buf[:size])
+	if i := strings.LastIndexAny(path, `\\/`); i >= 0 {
+		path = path[i+1:]
+	}
+	return path, strings.TrimSuffix(path, ".exe")
+}

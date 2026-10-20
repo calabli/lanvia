@@ -4,6 +4,8 @@ go 1.26.0
 
 require rsc.io/qr v0.2.0
 
+require git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect
+
 require (
 	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/coder/websocket v1.8.14 // indirect

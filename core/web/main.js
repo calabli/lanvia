@@ -143,7 +143,26 @@ function bind() {
   $('#urlSelect').onchange = drawQR;
   $('#nodeName').addEventListener('change', e => e.target.value.trim() && saveSettings({ name: e.target.value.trim() }));
   document.querySelectorAll('input[name="sendMode"]').forEach(r => { r.onchange = () => setMode(r.value === 'active'); });
-  $('#modeBtn').onclick = () => setMode(!S.info?.settings?.watch);
+  $('#modeBtn').onclick = () => (isPaused() ? pause(0) : setMode(!S.info?.settings?.watch));
+  $('#pauseRow').addEventListener('click', e => { const b = e.target.closest('[data-pause]'); if (b) pause(+b.dataset.pause); });
+  $('#optNotify').onchange = e => saveSettings({ notify: e.target.checked });
+  $('#blockForm').onsubmit = e => {
+    e.preventDefault();
+    const v = $('#blockInput').value.trim();
+    if (!v) return;
+    $('#blockInput').value = '';
+    setBlockList([...(S.info?.settings?.blockApps || []), v]);
+  };
+  $('#blockList').addEventListener('click', e => {
+    const b = e.target.closest('[data-unblock]');
+    if (b) setBlockList((S.info?.settings?.blockApps || []).filter(a => a !== b.dataset.unblock));
+  });
+  $('#recentApps').addEventListener('click', e => {
+    const b = e.target.closest('[data-block]');
+    if (b) setBlockList([...(S.info?.settings?.blockApps || []), b.dataset.block]);
+  });
+  // 暂停到点后界面自动恢复显示
+  setInterval(() => { if (S.local && S.info && pausedUntil() > 0) renderMode(); }, 30e3);
   $('#clipSend').onclick = sendClipboard;
   bindExpiryMenu();
   addEventListener('focus', refreshClip);

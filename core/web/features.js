@@ -6,9 +6,14 @@
 
 const isActive = () => S.info?.settings?.watch !== false;
 
+const pausedUntil = () => S.info?.settings?.pausedUntil || 0;
+const isPaused = () => { const p = pausedUntil(); return p === -1 || p > Date.now() + S.offset; };
+const hhmm = ms => new Date(ms).toTimeString().slice(0, 5);
+
 function renderMode() {
   if (!S.local || !S.info) return;
   const active = isActive();
+  renderPause();
   document.querySelectorAll('input[name="sendMode"]').forEach(r => { r.checked = (r.value === 'active') === active; });
   $('#modeHint').textContent = active
     ? '在这台电脑上复制文字，会自动发送到所有设备。'
@@ -16,11 +21,60 @@ function renderMode() {
   const b = $('#modeBtn');
   b.hidden = PREVIEW;
   b.classList.toggle('passive', !active);
-  b.innerHTML = `<span class="mode-dot"></span>${active ? '主动' : '被动'}`;
-  b.title = active ? '主动模式：复制即发送。点击切换为被动模式' : '被动模式：手动发送。点击切换为主动模式';
+  b.classList.toggle('paused', isPaused());
+  if (isPaused()) {
+    const p = pausedUntil();
+    b.innerHTML = `<span class="mode-dot"></span><span>已暂停</span>${p > 0 ? ` <span>· 到 ${hhmm(p)}</span>` : ''}`;
+    b.title = '同步已暂停，点击恢复';
+  } else {
+    b.innerHTML = `<span class="mode-dot"></span>${active ? '主动' : '被动'}`;
+    b.title = active ? '主动模式：复制即发送。点击切换为被动模式' : '被动模式：手动发送。点击切换为主动模式';
+  }
   $('#clipCard').hidden = active || PREVIEW;
   $('#clipHint').textContent = '也可以在托盘菜单里选“发送当前剪贴板”';
   if (!active) refreshClip();
+}
+
+/* ---- 暂停同步 ---- */
+
+function renderPause() {
+  const row = $('#pauseRow');
+  if (!row) return;
+  if (isPaused()) {
+    const p = pausedUntil();
+    row.innerHTML = `<span class="paused-text">${p > 0 ? `已暂停到 ${hhmm(p)}` : '已暂停，直到手动恢复'}</span><button class="btn sm primary" data-pause="0">恢复同步</button>`;
+  } else {
+    row.innerHTML = [[15, '15 分钟'], [60, '1 小时'], [-1, '直到手动恢复']]
+      .map(([m, l]) => `<button class="btn sm" data-pause="${m}">${l}</button>`).join('');
+  }
+}
+
+async function pause(minutes) {
+  try {
+    S.info = await api('POST', '/api/pause', { minutes });
+    renderMode();
+    toast(minutes === 0 ? '已恢复同步' : '已暂停同步');
+  } catch (e) { toast(e.message); }
+}
+
+/* ---- 应用黑名单 ---- */
+
+function renderBlock() {
+  const list = S.info?.settings?.blockApps || [];
+  $('#blockList').innerHTML = list.map(a =>
+    `<span class="chip-item"><span data-raw>${esc(a)}</span><button class="icon-btn" data-unblock="${esc(a)}" aria-label="移除">${ICON.close}</button></span>`).join('')
+    || '<span class="muted small">还没有添加</span>';
+  const lower = new Set(list.map(a => a.toLowerCase()));
+  const recent = (S.info?.recentApps || []).filter(a => !lower.has((a.name || '').toLowerCase()) && !lower.has((a.id || '').toLowerCase()));
+  $('#recentApps').innerHTML = recent.length
+    ? '<span class="muted small">最近复制来源：</span>' + recent.slice(0, 8).map(a =>
+      `<button class="chip-item add" data-block="${esc(a.name || a.id)}" title="${esc(a.id)}">＋ <span data-raw>${esc(a.name || a.id)}</span></button>`).join('')
+    : '';
+}
+
+async function setBlockList(list) {
+  await saveSettings({ blockApps: list });
+  renderBlock();
 }
 
 async function setMode(active) {

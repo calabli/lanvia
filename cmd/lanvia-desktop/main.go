@@ -36,6 +36,8 @@ type desktop struct {
 	panel   *application.WebviewWindow
 	main    *application.WebviewWindow
 	preview *application.WebviewWindow
+	notify  *notifier
+	update  *updater
 
 	mu      sync.Mutex
 	pending bool
@@ -48,7 +50,10 @@ func main() {
 	}
 
 	d := &desktop{node: node}
+	d.notify = newNotifier(d)
+	d.update = newUpdater(d)
 	d.app = application.New(application.Options{
+		Services:    []application.Service{application.NewService(d.notify.ns)},
 		Name:        "Lanvia",
 		Description: "局域网内多设备即时共享剪贴板与文件",
 		// 页面由 core 在 localhost 上提供，这里不需要打包前端资源
@@ -156,12 +161,9 @@ func (d *desktop) build() {
 			if id == "" {
 				return false
 			}
-			mode := map[string]string{"preview": "view", "edit": "edit", "history": "history"}[action]
-			d.panel.Hide()
-			d.preview.SetURL(base + "/?desktop=preview&id=" + id + "&mode=" + mode)
-			d.preview.SetAlwaysOnTop(true)
-			d.preview.Show()
-			d.preview.Focus()
+			d.openPreviewMode(id, map[string]string{"preview": "view", "edit": "edit", "history": "history"}[action])
+		case "update":
+			go d.update.install()
 		case "hide-preview":
 			d.preview.Hide()
 		case "pin", "unpin":
@@ -172,6 +174,8 @@ func (d *desktop) build() {
 		return true
 	})
 	d.node.OnChange(d.refreshMenu)
+	d.node.OnIncoming(d.notify.incoming)
+	go d.update.loop()
 
 	// 第一次使用（还没有任何内容）时打开主窗口，方便扫码配对
 	if len(d.node.Recent(1)) == 0 {
@@ -187,6 +191,26 @@ func (d *desktop) togglePanel() {
 	d.panel.Center()
 	d.panel.Show()
 	d.panel.Focus()
+}
+
+func (d *desktop) openPreviewMode(id, mode string) {
+	d.panel.Hide()
+	d.preview.SetURL(d.node.LocalURL() + "/?desktop=preview&id=" + id + "&mode=" + mode)
+	d.preview.SetAlwaysOnTop(true)
+	d.preview.Show()
+	d.preview.Focus()
+}
+
+func (d *desktop) openPreview(id string) { d.openPreviewMode(id, "view") }
+
+// anyWindowFocused：有 Lanvia 窗口在前台时，页面里已经有提示，不再弹系统通知。
+func (d *desktop) anyWindowFocused() bool {
+	for _, w := range []*application.WebviewWindow{d.panel, d.main, d.preview} {
+		if w != nil && w.IsVisible() && w.IsFocused() {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *desktop) showMain() {
@@ -289,6 +313,19 @@ func (d *desktop) fillMenu() {
 	m.AddRadio(d.tr("主动模式 · 复制即发送"), s.Watch).OnClick(func(*application.Context) { d.node.SetWatch(true) })
 	m.AddRadio(d.tr("被动模式 · 手动发送"), !s.Watch).OnClick(func(*application.Context) { d.node.SetWatch(false) })
 	m.Add(d.tr("发送当前剪贴板")).OnClick(func(*application.Context) { d.sendClipboard() })
+	// 暂停同步：本机复制的不发送，收到的不写入剪贴板
+	if until := d.node.PausedUntil(); until != 0 {
+		label := d.tr("恢复同步（已暂停）")
+		if until > 0 {
+			label = fmt.Sprintf(d.tr("恢复同步（暂停到 %s）"), time.UnixMilli(until).Format("15:04"))
+		}
+		m.Add(label).OnClick(func(*application.Context) { d.node.Pause(0) })
+	} else {
+		ps := m.AddSubmenu(d.tr("暂停同步"))
+		ps.Add(d.tr("15 分钟")).OnClick(func(*application.Context) { d.node.Pause(15 * time.Minute) })
+		ps.Add(d.tr("1 小时")).OnClick(func(*application.Context) { d.node.Pause(time.Hour) })
+		ps.Add(d.tr("直到手动恢复")).OnClick(func(*application.Context) { d.node.Pause(-1) })
+	}
 	m.AddSeparator()
 	m.AddCheckbox(d.tr("自动写入本机剪贴板"), s.AutoApply).OnClick(func(c *application.Context) {
 		d.node.SetAutoApply(c.IsChecked())
@@ -311,6 +348,7 @@ func (d *desktop) fillMenu() {
 	m.Add(d.tr("打开主窗口…")).OnClick(func(*application.Context) { d.showMain() })
 	m.Add(d.tr("配对码  ") + d.node.Code()).SetEnabled(false)
 	m.AddSeparator()
+	d.update.menuItem(m)
 	m.Add(d.tr("退出 Lanvia")).OnClick(func(*application.Context) { d.app.Quit() })
 }
 

@@ -25,6 +25,12 @@ type Settings struct {
 	StrictEnc bool `json:"strictEnc"`
 	// 界面语言：空为跟随系统，"zh" 或 "en"。本机的网页窗口和托盘菜单共用
 	Lang string `json:"lang"`
+	// 收到其他设备的内容时弹出系统通知（桌面版）
+	Notify bool `json:"notify"`
+	// 暂停同步到这个时间（毫秒）；-1 表示直到手动恢复，0 表示没有暂停
+	PausedUntil int64 `json:"pausedUntil"`
+	// 应用黑名单：在这些应用里复制的内容不发送（bundle id / 进程名 / 应用名，不区分大小写）
+	BlockApps []string `json:"blockApps"`
 }
 
 const (
@@ -76,9 +82,12 @@ func loadConfig(dir string) (*Config, error) {
 			if _, ok := raw["storageMB"]; !ok {
 				c.StorageMB = defaultStorageMB
 			}
+			if _, ok := raw["notify"]; !ok {
+				c.Notify = true
+			}
 		}
 	case errors.Is(err, fs.ErrNotExist):
-		c.Settings = Settings{AutoApply: true, Watch: true, HistoryDays: defaultHistoryDays, AutoFetchMB: defaultAutoFetchMB, StorageMB: defaultStorageMB}
+		c.Settings = Settings{AutoApply: true, Watch: true, HistoryDays: defaultHistoryDays, AutoFetchMB: defaultAutoFetchMB, StorageMB: defaultStorageMB, Notify: true}
 	default:
 		return nil, err
 	}

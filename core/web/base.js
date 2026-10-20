@@ -242,6 +242,7 @@ const ICON = {
   close: I('<path d="M6 6l12 12M18 6 6 18"/>'),
   chevron: I('<path d="m6 15 6-6 6 6"/>'),
   comment: I('<path d="M4.5 6.5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H10l-4 3.5V16.5h.5a2 2 0 0 1-2-2z"/>'),
+  fontSize: I('<path d="M3.5 18 8 6l4.5 12M5.3 13.5h5.4"/><path d="m14 18 3.25-8.5L20.5 18M15.3 15.4h3.9"/>'),
   play: I('<path fill="currentColor" d="M8 5.5v13l10.5-6.5z"/>'),
   phone: I('<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 18h2"/>'),
   tablet: I('<rect x="4.5" y="3" width="15" height="18" rx="2.5"/><path d="M11 18h2"/>'),
@@ -261,6 +262,14 @@ const ICON = {
   auto: I('<rect x="3" y="4" width="18" height="13" rx="3"/><path d="M8 21h8M12 17v4M12 4v13"/>'),
 };
 const kindIcon = k => ({ ios: ICON.phone, android: ICON.phone, ipad: ICON.tablet, mac: ICON.laptop, windows: ICON.laptop, linux: ICON.laptop }[k] || ICON.globe);
+
+// 字体大小：只放大或缩小内容文字（卡片、预览、编辑、评论、清单），每台设备各自保存
+const FONT_SIZES = [{ v: 0.88, label: '小' }, { v: 1, label: '标准' }, { v: 1.15, label: '大' }, { v: 1.3, label: '特大' }, { v: 1.5, label: '超大' }];
+function applyFont(v) {
+  v = FONT_SIZES.some(f => f.v === +v) ? +v : 1;
+  document.documentElement.style.setProperty('--fs', String(v));
+  return v;
+}
 
 function applyTheme(theme) {
   if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;

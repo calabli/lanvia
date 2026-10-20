@@ -112,6 +112,7 @@ const I18N = (() => {
     '已重新生成 token': 'Token regenerated', '操作失败：{0}': 'Failed: {0}',
     '正在加载…': 'Loading…', '正在加载 {0}%': 'Loading {0}%', '正在下载 {0}%': 'Downloading {0}%', '正在加密 {0}%': 'Encrypting {0}%',
     '下载失败：{0}': 'Download failed: {0}',
+    '字体大小': 'Text size', '· 仅本设备': '· this device only', '小': 'Small', '标准': 'Default', '大': 'Large', '特大': 'Larger', '超大': 'Largest',
     '新建清单': 'New list', '清单': 'Lists', '添加一项…': 'Add an item…', '添加一项': 'Add an item', '清除已完成': 'Clear completed',
     '修改这一项': 'Edit item', '删除这一项': 'Delete item', '重命名': 'Rename', '清单名称': 'List name', '例如：周末购物': 'e.g. Weekend shopping',
     '创建': 'Create', '创建失败：{0}': "Couldn't create: {0}",

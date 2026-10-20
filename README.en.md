@@ -23,6 +23,7 @@ Instantly share clipboard text and files between devices on the same local netwo
 | Clock button in the preview | Version history: who changed what and when, line-by-line diff, copy or restore any version |
 | Timer button on an item | Retention for this item: delete after 1 hour / 1 day / 7 days / 30 days, or keep forever — synced to every device |
 | Star on an item | Save it as a favorite snippet, optionally named (e.g. "Home Wi-Fi"); it never expires, and the tray's Favorites menu copies it in one click |
+| The Aa button at the top | Adjust the text size of content (five steps), saved separately on each device |
 | "New list" next to the input box | Shared checklists (shopping, things to take): check, add and edit items right on the card; several lines in the input box become a list in one click |
 | Comment button on an item | Add comments (e.g. "Moved to 4 pm"); they sync to every device and appear live in an open preview |
 | Search box | Space-separated keywords must all match; with no exact match it falls back to fuzzy matching (`wfmm` finds "WiFi 密码"); filter by type, device and time |

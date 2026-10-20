@@ -80,7 +80,7 @@ func (a *App) ingest(it *Item, fromPeer string, apply bool) bool {
 	a.bcastItem("item", it)
 	if apply && it.Kind == "text" && a.cfgSnapshot().AutoApply && !a.Paused() {
 		if err := a.clip.Apply(it.Text); err != nil && a.clip.ok {
-			log.Printf("写入剪贴板失败: %v", err)
+			log.Printf(L("写入剪贴板失败: %v", "Writing to clipboard failed: %v"), err)
 		}
 	}
 	a.peers.relay(Envelope{Op: "add", Item: it}, fromPeer)
@@ -171,7 +171,7 @@ func (a *App) merge(s storeFile, from string) {
 		return
 	}
 	a.changed()
-	log.Printf("从对端同步了 %d 条历史", len(fresh))
+	log.Printf(L("从对端同步了 %d 条历史", "Synced %d items from a peer"), len(fresh))
 	a.relaySync(fresh, from)
 }
 
@@ -219,7 +219,7 @@ func validItem(it *Item) bool {
 
 func preview(it *Item) string {
 	if it.Kind == "file" {
-		return "[文件] " + it.Name
+		return L("[文件] ", "[file] ") + it.Name
 	}
 	r := []rune(it.Text)
 	if len(r) > 40 {
@@ -341,7 +341,7 @@ func (a *App) prune() {
 		a.hub.Broadcast("delete", map[string]string{"id": id})
 	}
 	if len(gone) > 0 {
-		log.Printf("已清理 %d 条过期历史", len(gone))
+		log.Printf(L("已清理 %d 条过期历史", "Removed %d expired items"), len(gone))
 		a.changed()
 	}
 }

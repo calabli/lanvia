@@ -131,7 +131,7 @@ func (a *App) makeRoom(need int64) bool {
 		}
 	}
 	if n > 0 {
-		log.Printf("文件占用超过上限，已清理 %d 个副本（%.1f MB）", n, float64(freed)/(1<<20))
+		log.Printf(L("文件占用超过上限，已清理 %d 个副本（%.1f MB）", "Over the storage limit, removed %d copies (%.1f MB)"), n, float64(freed)/(1<<20))
 	}
 	return used+need-freed <= quota
 }

@@ -676,7 +676,7 @@ func (a *App) handleJoin(w http.ResponseWriter, r *http.Request) {
 	}
 	a.updateCfg(func(c *Config) { c.Code = code })
 	a.peers.reset()
-	log.Printf("配对码已更新为 %s", formatCode(code))
+	log.Printf(L("配对码已更新为 %s", "Pairing code changed to %s"), formatCode(code))
 	writeJSON(w, 200, a.info(true))
 }
 

@@ -12,20 +12,30 @@ func (a *App) PrintBanner() {
 	c := a.cfgSnapshot()
 	urls := a.LANURLs()
 	fmt.Printf("\n  \x1b[1mLanvia %s\x1b[0m · %s\n\n", Version, c.Name)
-	fmt.Printf("  配对码      \x1b[1;36m%s\x1b[0m\n", formatCode(c.Code))
-	fmt.Printf("  本机仪表盘  %s\n", a.LocalURL())
-	for i, u := range urls {
-		label := "            "
-		if i == 0 {
-			label = "  局域网地址"
+	lbl := func(zh, en string) string { // 标签对齐：中文按显示宽度补空格
+		if english.Load() {
+			return fmt.Sprintf("%-14s", en)
 		}
-		fmt.Printf("%s  %s\n", label, u)
+		return zh
+	}
+	fmt.Printf("  %s\x1b[1;36m%s\x1b[0m\n", lbl("配对码      ", "Pairing code"), formatCode(c.Code))
+	fmt.Printf("  %s%s\n", lbl("本机仪表盘  ", "Dashboard"), a.LocalURL())
+	for i, u := range urls {
+		label := strings.Repeat(" ", 12)
+		if english.Load() {
+			label = strings.Repeat(" ", 14)
+		}
+		if i == 0 {
+			label = lbl("局域网地址  ", "LAN address")
+		}
+		fmt.Printf("  %s%s\n", label, u)
 	}
 	if !a.clip.ok {
-		fmt.Println("\n  \x1b[33m未找到剪贴板工具，本机剪贴板同步不可用（Linux 请安装 xclip 或 wl-clipboard）\x1b[0m")
+		fmt.Println("\n  \x1b[33m" + L("未找到剪贴板工具，本机剪贴板同步不可用（Linux 请安装 xclip 或 wl-clipboard）",
+			"No clipboard tool found, clipboard sync is unavailable (on Linux install xclip or wl-clipboard)") + "\x1b[0m")
 	}
 	if u := a.PairURL(); u != "" {
-		fmt.Println("\n  用手机相机扫码即可加入：")
+		fmt.Println("\n  " + L("用手机相机扫码即可加入：", "Scan with your phone camera to join:"))
 		printQR(u)
 	}
 	fmt.Println()

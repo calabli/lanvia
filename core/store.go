@@ -154,7 +154,7 @@ func (s *Store) load() {
 		if it.TextFile {
 			t, err := os.ReadFile(s.textPath(it.ID))
 			if err != nil {
-				log.Printf("找不到正文文件，跳过：%s", it.ID)
+				log.Printf(L("找不到正文文件，跳过：%s", "Text file missing, skipped: %s"), it.ID)
 				continue
 			}
 			it.Text, it.TextFile = string(t), false
@@ -200,7 +200,7 @@ func (s *Store) load() {
 		}
 	}
 	if migrate {
-		log.Printf("正在把历史记录迁移为新的存储格式")
+		log.Print(L("正在把历史记录迁移为新的存储格式", "Migrating history to the new storage format"))
 		s.markDirty()
 	}
 }
@@ -505,7 +505,7 @@ func (s *Store) Flush() {
 		}
 	}
 	if failed { // 附属文件没写成功就不更新索引，避免索引指向不存在的文件；下次再试
-		log.Printf("保存历史失败：写入正文或版本文件出错")
+		log.Print(L("保存历史失败：写入正文或版本文件出错", "Saving history failed: couldn't write text or version files"))
 		s.mu.Lock()
 		for _, t := range texts {
 			s.dirtyText[t.id] = true
@@ -518,7 +518,7 @@ func (s *Store) Flush() {
 		return
 	}
 	if err := writeAtomic(s.path, b); err != nil {
-		log.Printf("保存历史失败: %v", err)
+		log.Printf(L("保存历史失败: %v", "Saving history failed: %v"), err)
 	}
 }
 

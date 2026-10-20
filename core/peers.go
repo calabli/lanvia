@@ -127,7 +127,7 @@ func (p *Peers) listen() {
 	lc := net.ListenConfig{Control: reuseControl}
 	pc, err := lc.ListenPacket(context.Background(), "udp4", fmt.Sprintf(":%d", beaconPort))
 	if err != nil {
-		log.Printf("无法监听广播端口 %d（自动发现不可用，可使用 --peer）: %v", beaconPort, err)
+		log.Printf(L("无法监听广播端口 %d（自动发现不可用，可使用 --peer）: %v", "Can't listen on broadcast port %d (discovery unavailable, use --peer): %v"), beaconPort, err)
 		return
 	}
 	buf := make([]byte, 2048)
@@ -172,7 +172,7 @@ func (p *Peers) onBeacon(b Beacon, ip net.IP) {
 func (p *Peers) beaconLoop() {
 	conn, err := net.ListenUDP("udp4", &net.UDPAddr{})
 	if err != nil {
-		log.Printf("无法发送广播: %v", err)
+		log.Printf(L("无法发送广播: %v", "Can't send broadcasts: %v"), err)
 		return
 	}
 	for {
@@ -218,7 +218,7 @@ func (p *Peers) probe(addr string, manual bool) (*Info, error) {
 	}
 	p.mu.Unlock()
 	if !existed {
-		log.Printf("已连接设备: %s (%s)", info.Name, addr)
+		log.Printf(L("已连接设备: %s (%s)", "Connected: %s (%s)"), info.Name, addr)
 		go p.syncHistory(x.ID, addr)
 	}
 	return info, nil
@@ -330,7 +330,7 @@ func (p *Peers) refresh(id, addr string) {
 	if err != nil || info.ID != id {
 		x.fails++
 		if x.fails >= 3 {
-			log.Printf("设备离线: %s", x.Name)
+			log.Printf(L("设备离线: %s", "Offline: %s"), x.Name)
 			delete(p.m, id)
 		}
 		return
@@ -397,7 +397,7 @@ func (p *Peers) fetchInfo(addr string) (*Info, error) {
 func (p *Peers) syncHistory(id, addr string) {
 	var snap storeFile
 	if err := p.getJSON(addr, "/api/history", &snap); err != nil {
-		log.Printf("同步历史失败: %v", err)
+		log.Printf(L("同步历史失败: %v", "History sync failed: %v"), err)
 		return
 	}
 	p.a.merge(snap, id)

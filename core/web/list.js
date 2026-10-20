@@ -35,7 +35,7 @@ function findCode(text) {
 
 function itemHTML(it, latest) {
   const fromDev = S.devices.find(d => d.name === it.from);
-  const meta = `<div class="meta">${kindIcon(fromDev?.kind)}<span class="from" data-raw>${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${latest ? '<span class="badge">最新</span>' : ''}${it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改">已编辑</span>` : ''}${it.fav ? '' : expiryBadge(it)}</div>${it.fav ? `<div class="fav-title">${ICON.starOn}${it.title ? `<span data-raw>${esc(it.title)}</span>` : '<span>已收藏</span>'}</div>` : ''}`;
+  const meta = `<div class="meta">${kindIcon(fromDev?.kind)}<span class="from" data-raw>${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${latest ? '<span class="badge">最新</span>' : ''}${it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改">已编辑</span>` : ''}${it.comments ? `<button class="badge soft com-badge" data-act="comments" title="${it.comments} 条评论">${ICON.comment}${it.comments}</button>` : ''}${it.fav ? '' : expiryBadge(it)}</div>${it.fav ? `<div class="fav-title">${ICON.starOn}${it.title ? `<span data-raw>${esc(it.title)}</span>` : '<span>已收藏</span>'}</div>` : ''}`;
   if (it.kind === 'file') {
     const mime = it.mime || '';
     const isVid = /^video\//.test(mime);
@@ -52,6 +52,7 @@ function itemHTML(it, latest) {
       <div class="actions">
         <button class="btn sm" data-act="download">${ICON.download}下载</button>
         <span class="spacer"></span>
+        <button class="icon-btn" data-act="comments" aria-label="评论" title="评论">${ICON.comment}</button>
         <button class="icon-btn${it.fav ? ' on' : ''}" data-act="fav" aria-label="收藏" title="收藏">${it.fav ? ICON.starOn : ICON.star}</button>
         <button class="icon-btn" data-act="expiry" aria-label="保留时长" title="保留时长">${ICON.timer}</button>
         <button class="icon-btn" data-act="delete" aria-label="删除">${ICON.trash}</button>
@@ -79,6 +80,7 @@ function itemHTML(it, latest) {
       <span class="spacer"></span>
       <span class="muted small">${long ? itemStats(it) : it.text.length > 60 ? it.text.length + ' 字' : ''}</span>
       <button class="icon-btn" data-act="edit" aria-label="编辑" title="编辑">${ICON.pencil}</button>
+      <button class="icon-btn" data-act="comments" aria-label="评论" title="评论">${ICON.comment}</button>
       <button class="icon-btn${it.fav ? ' on' : ''}" data-act="fav" aria-label="收藏" title="收藏">${it.fav ? ICON.starOn : ICON.star}</button>
       <button class="icon-btn" data-act="expiry" aria-label="保留时长" title="保留时长">${ICON.timer}</button>
       <button class="icon-btn" data-act="delete" aria-label="删除">${ICON.trash}</button>

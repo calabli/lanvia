@@ -6,7 +6,7 @@
 
 let PV = null; // 正在预览的内容
 // mode: view 查看 | edit 编辑 | history 历史版本
-const PVS = { mono: null, wrap: store.get('pv.wrap') !== '0', mode: 'view', base: '', hist: [], sel: null, diff: true, lang: null, fmt: false };
+const PVS = { com: false, coms: null, comFor: null, mono: null, wrap: store.get('pv.wrap') !== '0', mode: 'view', base: '', hist: [], sel: null, diff: true, lang: null, fmt: false };
 
 // 预览里显示的文本：JSON 可以切换为格式化后的样子
 function pvText() {
@@ -41,13 +41,69 @@ async function showPreview(it, mode = 'view') {
   // 单行的长 JSON 默认就展开，方便阅读
   PVS.fmt = PVS.lang === 'json' && !it.text.trim().includes('\n') && it.text.length > 80;
   PVS.mode = 'view';
+  // 评论面板：从评论按钮打开，或这条已经有评论时默认展开
+  PVS.com = mode === 'comments' || !!it.comments;
+  PVS.coms = null; PVS.comFor = null;
   $('#pvWarn').hidden = true;
   renderPreview();
   const d = $('#previewDlg');
   if (!d.open) PREVIEW ? d.show() : d.showModal();
   if (mode === 'edit') startEdit();
   else if (mode === 'history') openHistory();
+  else if (mode === 'comments') $('#pvComInput').focus();
   else { $('#pvBody').scrollTop = 0; $('#pvBody').focus({ preventScroll: true }); }
+}
+
+/* ---- 评论 ---- */
+
+async function loadComments() {
+  const id = PV?.id;
+  if (!id) return;
+  PVS.comFor = id;
+  try {
+    const cs = await api('GET', `/api/items/${id}/comments`);
+    if (PV?.id !== id) return;
+    PVS.coms = cs;
+  } catch (e) { if (PV?.id === id) $('#pvComList').innerHTML = `<p class="muted small pv-com-empty">${esc('加载失败：' + e.message)}</p>`; return; }
+  renderComments();
+}
+
+function renderComments() {
+  const list = $('#pvComList'), cs = PVS.coms || [];
+  const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 8;
+  list.innerHTML = cs.length ? cs.map(c => `<div class="pv-c">
+      <div class="pv-c-head"><b data-raw>${esc(c.by)}</b><span class="muted">${relTime(c.ts)}</span>
+        <button class="icon-btn pv-c-del" data-cdel="${esc(c.id)}" aria-label="删除评论" title="删除评论">${ICON.close}</button></div>
+      <div class="pv-c-text" data-raw>${linkify(c.text)}</div></div>`).join('')
+    : '<p class="muted small pv-com-empty">还没有评论。评论会同步到所有设备。</p>';
+  if (atBottom || !PVS.comScrolled) { list.scrollTop = list.scrollHeight; PVS.comScrolled = true; }
+}
+
+function renderComPanel() {
+  const show = PVS.com && PVS.mode !== 'edit';
+  $('#pvCom').hidden = !show;
+  $('#pvComBtn').classList.toggle('on', show);
+  if (show && PVS.comFor !== PV.id) { PVS.comScrolled = false; $('#pvComList').innerHTML = ''; loadComments(); }
+}
+
+async function sendComment() {
+  const input = $('#pvComInput'), text = input.value.trim();
+  if (!text || !PV) return;
+  input.disabled = true;
+  try {
+    await api('POST', `/api/items/${PV.id}/comments`, { text, by: myName() });
+    input.value = '';
+    PVS.comScrolled = false; // 自己发的评论滚到最下面
+    await loadComments();
+  } catch (e) { toast('评论失败：' + e.message); }
+  input.disabled = false;
+  input.focus();
+}
+
+async function deleteComment(cid) {
+  if (!PV || !(await uiConfirm('删除这条评论？所有设备上都会删除。', { ok: '删除', danger: true }))) return;
+  try { await api('DELETE', `/api/items/${PV.id}/comments/${cid}`); await loadComments(); }
+  catch (e) { toast('删除失败：' + e.message); }
 }
 
 // 头部、工具栏、底栏都随模式变化
@@ -72,6 +128,9 @@ function renderPreview() {
   $('#pvFmt').classList.toggle('on', PVS.fmt);
   $('#pvFmt').textContent = PVS.fmt ? '原文' : '格式化';
   $('#pvHist').classList.toggle('on', m === 'history');
+  show('#pvComBtn', m !== 'edit');
+  $('#pvComBtn').innerHTML = ICON.comment + (it.comments ? `<span class="count">${it.comments}</span>` : '');
+  renderComPanel();
   $('#pvHist').innerHTML = ICON.history + (it.rev ? `<span class="count">${it.rev + 1}</span>` : '');
   $('#pvDiff').textContent = PVS.diff ? '看全文' : '看改动';
   $('#pvCopy').innerHTML = !isText ? `${ICON.download}<span>${S.local ? '保存' : '下载'}</span>`
@@ -139,7 +198,7 @@ function showPreviewMissing() {
   PV = null; PVS.mode = 'view';
   $('#pvMeta').textContent = '';
   $('#pvBody').innerHTML = '<div class="pv-file muted">这条内容已被删除</div>';
-  ['#pvCopy', '#pvEdit', '#pvHist', '#pvSave', '#pvCancel', '#pvRestore', '#pvDiff', '#pvWrap', '#pvMono'].forEach(s => { $(s).hidden = true; });
+  ['#pvCopy', '#pvEdit', '#pvHist', '#pvComBtn', '#pvCom', '#pvSave', '#pvCancel', '#pvRestore', '#pvDiff', '#pvWrap', '#pvMono'].forEach(s => { $(s).hidden = true; });
   $('#pvFoot').innerHTML = '';
   $('#previewDlg').classList.remove('with-hist');
   $('#pvHistList').innerHTML = '';
@@ -338,6 +397,13 @@ function upsertItem(it) {
 async function onItemUpdated(it) {
   upsertItem(it);
   if (PV?.id !== it.id) return;
+  // 只是评论数变了（有人评论或删除评论）：只刷新评论，不重画正文（不打断阅读和编辑）
+  if (it.comments !== PV.comments && it.rev === PV.rev && it.fav === PV.fav && it.metaTs === PV.metaTs) {
+    PV.comments = it.comments; // 不换对象：正在加载的图片还认这个对象
+    $('#pvComBtn').innerHTML = ICON.comment + (it.comments ? `<span class="count">${it.comments}</span>` : '');
+    if (!$('#pvCom').hidden) loadComments();
+    return;
+  }
   if (it.textLen) { try { it = await loadFull(it); } catch { return; } }
   if (PVS.mode === 'edit') {
     // 正在编辑时别人改了：提示，不打断
@@ -382,8 +448,20 @@ function bindPreview() {
   $('[data-close]', d).onclick = closePreview;
   d.addEventListener('cancel', e => { e.preventDefault(); closePreview(); });
   d.addEventListener('click', e => { if (e.target === d && !PREVIEW && PVS.mode !== 'edit') d.close(); });
+  $('#pvComBtn').onclick = () => {
+    PVS.com = !PVS.com;
+    renderComPanel();
+    if (PVS.com) $('#pvComInput').focus();
+  };
+  $('#pvComForm').onsubmit = e => { e.preventDefault(); sendComment(); };
+  $('#pvComList').onclick = e => { const b = e.target.closest('[data-cdel]'); if (b) deleteComment(b.dataset.cdel); };
   d.addEventListener('keydown', e => {
     if (e.isComposing || !PV) return;
+    // 在评论框里打字：回车发送（表单处理），Esc 只是离开输入框，其余快捷键都不生效
+    if (e.target.closest('#pvCom')) {
+      if (e.key === 'Escape') { e.preventDefault(); e.target.blur(); $('#pvBody').focus({ preventScroll: true }); }
+      return;
+    }
     const mod = e.metaKey || e.ctrlKey, k = e.key.toLowerCase();
     if (PVS.mode === 'edit') {
       if ((mod && k === 's') || (mod && e.key === 'Enter')) { e.preventDefault(); saveEdit(); }

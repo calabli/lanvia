@@ -174,6 +174,12 @@ func (a *App) merge(s storeFile, from string) {
 			touched[id] = true
 		}
 	}
+	for id, cs := range s.Comments {
+		if it := a.store.applyComments(id, cs); it != nil {
+			a.bcastItem("update", it)
+			touched[id] = true
+		}
+	}
 	for id := range touched {
 		if it := a.store.Get(id); it != nil {
 			fresh = append(fresh, it)
@@ -191,19 +197,25 @@ func (a *App) merge(s storeFile, from string) {
 // relaySync 把一批内容（连同各自的全部版本）转发给其他设备，按大小分批，避免单个请求过大。
 func (a *App) relaySync(items []*Item, from string) {
 	const batchLimit = 1 << 20
-	batch, size := storeFile{Versions: map[string][]*TextVersion{}}, 0
+	newBatch := func() storeFile {
+		return storeFile{Versions: map[string][]*TextVersion{}, Comments: map[string][]*Comment{}}
+	}
+	batch, size := newBatch(), 0
 	flush := func() {
 		if len(batch.Items) > 0 {
 			b := batch
 			a.peers.relay(Envelope{Op: "sync", Snap: &b}, from)
 		}
-		batch, size = storeFile{Versions: map[string][]*TextVersion{}}, 0
+		batch, size = newBatch(), 0
 	}
 	for _, it := range items {
-		vs := a.store.Versions(it.ID)
+		vs, cs := a.store.Versions(it.ID), a.store.allComments(it.ID)
 		n := len(it.Text) + 300
 		for _, v := range vs {
 			n += len(v.Text) + 100
+		}
+		for _, c := range cs {
+			n += len(c.Text) + 100
 		}
 		if size > 0 && size+n > batchLimit {
 			flush()
@@ -211,6 +223,9 @@ func (a *App) relaySync(items []*Item, from string) {
 		batch.Items = append(batch.Items, it)
 		if it.Rev > 0 {
 			batch.Versions[it.ID] = vs
+		}
+		if len(cs) > 0 {
+			batch.Comments[it.ID] = cs
 		}
 		size += n
 	}

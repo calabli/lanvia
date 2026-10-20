@@ -129,11 +129,11 @@ func (d *desktop) build() {
 		case "main":
 			d.panel.Hide()
 			d.showMain()
-		case "preview", "edit", "history":
+		case "preview", "edit", "history", "comments":
 			if id == "" {
 				return false
 			}
-			d.openPreviewMode(id, map[string]string{"preview": "view", "edit": "edit", "history": "history"}[action])
+			d.openPreviewMode(id, map[string]string{"preview": "view", "edit": "edit", "history": "history", "comments": "comments"}[action])
 		case "update":
 			go d.update.install()
 		case "hide-preview":

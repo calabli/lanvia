@@ -283,6 +283,7 @@
       <button id="pvWrap" class="icon-btn toggle" title="自动换行" aria-label="自动换行"></button>
       <button id="pvMono" class="icon-btn toggle" title="等宽字体与行号" aria-label="等宽字体与行号"></button>
       <button id="pvFmt" class="btn ghost sm toggle" hidden></button>
+      <button id="pvComBtn" class="icon-btn toggle" title="评论" aria-label="评论"></button>
       <button id="pvHist" class="icon-btn toggle" title="历史版本" aria-label="历史版本"></button>
       <button id="pvEdit" class="icon-btn" title="编辑" aria-label="编辑"></button>
       <button id="pvPin" class="icon-btn toggle" title="悬浮在最上层" aria-label="悬浮在最上层" hidden></button>
@@ -299,6 +300,13 @@
     <nav id="pvHistList" class="pv-hist" aria-label="历史版本"></nav>
     <div id="pvBody" class="pv-body" tabindex="-1"></div>
   </div>
+  <section id="pvCom" class="pv-com" aria-label="评论" hidden>
+    <div id="pvComList" class="pv-com-list"></div>
+    <form id="pvComForm" class="pv-com-form">
+      <input id="pvComInput" placeholder="添加评论…" maxlength="2000" autocomplete="off" enterkeyhint="send">
+      <button class="btn primary sm">发送</button>
+    </form>
+  </section>
   <div id="pvFoot" class="pv-foot"></div>
 </dialog>
 <div id="expiryMenu" class="pop-menu" role="menu" hidden></div>

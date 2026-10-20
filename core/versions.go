@@ -80,6 +80,7 @@ func (s *Store) applyVersions(id string, in []*TextVersion, synthOriginal bool) 
 		vs = append(keep, vs[len(vs)-(maxVersions-len(keep)):]...)
 	}
 	s.versions[id] = vs
+	s.dirtyVer[id] = true
 
 	cur := vs[len(vs)-1]
 	n := *it // 写时复制：旧的指针可能正被其他 goroutine 序列化
@@ -89,6 +90,9 @@ func (s *Store) applyVersions(id string, in []*TextVersion, synthOriginal bool) 
 		n.EditedAt, n.EditedBy = cur.TS, cur.By
 	}
 	s.items[idx] = &n
+	if n.Text != it.Text && (len(n.Text) > previewBytes || len(it.Text) > previewBytes) {
+		s.dirtyText[id] = true // 长正文变了，或者在长短之间切换
+	}
 	s.markDirty()
 	return &n, true, n.Text != it.Text
 }

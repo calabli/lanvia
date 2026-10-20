@@ -56,13 +56,14 @@ type Nearby struct {
 }
 
 type Peers struct {
-	a       *App
-	mu      sync.Mutex
-	m       map[string]*Peer
-	nearby  map[string]*Nearby
-	manual  []string
-	probing map[string]bool
-	hc      *http.Client
+	a        *App
+	mu       sync.Mutex
+	m        map[string]*Peer
+	nearby   map[string]*Nearby
+	manual   []string
+	probing  map[string]bool
+	lastSync map[string]int64 // 每个对端上次同步时对方的时间（对方的时钟）
+	hc       *http.Client
 
 	noDiscovery bool
 }
@@ -70,7 +71,7 @@ type Peers struct {
 func newPeers(a *App, manual []string) *Peers {
 	return &Peers{
 		a: a, manual: manual,
-		m: map[string]*Peer{}, nearby: map[string]*Nearby{}, probing: map[string]bool{},
+		m: map[string]*Peer{}, nearby: map[string]*Nearby{}, probing: map[string]bool{}, lastSync: map[string]int64{},
 		hc: &http.Client{Timeout: 5 * time.Second},
 	}
 }
@@ -394,13 +395,27 @@ func (p *Peers) fetchInfo(addr string) (*Info, error) {
 	return &info, p.getJSON(addr, "/api/info", &info)
 }
 
+// syncHistory 拉取对方的历史：第一次全量，之后只要上次同步以来的变化（笔记本合盖再打开、Wi-Fi 抖动重连时
+// 不用每次都传整份历史）。旧版本节点不认识 since，会照常返回全部。
 func (p *Peers) syncHistory(id, addr string) {
+	p.mu.Lock()
+	since := p.lastSync[id]
+	p.mu.Unlock()
+	path := "/api/history"
+	if since > 0 {
+		path += "?since=" + strconv.FormatInt(since, 10)
+	}
 	var snap storeFile
-	if err := p.getJSON(addr, "/api/history", &snap); err != nil {
+	if err := p.getJSON(addr, path, &snap); err != nil {
 		log.Printf(L("同步历史失败: %v", "History sync failed: %v"), err)
 		return
 	}
 	p.a.merge(snap, id)
+	if snap.Now > 0 {
+		p.mu.Lock()
+		p.lastSync[id] = snap.Now - 30_000 // 留 30 秒重叠：同步进行中发生的变化下次也能拿到（合并时去重）
+		p.mu.Unlock()
+	}
 }
 
 type Envelope struct {

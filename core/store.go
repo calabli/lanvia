@@ -99,6 +99,7 @@ type Store struct {
 	verDir    string                    // 历史版本：versions/<id>.json
 	dirtyText map[string]bool           // 需要写入（或删除）长正文文件的内容
 	dirtyVer  map[string]bool           // 需要写入版本文件的内容
+	seen      map[string]int64          // 每条内容在本机最后一次变化（新增、编辑、收藏、保留设置）的时间，用于增量同步
 	keepMs    atomic.Int64              // 历史保留时长（毫秒），0 表示永久
 	dirty     chan struct{}
 }
@@ -108,6 +109,8 @@ type storeFile struct {
 	Tomb      map[string]int64          `json:"tomb"`
 	ClearedAt int64                     `json:"clearedAt"`
 	Versions  map[string][]*TextVersion `json:"versions,omitempty"`
+	Seen      map[string]int64          `json:"seen,omitempty"` // 仅 history.json：每条内容在本机最后一次变化的时间
+	Now       int64                     `json:"now,omitempty"`  // 仅同步响应：响应方此刻的时间，下次增量同步从这里开始
 }
 
 // 保存方式：history.json 只放索引（各条内容的元数据和短正文）；超过 16 KB 的正文放在 texts/<id>.txt，
@@ -123,6 +126,7 @@ func openStore(dir string) *Store {
 		versions:  map[string][]*TextVersion{},
 		dirtyText: map[string]bool{},
 		dirtyVer:  map[string]bool{},
+		seen:      map[string]int64{},
 		dirty:     make(chan struct{}, 1),
 	}
 	for _, d := range []string{s.blobDir, s.textDir, s.verDir} {
@@ -165,8 +169,14 @@ func (s *Store) load() {
 		s.items = append(s.items, it)
 	}
 	known := map[string]bool{}
+	now := nowMs()
 	for _, it := range s.items {
 		known[it.ID] = true
+		if v, ok := f.Seen[it.ID]; ok {
+			s.seen[it.ID] = v
+		} else {
+			s.seen[it.ID] = now // 旧数据没有记录：当作刚变化过，最多被多同步一次
+		}
 	}
 	for id, vs := range f.Versions {
 		if known[id] {
@@ -214,6 +224,7 @@ func (s *Store) dropFiles(id string) {
 	delete(s.versions, id)
 	delete(s.dirtyText, id)
 	delete(s.dirtyVer, id)
+	delete(s.seen, id)
 }
 
 func (s *Store) blobPath(id string) string { return filepath.Join(s.blobDir, id) }
@@ -245,6 +256,7 @@ func (s *Store) Add(it *Item) bool {
 	s.items = append(s.items, nil)
 	copy(s.items[i+1:], s.items[i:])
 	s.items[i] = it
+	s.touch(it.ID)
 	if len(it.Text) > previewBytes {
 		s.dirtyText[it.ID] = true
 	}
@@ -361,6 +373,7 @@ func (s *Store) applyFav(id string, fav bool, title string, ts int64) *Item {
 			n.Title = ""
 		}
 		s.items[i] = &n
+		s.touch(id)
 		s.markDirty()
 		return &n
 	}
@@ -384,6 +397,7 @@ func (s *Store) applyMeta(id string, expiresAt int64, keep bool, metaTS int64) *
 			n.ExpiresAt = 0
 		}
 		s.items[i] = &n
+		s.touch(id)
 		s.markDirty()
 		return &n
 	}
@@ -419,19 +433,31 @@ func (s *Store) LatestText() *Item {
 }
 
 // Snapshot 用于节点间同步历史。
-func (s *Store) Snapshot() storeFile {
+// Snapshot 返回 since（本机时间）之后有变化的内容及其版本、删除记录；since <= 0 时返回全部。
+// 时间都用本机记录的“最后变化时间”，不依赖各设备的时钟，也覆盖“旧内容刚从别的设备同步到本机”的情况。
+func (s *Store) Snapshot(since int64) storeFile {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	t := make(map[string]int64, len(s.tomb))
+	out := storeFile{Items: []*Item{}, Tomb: map[string]int64{}, ClearedAt: s.clearedAt, Versions: map[string][]*TextVersion{}, Now: nowMs()}
 	for k, v := range s.tomb {
-		t[k] = v
+		if v > since {
+			out.Tomb[k] = v
+		}
 	}
-	v := make(map[string][]*TextVersion, len(s.versions))
-	for k, vs := range s.versions {
-		v[k] = append([]*TextVersion(nil), vs...)
+	for _, it := range s.items {
+		if since > 0 && s.seen[it.ID] <= since {
+			continue
+		}
+		out.Items = append(out.Items, it)
+		if vs, ok := s.versions[it.ID]; ok {
+			out.Versions[it.ID] = append([]*TextVersion(nil), vs...)
+		}
 	}
-	return storeFile{Items: append([]*Item(nil), s.items...), Tomb: t, ClearedAt: s.clearedAt, Versions: v}
+	return out
 }
+
+// touch 记录一条内容在本机发生了变化（调用方持有锁）。
+func (s *Store) touch(id string) { s.seen[id] = nowMs() }
 
 func (s *Store) markDirty() {
 	select {
@@ -485,7 +511,7 @@ func (s *Store) Flush() {
 		}
 	}
 	s.dirtyText, s.dirtyVer = map[string]bool{}, map[string]bool{}
-	b, err := json.Marshal(storeFile{Items: index, Tomb: s.tomb, ClearedAt: s.clearedAt})
+	b, err := json.Marshal(storeFile{Items: index, Tomb: s.tomb, ClearedAt: s.clearedAt, Seen: s.seen})
 	s.mu.Unlock()
 	if err != nil {
 		return

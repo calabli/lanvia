@@ -63,6 +63,7 @@ type Peers struct {
 	manual   []string
 	probing  map[string]bool
 	lastSync map[string]int64 // 每个对端上次同步时对方的时间（对方的时钟）
+	auth     map[string]int   // 对某个地址使用的签名版本（见 authVer）
 	hc       *http.Client
 
 	noDiscovery bool
@@ -71,7 +72,7 @@ type Peers struct {
 func newPeers(a *App, manual []string) *Peers {
 	return &Peers{
 		a: a, manual: manual,
-		m: map[string]*Peer{}, nearby: map[string]*Nearby{}, probing: map[string]bool{}, lastSync: map[string]int64{},
+		m: map[string]*Peer{}, nearby: map[string]*Nearby{}, probing: map[string]bool{}, lastSync: map[string]int64{}, auth: map[string]int{},
 		hc: &http.Client{Timeout: 5 * time.Second},
 	}
 }
@@ -348,7 +349,7 @@ func (p *Peers) newReq(ctx context.Context, method, addr, path string, body []by
 		req.Header.Set("Content-Type", "application/json")
 	}
 	c := p.a.cfgSnapshot()
-	signRequest(req, p.a.creds(), c.ID)
+	signRequest(req, p.a.creds(), c.ID, p.authVer(addr) >= 2)
 	req.Header.Set("X-Lanvia-Port", strconv.Itoa(c.Port)) // 让对方知道怎么连回来
 	req.Header.Set("X-Lanvia-Enc", "1")                   // 请对方加密响应；旧版本会忽略，照常返回明文
 	return req
@@ -390,9 +391,41 @@ func (p *Peers) getJSON(addr, path string, v any) error {
 	return json.NewDecoder(resp.Body).Decode(v)
 }
 
+// authVer 是对某个地址使用的签名版本：默认先用 v2，对方是旧版本（不认 v2 签名）时退回 v1。
+func (p *Peers) authVer(addr string) int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if v := p.auth[addr]; v != 0 {
+		return v
+	}
+	return 2
+}
+
+func (p *Peers) setAuth(addr string, v int) {
+	p.mu.Lock()
+	p.auth[addr] = v
+	p.mu.Unlock()
+}
+
 func (p *Peers) fetchInfo(addr string) (*Info, error) {
 	var info Info
-	return &info, p.getJSON(addr, "/api/info", &info)
+	err := p.getJSON(addr, "/api/info", &info)
+	if err == errBadCode && p.authVer(addr) >= 2 {
+		// 可能是旧版本（只认 v1 签名），也可能配对码不同：用 v1 再试一次
+		p.setAuth(addr, 1)
+		info = Info{}
+		if err = p.getJSON(addr, "/api/info", &info); err != nil {
+			p.setAuth(addr, 0)
+			return nil, err
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	if info.Auth >= 2 {
+		p.setAuth(addr, 2)
+	}
+	return &info, nil
 }
 
 // syncHistory 拉取对方的历史：第一次全量，之后只要上次同步以来的变化（笔记本合盖再打开、Wi-Fi 抖动重连时

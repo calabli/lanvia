@@ -209,6 +209,7 @@ func (e *encResponseWriter) WriteHeader(code int) {
 	}
 	e.wroteHeader = true
 	e.Header().Del("Content-Length")
+	e.Header().Del("Content-Disposition") // 文件名是明文的，对方已经知道
 	e.Header().Set("X-Lanvia-Enc", "1")
 	e.Header().Set("Content-Type", "application/octet-stream")
 	e.ResponseWriter.WriteHeader(code)

@@ -99,10 +99,19 @@ const I18N = (() => {
     '在同一网络，但配对码不同': 'is on this network with a different pairing code',
     '配对码应为 10 位': 'The pairing code has 10 characters', '已加入，正在寻找其他设备…': 'Joined. Looking for other devices…',
     '加密': 'Encryption',
-    '电脑之间的内容、历史和文件都用由配对码派生的密钥加密（AES-256-GCM）。手机浏览器与电脑之间仍是明文 http。':
-      'Content, history and files between computers are encrypted with a key derived from the pairing code (AES-256-GCM). Phone browsers still use plain http.',
+    '电脑之间、手机浏览器与电脑之间的内容、历史和文件都用由配对码派生的密钥加密（AES-256-GCM），每个请求只能使用一次，截获后无法重放。超过 256 MB 的文件在手机上明文传输，以免占用同样大的内存。':
+      'Content, history and files are encrypted between computers and between phone browsers and computers, with a key derived from the pairing code (AES-256-GCM). Each request can be used only once, so captured requests can\'t be replayed. On phones, files over 256 MB are sent unencrypted to avoid using as much memory.',
     '只允许加密连接': 'Encrypted connections only',
-    '拒绝不支持加密的旧版本设备（v0.4 及更早），也防止同一网络里有人截获并去掉加密': 'Refuse older devices without encryption (v0.4 and earlier) and stop anyone on the network from stripping encryption',
+    '拒绝不支持加密的旧版本设备（v0.4 及更早），也防止同一网络里有人截获并去掉加密；手机上的大文件也加密传输': 'Refuse older devices without encryption (v0.4 and earlier), stop anyone on the network from stripping encryption, and encrypt large files on phones too',
+    '允许用 token 访问': 'Allow token access',
+    '给 iOS 快捷指令、安卓 HTTP Shortcuts、脚本使用。token 和通过它收发的内容都是明文传输，不用时建议关闭':
+      "For iOS Shortcuts, HTTP Shortcuts on Android and scripts. The token and everything sent with it travel unencrypted, so turn this off if you don't use it",
+    '重新生成 token': 'Regenerate token',
+    '怀疑 token 泄露时使用，旧 token 立即失效，需要更新快捷指令和脚本。': 'Use this if the token may have leaked. The old token stops working right away, so update your shortcuts and scripts.',
+    '重新生成后，旧 token 立即失效，使用它的快捷指令和脚本需要更新。确定吗？': 'The old token will stop working right away, and shortcuts and scripts using it need updating. Continue?',
+    '重新生成': 'Regenerate', '已重新生成 token': 'Token regenerated', '操作失败：{0}': 'Failed: {0}',
+    '正在加载…': 'Loading…', '正在加载 {0}%': 'Loading {0}%', '正在下载 {0}%': 'Downloading {0}%', '正在加密 {0}%': 'Encrypting {0}%',
+    '下载失败：{0}': 'Download failed: {0}', '读取文件失败': "Couldn't read the file", '播放': 'Play',
     '{0} 是旧版本，不支持加密。开启后将断开与它们的同步，确定吗？': '{0} run an older version without encryption. Turning this on stops syncing with them. Continue?',
     '开启': 'Turn on',
     '手动添加设备': 'Add device manually',
@@ -151,6 +160,8 @@ const I18N = (() => {
     '确定': 'OK',
     // ---- 服务端返回的提示 ----
     '这台电脑只允许加密连接，请把对方升级到最新版本': 'This computer only allows encrypted connections. Update the other device to the latest version.',
+    '重复的请求（可能被截获后重放），已拒绝': 'Duplicate request rejected (it may have been captured and replayed)',
+    '这台电脑已关闭 token 访问': 'Token access is turned off on this computer',
     '文件占用上限无效': 'Invalid storage limit', '自动下载上限无效': 'Invalid auto-download limit', '保留天数应在 0 到 3650 之间': 'Retention must be between 0 and 3650 days',
     '对方的配对码和本机不同（未保存）。请先在“加入另一台电脑”里统一配对码': 'The other computer uses a different pairing code (not saved). Use “Join another computer” to share one code first.',
     '暂时连不上（地址已保存，会自动重试）。请确认对方的 Lanvia 正在运行、IP 和端口正确，以及防火墙允许连接':

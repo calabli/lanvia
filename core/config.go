@@ -31,6 +31,8 @@ type Settings struct {
 	PausedUntil int64 `json:"pausedUntil"`
 	// 应用黑名单：在这些应用里复制的内容不发送（bundle id / 进程名 / 应用名，不区分大小写）
 	BlockApps []string `json:"blockApps"`
+	// 关闭 token 访问（快捷指令、curl）。token 和内容都是明文传输
+	TokenOff bool `json:"tokenOff"`
 }
 
 const (
@@ -46,6 +48,8 @@ type Config struct {
 	Port int    `json:"port"`
 	// 手动添加的设备地址（host:port），自动发现失效时使用
 	Peers []string `json:"peers,omitempty"`
+	// 重新生成过的自动化 token；空表示用由配对码派生的
+	Token string `json:"token,omitempty"`
 	Settings
 }
 

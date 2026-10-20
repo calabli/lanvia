@@ -32,10 +32,21 @@ type App struct {
 
 	quotaMu  sync.Mutex // 保护 reserved，以及“腾空间”这一步
 	reserved int64      // 正在下载、还没落盘的副本预留的空间（.part 文件不计入占用）
+
+	nonces nonceCache // v2 写请求用过的 nonce，防重放
+}
+
+// credsFor 由配置得到密钥；重新生成过的 token 优先于由配对码派生的。
+func credsFor(c *Config) creds {
+	cr := deriveCreds(c.Code)
+	if c.Token != "" {
+		cr.token = c.Token
+	}
+	return cr
 }
 
 func newApp(dir string, cfg *Config, manualPeers []string) *App {
-	a := &App{dir: dir, cfg: *cfg, cr: deriveCreds(cfg.Code), hub: newHub(), saved: map[string]string{}, fetch: newFetcher()}
+	a := &App{dir: dir, cfg: *cfg, cr: credsFor(cfg), hub: newHub(), saved: map[string]string{}, fetch: newFetcher()}
 	a.store = openStore(dir)
 	a.store.setRetention(cfg.HistoryDays)
 	a.peers = newPeers(a, manualPeers)
@@ -58,7 +69,7 @@ func (a *App) creds() creds {
 func (a *App) updateCfg(fn func(*Config)) error {
 	a.mu.Lock()
 	fn(&a.cfg)
-	a.cr = deriveCreds(a.cfg.Code)
+	a.cr = credsFor(&a.cfg)
 	c := a.cfg
 	a.mu.Unlock()
 	a.hub.Broadcast("settings", c.Settings) // 托盘菜单里改的设置，打开着的窗口也要跟着变

@@ -240,8 +240,8 @@
   </div>
   <div class="sheet-section">
     <h3>加密</h3>
-    <p class="muted small">电脑之间的内容、历史和文件都用由配对码派生的密钥加密（AES-256-GCM）。手机浏览器与电脑之间仍是明文 http。</p>
-    <label class="switch"><input type="checkbox" id="optStrict"><span><b>只允许加密连接</b><small>拒绝不支持加密的旧版本设备（v0.4 及更早），也防止同一网络里有人截获并去掉加密</small></span></label>
+    <p class="muted small">电脑之间、手机浏览器与电脑之间的内容、历史和文件都用由配对码派生的密钥加密（AES-256-GCM），每个请求只能使用一次，截获后无法重放。超过 256 MB 的文件在手机上明文传输，以免占用同样大的内存。</p>
+    <label class="switch"><input type="checkbox" id="optStrict"><span><b>只允许加密连接</b><small>拒绝不支持加密的旧版本设备（v0.4 及更早），也防止同一网络里有人截获并去掉加密；手机上的大文件也加密传输</small></span></label>
   </div>
   <div class="sheet-section">
     <h3>手动添加设备</h3>
@@ -255,9 +255,13 @@
   </div>
   <div class="sheet-section">
     <h3>自动化</h3>
-    <p class="muted small">iOS 快捷指令、安卓 HTTP Shortcuts、脚本可用这个令牌调用接口：</p>
-    <code id="token" class="mono block"></code>
-    <pre id="curl" class="mono block small"></pre>
+    <label class="switch"><input type="checkbox" id="optToken"><span><b>允许用 token 访问</b><small>给 iOS 快捷指令、安卓 HTTP Shortcuts、脚本使用。token 和通过它收发的内容都是明文传输，不用时建议关闭</small></span></label>
+    <div id="tokenBox">
+      <code id="token" class="mono block"></code>
+      <pre id="curl" class="mono block small"></pre>
+      <button id="resetToken" class="btn sm">重新生成 token</button>
+      <p class="muted small">怀疑 token 泄露时使用，旧 token 立即失效，需要更新快捷指令和脚本。</p>
+    </div>
   </div>
   <div class="sheet-section">
     <h3>危险操作</h3>
@@ -309,6 +313,7 @@
 <script src="i18n.js"></script>
 <script src="highlight.js"></script>
 <script src="zip.js"></script>
+<script src="crypto.js"></script>
 <script src="base.js"></script>
 <script src="list.js"></script>
 <script src="preview.js"></script>

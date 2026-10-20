@@ -104,22 +104,25 @@ scripts/build.sh      Build script
 - **Files**: stored on the node they were uploaded to; other computers each keep a backup copy in the background (100 MB and under by default, adjustable in settings; each computer's file storage is capped at 2 GB by default and only copies are evicted, never originals). Downloads go to the sender first and fall back to any computer that has a copy, so the sender being off doesn't matter. Range requests are supported (videos can seek).
 - **Retention**: the global retention period applies to this computer only, and expired items won't sync back from other devices; per-item retention syncs to every device — concurrent changes are resolved by time, with a fixed tie-break when times are equal.
 - **Editing and versions**: every edit creates a version with its author and time, and the original is kept as the first version. Nodes merge version sets by ID and show the newest version, so concurrent edits on several devices converge to the same result without losing any version.
-- **Encryption**: requests between computers, relayed content and files are encrypted with AES-256-GCM (key derived from the pairing code), in 64 KB frames so tampering, truncation and reordering are all detected. Older nodes without encryption fall back to plaintext for compatibility; turn on "Encrypted connections only" in settings to refuse them.
+- **Encryption**: requests, push events, relayed content and files are encrypted with AES-256-GCM (key derived from the pairing code), both between computers and between phone browsers and computers, in 64 KB frames so tampering, truncation and reordering are all detected. The web client ships its own AES-GCM (http pages on a LAN can't use the browser's crypto APIs), using the same frame format as the Go side. On phones, images and videos are downloaded and decrypted before they're shown, so videos can't stream while downloading; files over 256 MB are sent unencrypted on phones to avoid using as much memory. Older nodes without encryption fall back to plaintext for compatibility; turn on "Encrypted connections only" in settings to refuse them.
 - **Clipboard**: macOS calls NSPasteboard directly (polling only reads the change count, so it uses almost no power; without cgo it falls back to `pbpaste`/`pbcopy`), Windows calls the Win32 API directly, Linux uses `wl-clipboard`/`xclip`/`xsel`. Copied files and content marked sensitive by password managers are not sent. Content written by a remote device is remembered so it isn't broadcast again as a new copy.
 
 ## Security
 
-- The pairing code (10 characters, about 50 bits) **never travels over the network**. Both sides derive an HMAC key from it, and every request is signed with timestamp + method + path, valid for 5 minutes (clients first calibrate their clock with `/api/time`).
+- The pairing code (10 characters, about 50 bits) **never travels over the network**. Both sides derive an HMAC key from it, and every request is signed with timestamp + random nonce + method + path + query, valid for 5 minutes (clients first calibrate their clock with `/api/time`).
+- **Replay protection**: a write request's nonce is accepted only once, so a captured request can't be sent again, and the query is covered by the signature so it can't be altered. Devices on v0.7 and earlier sign only timestamp, method and path; they're still accepted for compatibility, but their requests aren't protected against replay.
 - In the QR code the pairing code sits after `#`, so it's never sent to the server, and it's removed from the address bar as soon as it's read.
-- The LAN uses plain http, where browsers don't provide `crypto.subtle`, so the web client ships its own SHA-256/HMAC implementation (verified to match Go's output).
+- The LAN uses plain http, where browsers don't provide `crypto.subtle`, so the web client ships its own SHA-256/HMAC and AES-256-GCM (tests use node to encrypt and decrypt against Go in both directions).
 - The local dashboard doesn't need signatures, but requests must come from the loopback address with `Host` set to localhost, and writes must have an `Origin` matching the host — protecting against DNS rebinding and cross-site requests.
 - Uploaded files are served with `Content-Security-Policy: sandbox`, and SVG/HTML are always downloads, so they can't run scripts on this origin.
 - Content, history and files between computers are encrypted with AES-256-GCM; with "Encrypted connections only" on, a man in the middle can't strip the encryption either.
-- **Limitation**: phone browsers still talk to computers over plain http (http pages on a LAN can't use the browser's crypto APIs), so anyone able to sniff the same Wi-Fi can read what phones send and receive (but not the pairing code).
+- **Limitations**:
+  - The page itself (HTML and scripts) is served over http. Someone who only sniffs the Wi-Fi can't read the content, but someone who can tamper with traffic (e.g. ARP spoofing) could change the scripts and obtain the pairing code.
+  - The automation token and everything sent with it travel unencrypted. You can turn token access off in settings, or regenerate the token if it may have leaked.
 
 ## Phone automation (optional)
 
-**Settings → Automation (自动化)** on the dashboard shows an API token (derived from the pairing code; the code can't be recovered from it).
+**Settings → Automation (自动化)** on the dashboard shows an API token (derived from the pairing code; the code can't be recovered from it; you can regenerate or turn it off). The token and everything sent with it travel unencrypted.
 
 **iOS Shortcuts**: can be bound to Back Tap or the share sheet.
 

@@ -117,10 +117,18 @@ function renderPreviewBody() {
   $('#pvWrap').classList.toggle('on', PVS.wrap);
   $('#pvMono').classList.toggle('on', !!PVS.mono);
   if (it.kind === 'file') {
-    const src = esc(signedURL('/api/blob/' + it.id));
-    if (/^image\//.test(it.mime || '') && it.mime !== 'image/svg+xml') body.innerHTML = `<div class="pv-media"><img src="${src}" alt="${esc(it.name)}"></div>`;
-    else if (/^video\//.test(it.mime || '')) body.innerHTML = `<div class="pv-media"><video src="${src}" controls autoplay></video></div>`;
-    else body.innerHTML = `<div class="pv-file"><div class="file-icon">${ICON.file}</div><div class="file-name" data-raw>${esc(it.name)}</div><div class="muted">${fmtSize(it.size || 0)} · ${esc(it.mime || '')}</div></div>`;
+    const img = /^image\//.test(it.mime || '') && it.mime !== 'image/svg+xml', vid = /^video\//.test(it.mime || '');
+    if (!img && !vid) {
+      body.innerHTML = `<div class="pv-file"><div class="file-icon">${ICON.file}</div><div class="file-name" data-raw>${esc(it.name)}</div><div class="muted">${fmtSize(it.size || 0)} · ${esc(it.mime || '')}</div></div>`;
+      return;
+    }
+    // 手机上要先下载、解密：显示进度，完成后再放进 <img> / <video>
+    body.innerHTML = `<div class="pv-media"><div class="pv-file muted pv-loading">${S.key ? '正在加载…' : ''}</div></div>`;
+    const size = it.size || 0, tip = $('.pv-loading', body);
+    mediaURL('/api/blob/' + it.id, it, got => { if (size && tip) tip.textContent = `正在加载 ${Math.round(got / size * 100)}%`; }).then(url => {
+      if (PV !== it) return; // 加载期间换了别的内容
+      $('.pv-media', body).innerHTML = img ? `<img src="${esc(url)}" alt="${esc(it.name)}">` : `<video src="${esc(url)}" controls autoplay></video>`;
+    }, e => { if (PV === it && tip) tip.textContent = '加载失败：' + e.message; });
     return;
   }
   if (PVS.mode === 'history') return renderHistory();

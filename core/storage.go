@@ -21,7 +21,25 @@ type StorageUsage struct {
 	QuotaMB  int   `json:"quotaMB"`  // 上限，0 为不限
 }
 
-var quotaMu sync.Mutex // 腾空间和写入新文件不要交叉进行
+// reserve 为即将写入的 n 字节预留空间：必要时先清理旧副本。放不下返回 false。
+// 并发的下载各自预留，合计不会超过上限；下载结束（成功或失败）后调用 release。
+// 成功时应先把文件改名就位再 release，这样中间不会有一刻少算。
+func (a *App) reserve(n int64) (release func(), ok bool) {
+	a.quotaMu.Lock()
+	defer a.quotaMu.Unlock()
+	if !a.makeRoom(a.reserved + n) {
+		return nil, false
+	}
+	a.reserved += n
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			a.quotaMu.Lock()
+			a.reserved -= n
+			a.quotaMu.Unlock()
+		})
+	}, true
+}
 
 type blobFile struct {
 	it   *Item
@@ -77,8 +95,8 @@ func (a *App) StorageUsage() StorageUsage {
 	return u
 }
 
-// makeRoom 确保再写入 need 字节后不超过上限：必要时删除副本。返回能否放下。
-// 调用方应持有 quotaMu，直到新文件写完。
+// makeRoom 确保再写入 need 字节（含已预留的）后不超过上限：必要时删除副本。返回能否放下。
+// 调用方须持有 quotaMu。
 func (a *App) makeRoom(need int64) bool {
 	quota := int64(a.cfgSnapshot().StorageMB) << 20
 	if quota <= 0 {
@@ -120,15 +138,15 @@ func (a *App) makeRoom(need int64) bool {
 
 // enforceQuota 在上限调小或原件增多后，把副本清理到上限以内。
 func (a *App) enforceQuota() {
-	quotaMu.Lock()
-	a.makeRoom(0)
-	quotaMu.Unlock()
+	a.quotaMu.Lock()
+	a.makeRoom(a.reserved)
+	a.quotaMu.Unlock()
 }
 
 // ClearReplicas 删除所有副本（条目保留，需要时再从其他设备获取）。
 func (a *App) ClearReplicas() (int, int64) {
-	quotaMu.Lock()
-	defer quotaMu.Unlock()
+	a.quotaMu.Lock()
+	defer a.quotaMu.Unlock()
 	_, reps := a.scanBlobs()
 	n, freed := 0, int64(0)
 	for _, b := range reps {

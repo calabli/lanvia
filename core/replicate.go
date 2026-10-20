@@ -121,12 +121,11 @@ func (a *App) fetchOne(id string) {
 	if !a.wantFetch(it) {
 		return
 	}
-	quotaMu.Lock()
-	fits := a.makeRoom(it.Size) // 放不下就不备份，需要时再去取
-	quotaMu.Unlock()
-	if !fits {
+	release, ok := a.reserve(it.Size) // 放不下就不备份，需要时再去取
+	if !ok {
 		return
 	}
+	defer release()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 	defer cancel()
 	resp, err := a.fetchFromPeers(ctx, it, "")

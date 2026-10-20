@@ -36,6 +36,7 @@ type desktop struct {
 	panel   *application.WebviewWindow
 	main    *application.WebviewWindow
 	preview *application.WebviewWindow
+	winMu   sync.Mutex // 保护按需创建 main / preview
 	notify  *notifier
 	update  *updater
 
@@ -79,13 +80,12 @@ func main() {
 }
 
 func (d *desktop) build() {
-	base := d.node.LocalURL()
 	d.panel = d.app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             "panel",
 		Title:            "Lanvia",
 		Width:            380,
 		Height:           600,
-		URL:              base + "/?desktop=panel",
+		URL:              d.node.LocalURL() + "/?desktop=panel",
 		Frameless:        true,
 		AlwaysOnTop:      true,
 		Hidden:           true,
@@ -95,37 +95,9 @@ func (d *desktop) build() {
 		BackgroundColour: application.NewRGB(0xf2, 0xf5, 0xfa),
 		Windows:          application.WindowsWindow{HiddenOnTaskbar: true},
 	})
-	d.main = d.app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:      "main",
-		Title:     "Lanvia",
-		Width:     960,
-		Height:    760,
-		MinWidth:  420,
-		MinHeight: 480,
-		URL:       base + "/?desktop=main",
-		Hidden:    true,
-	})
-	// 预览窗口像访达的“快速查看”：可拖动、可调整大小，默认悬浮在最上层
-	d.preview = d.app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:        "preview",
-		Title:       "Lanvia 预览",
-		Width:       760,
-		Height:      620,
-		MinWidth:    360,
-		MinHeight:   240,
-		URL:         base + "/?desktop=preview",
-		Hidden:      true,
-		AlwaysOnTop: true,
-		// 不用 HideOnEscape：编辑时 Esc 是“取消编辑”，由网页自己决定何时关闭
-	})
-	// 关闭窗口只是隐藏，Lanvia 继续在后台同步
-	for _, w := range []*application.WebviewWindow{d.panel, d.main, d.preview} {
-		w := w
-		w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
-			w.Hide()
-			e.Cancel()
-		})
-	}
+	// 主窗口和预览窗口第一次用到时才创建（见 mainWindow / previewWindow），
+	// 启动时只有快捷面板：它要挂在托盘图标上。每个窗口都是一个完整的网页，常驻会占内存和 CPU。
+	d.hideOnClose(d.panel)
 
 	// macOS 上 WebView 的 ⌘C / ⌘V / ⌘A 依赖“编辑”菜单；菜单栏应用看不到这个菜单，但快捷键需要它
 	if runtime.GOOS == "darwin" {
@@ -165,9 +137,13 @@ func (d *desktop) build() {
 		case "update":
 			go d.update.install()
 		case "hide-preview":
-			d.preview.Hide()
+			if d.preview != nil {
+				d.preview.Hide()
+			}
 		case "pin", "unpin":
-			d.preview.SetAlwaysOnTop(action == "pin")
+			if d.preview != nil {
+				d.preview.SetAlwaysOnTop(action == "pin")
+			}
 		default:
 			return false
 		}
@@ -194,12 +170,65 @@ func (d *desktop) togglePanel() {
 	d.panel.Focus()
 }
 
+// hideOnClose：关闭窗口只是隐藏，Lanvia 继续在后台同步，下次打开也不用重新加载。
+func (d *desktop) hideOnClose(w *application.WebviewWindow) {
+	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		w.Hide()
+		e.Cancel()
+	})
+}
+
+func (d *desktop) mainWindow() *application.WebviewWindow {
+	d.winMu.Lock()
+	defer d.winMu.Unlock()
+	if d.main == nil {
+		d.main = d.app.Window.NewWithOptions(application.WebviewWindowOptions{
+			Name:      "main",
+			Title:     "Lanvia",
+			Width:     960,
+			Height:    760,
+			MinWidth:  420,
+			MinHeight: 480,
+			URL:       d.node.LocalURL() + "/?desktop=main",
+		})
+		d.hideOnClose(d.main)
+	}
+	return d.main
+}
+
+// previewWindow 返回预览窗口；第一次创建时直接打开 url，返回 true。
+func (d *desktop) previewWindow(url string) (*application.WebviewWindow, bool) {
+	d.winMu.Lock()
+	defer d.winMu.Unlock()
+	if d.preview != nil {
+		return d.preview, false
+	}
+	// 预览窗口像访达的“快速查看”：可拖动、可调整大小，默认悬浮在最上层
+	d.preview = d.app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name:        "preview",
+		Title:       "Lanvia 预览",
+		Width:       760,
+		Height:      620,
+		MinWidth:    360,
+		MinHeight:   240,
+		URL:         url,
+		AlwaysOnTop: true,
+		// 不用 HideOnEscape：编辑时 Esc 是“取消编辑”，由网页自己决定何时关闭
+	})
+	d.hideOnClose(d.preview)
+	return d.preview, true
+}
+
 func (d *desktop) openPreviewMode(id, mode string) {
 	d.panel.Hide()
-	d.preview.SetURL(d.node.LocalURL() + "/?desktop=preview&id=" + id + "&mode=" + mode)
-	d.preview.SetAlwaysOnTop(true)
-	d.preview.Show()
-	d.preview.Focus()
+	url := d.node.LocalURL() + "/?desktop=preview&id=" + id + "&mode=" + mode
+	w, created := d.previewWindow(url)
+	if !created {
+		w.SetURL(url)
+	}
+	w.SetAlwaysOnTop(true)
+	w.Show()
+	w.Focus()
 }
 
 func (d *desktop) openPreview(id string) { d.openPreviewMode(id, "view") }
@@ -215,8 +244,9 @@ func (d *desktop) anyWindowFocused() bool {
 }
 
 func (d *desktop) showMain() {
-	d.main.Show()
-	d.main.Focus()
+	w := d.mainWindow()
+	w.Show()
+	w.Focus()
 }
 
 // sendClipboard 手动发送当前剪贴板。没有窗口可以提示，所以在菜单栏图标旁边短暂显示结果。

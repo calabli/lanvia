@@ -153,7 +153,13 @@ func (a *App) merge(s storeFile, from string) {
 			touched[it.ID] = true
 			continue
 		}
-		// 已有的内容：补上对方更新过的保留设置、收藏和清单
+		// 已有的内容：补上对方更新过的保留设置、收藏、标签和清单
+		if len(it.Tags) > 0 {
+			if u := a.store.applyTags(it.ID, it.Tags); u != nil {
+				a.bcastItem("update", u)
+				touched[it.ID] = true
+			}
+		}
 		if it.Kind == "todo" {
 			if u := a.store.applyTodo(it.ID, it.Todo, it.Text, it.TextTS); u != nil {
 				a.bcastItem("update", u)

@@ -43,6 +43,9 @@ type Item struct {
 	// 未删除的评论数（见 comments.go），由本机根据评论计算
 	Comments int `json:"comments,omitempty"`
 
+	// 标签（见 tags.go）：标签 -> 最近一次添加（正数）或移除（负数）的时间
+	Tags map[string]int64 `json:"tags,omitempty"`
+
 	// 清单（Kind 为 todo）：各项，以及标题（Text）最近一次修改的时间
 	Todo   []*TodoEntry `json:"todo,omitempty"`
 	TextTS int64        `json:"textTs,omitempty"`
@@ -292,6 +295,9 @@ func (s *Store) Add(it *Item) bool {
 	it.Comments = liveComments(s.comments[it.ID]) // 对方算的评论数不作数，评论随后单独合并
 	if it.Kind == "todo" {
 		it.Todo, _ = mergeTodo(nil, it.Todo) // 整理顺序、去掉墓碑里的文字
+	}
+	if len(it.Tags) > 0 {
+		it.Tags, _ = mergeTags(nil, it.Tags) // 去掉不合法的标签
 	}
 	i := sort.Search(len(s.items), func(i int) bool { return s.items[i].TS < it.TS })
 	s.items = append(s.items, nil)

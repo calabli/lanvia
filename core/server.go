@@ -149,6 +149,23 @@ func (a *App) routes(web fs.FS) http.Handler {
 		}
 		writeJSON(w, 200, it)
 	}))
+	// 标签：给一条内容添加、移除标签；列出所有在用的标签
+	m.HandleFunc("POST /api/items/{id}/tags", auth(func(w http.ResponseWriter, r *http.Request) {
+		var req struct{ Add, Remove []string }
+		if json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&req) != nil || len(req.Add)+len(req.Remove) > 100 {
+			errJSON(w, 400, "bad request")
+			return
+		}
+		it, err := a.SetTags(r.PathValue("id"), req.Add, req.Remove)
+		if err != nil {
+			errJSON(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, it)
+	}))
+	m.HandleFunc("GET /api/tags", auth(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, a.AllTags())
+	}))
 	m.HandleFunc("GET /api/items/{id}/comments", auth(func(w http.ResponseWriter, r *http.Request) {
 		if a.store.Get(r.PathValue("id")) == nil {
 			errJSON(w, 404, "内容不存在")
@@ -692,6 +709,12 @@ func (a *App) handleRelay(w http.ResponseWriter, r *http.Request) {
 	case "add":
 		if validItem(env.Item) {
 			a.ingest(env.Item, from, true)
+		}
+	case "tags":
+		if idRe.MatchString(env.ID) && env.Item != nil && len(env.Item.Tags) <= 2*maxTagEntries {
+			if it := a.store.applyTags(env.ID, env.Item.Tags); it != nil {
+				a.afterTags(it, env.Item.Tags, from)
+			}
 		}
 	case "todo":
 		if idRe.MatchString(env.ID) && env.Item != nil {

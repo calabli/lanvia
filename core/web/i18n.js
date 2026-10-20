@@ -112,6 +112,8 @@ const I18N = (() => {
     '已重新生成 token': 'Token regenerated', '操作失败：{0}': 'Failed: {0}',
     '正在加载…': 'Loading…', '正在加载 {0}%': 'Loading {0}%', '正在下载 {0}%': 'Downloading {0}%', '正在加密 {0}%': 'Encrypting {0}%',
     '下载失败：{0}': 'Download failed: {0}',
+    '标签': 'Tags', '输入标签，回车添加': 'Type a tag and press Enter', '新标签': 'New tag', '还没有标签': 'No tags yet',
+    '移除标签': 'Remove tag', '只看这个标签': 'Show only this tag', '按标签筛选': 'Filter by tag', '每条内容最多 20 个标签': 'An item can have at most 20 tags',
     '字体大小': 'Text size', '· 仅本设备': '· this device only', '恢复默认': 'Reset', '快捷键：': 'Shortcuts:', '字体大小 {0}%': 'Text size {0}%',
     '新建清单': 'New list', '清单': 'Lists', '添加一项…': 'Add an item…', '添加一项': 'Add an item', '清除已完成': 'Clear completed',
     '修改这一项': 'Edit item', '删除这一项': 'Delete item', '重命名': 'Rename', '清单名称': 'List name', '例如：周末购物': 'e.g. Weekend shopping',

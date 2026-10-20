@@ -86,6 +86,8 @@ function bind() {
     todoChange(it, { add: [text] });
   });
   $('#todoBtn').onclick = newTodo;
+  $('#tagBar').addEventListener('click', e => { const b = e.target.closest('[data-tag]'); if (b) setTagFilter(b.dataset.tag); });
+  bindTagMenu();
   $('#list').addEventListener('click', e => {
     const el = e.target.closest('[data-act]');
     if (!el || e.target.closest('a')) return;
@@ -103,6 +105,8 @@ function bind() {
       case 'view': case 'preview': openPreview(it); break;
       case 'edit': openPreview(it, 'edit'); break;
       case 'comments': openPreview(it, 'comments'); break;
+      case 'tags': openTagMenu(it, el); break;
+      case 'tag-filter': setTagFilter(el.dataset.tag); break;
       case 'todo-check': todoChange(it, { id: el.closest('[data-eid]').dataset.eid, done: el.checked }); break;
       case 'todo-del': todoChange(it, { id: el.closest('[data-eid]').dataset.eid, del: true }); break;
       case 'todo-edit': {

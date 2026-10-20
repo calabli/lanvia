@@ -6,6 +6,8 @@
 
 function bind() {
   applyTheme(store.get('theme') || 'system');
+  applyFont(store.get('fontSize'));
+  bindFontMenu();
   $('#themeBtn').onclick = () => {
     const current = document.documentElement.dataset.theme || 'system';
     applyTheme({ system: 'light', light: 'dark', dark: 'system' }[current]);

@@ -17,7 +17,7 @@ Instantly share clipboard text and files between devices on the same local netwo
 | Action | What it does |
 | --- | --- |
 | Click the tray icon | Opens the quick panel: type to search, ↑↓ to choose, Enter copies to the clipboard and closes, Esc closes |
-| Right-click the tray icon | Copy any of the 6 latest items (files are saved and shown in Finder / Explorer), active / passive mode, send current clipboard, launch at login, quit |
+| Right-click the tray icon | Copy any of the 6 latest items (files are saved and shown in Finder / Explorer), favorites, active / passive mode, send current clipboard, pause syncing, launch at login, check for updates, quit |
 | **Space** or **⌘Y** in the panel | Floating preview window: read long content in full, Enter copies everything, select part and ⌘C copies just that |
 | **⌘E** in the panel, or Edit (编辑) in the preview | Edit the content; ⌘S saves it as a new version and syncs it to every device |
 | Clock button in the preview | Version history: who changed what and when, line-by-line diff, copy or restore any version |
@@ -34,6 +34,11 @@ The preview window detects and highlights JSON, JavaScript, Go, Python, Shell, S
 **Send mode**: in active mode, anything you copy is sent automatically; in passive mode nothing is sent until you choose **Send current clipboard (发送当前剪贴板)** in the tray menu or on the page. Files copied in Finder and passwords copied from a password manager are never sent automatically — drag files into the window instead.
 
 On first launch the main window opens so you can pair your phone. Closing a window doesn't quit; Lanvia keeps syncing in the background.
+
+- **Notifications**: when another device sends something you get a system notification — Copy right from it for text, or click it to open the preview. Not shown while a Lanvia window is in front.
+- **Pause syncing**: pause for 15 minutes / 1 hour / until you resume from the tray. While paused, copies aren't sent and incoming items aren't written to the clipboard.
+- **App blocklist**: add apps in settings (or pick them from "Recently copied from"); content copied in those apps is never sent.
+- **Auto-update**: checks GitHub for a new version at startup and every 6 hours, and updates from the tray in one click (verified with SHA256, then replaced and relaunched). The repository must be public for this to work.
 
 **Command-line version**: for servers, Linux, or when you don't want a UI.
 
@@ -73,9 +78,11 @@ scripts/build.sh
 ## Layout
 
 ```
-core/                 The node: clipboard, discovery and sync, HTTP API, built-in web UI (core/web)
+core/                 The node: clipboard, discovery and sync, encryption, HTTP API
+core/web/             Built-in web UI, split by feature into base / list / preview / features / settings / main scripts
 cmd/lanvia/           Command-line version
-cmd/lanvia-desktop/   Desktop app (Wails v3: tray, quick panel, preview window, main window)
+cmd/lanvia-desktop/   Desktop app (Wails v3: tray, quick panel, preview window, main window, notifications, auto-update)
+internal/update/      Auto-update: checking, downloading with verification, replacing the app
 tools/genicons/       Generates the app and tray icons
 scripts/build.sh      Build script
 ```

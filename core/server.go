@@ -1,6 +1,9 @@
 package core
 
 import (
+	"bytes"
+	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"io/fs"
@@ -30,7 +33,8 @@ type Info struct {
 	Port    int          `json:"port"`
 	Now     int64        `json:"now"`
 	Clients []ClientInfo `json:"clients"`
-	Enc     bool         `json:"enc"` // 支持节点间加密
+	Enc     bool         `json:"enc"`            // 支持节点间加密
+	Auth    int          `json:"auth,omitempty"` // 支持的签名版本（2：防重放，v0.8 起）
 
 	// 以下字段只返回给本机仪表盘
 	Local      bool          `json:"local,omitempty"`
@@ -61,7 +65,7 @@ func (a *App) routes(web fs.FS) http.Handler {
 	auth := a.requireAuth
 	local := a.requireLocal
 	m.HandleFunc("GET /api/info", auth(a.handleInfo))
-	m.HandleFunc("GET /api/events", auth(a.handleEvents))
+	m.HandleFunc("GET /api/events", a.authStream(a.handleEvents))
 	// 历史同步：since 是上次同步时响应方的时间（本机时钟），只返回之后有变化的部分；不带则返回全部
 	m.HandleFunc("GET /api/history", auth(func(w http.ResponseWriter, r *http.Request) {
 		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
@@ -193,6 +197,14 @@ func (a *App) routes(web fs.FS) http.Handler {
 	m.HandleFunc("POST /api/relay", auth(a.handleRelay))
 	m.HandleFunc("POST /api/settings", local(a.handleSettings))
 	m.HandleFunc("POST /api/join", local(a.handleJoin))
+	// 重新生成自动化 token：旧 token 立即失效（token 是明文传输的，怀疑泄露时用）
+	m.HandleFunc("POST /api/token/reset", local(func(w http.ResponseWriter, r *http.Request) {
+		if err := a.updateCfg(func(c *Config) { c.Token = randHex(16) }); err != nil {
+			errJSON(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]string{"token": a.creds().token})
+	}))
 	m.HandleFunc("GET /api/qr", local(handleQR))
 	m.HandleFunc("POST /api/copy/{id}", local(func(w http.ResponseWriter, r *http.Request) {
 		if err := a.CopyToClipboard(r.PathValue("id")); err != nil {
@@ -262,41 +274,75 @@ func errJSON(w http.ResponseWriter, code int, msg string) {
 	writeJSON(w, code, map[string]string{"error": msg})
 }
 
-func (a *App) requireAuth(h http.HandlerFunc) http.HandlerFunc {
+func (a *App) requireAuth(h http.HandlerFunc) http.HandlerFunc { return a.authed(h, false) }
+
+// authStream 用于 SSE：响应不能整体加密成一个流（EventSource 读不了），由处理函数逐条加密事件。
+func (a *App) authStream(h http.HandlerFunc) http.HandlerFunc { return a.authed(h, true) }
+
+type ctxKey int
+
+const ctxEventKey ctxKey = 0
+
+// eventKey 返回 SSE 事件要用的加密密钥；nil 表示明文。
+func eventKey(r *http.Request) []byte {
+	k, _ := r.Context().Value(ctxEventKey).([]byte)
+	return k
+}
+
+func (a *App) authed(h http.HandlerFunc, stream bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if isLocalAdmin(r) {
 			h(w, r)
 			return
 		}
-		if c := a.creds(); checkSigned(r, c) {
-			// 其他节点的请求：按需解密请求体、加密响应
-			if r.Header.Get("X-Lanvia-Sig") != "" {
-				if r.Header.Get("X-Lanvia-Enc") != "1" && a.cfgSnapshot().StrictEnc {
-					errJSON(w, 403, "这台电脑只允许加密连接，请把对方升级到最新版本")
-					return
-				}
-				if r.Header.Get("X-Lanvia-Body-Enc") == "1" {
-					r.Body = openReadCloser{newOpenReader(r.Body, c.enc), r.Body}
-					r.ContentLength = -1
-				}
-				if r.Header.Get("X-Lanvia-Enc") == "1" {
-					ew := newEncResponseWriter(w, c.enc)
-					defer ew.Close()
-					w = ew
-				}
-			}
-			// 配对码相同的节点发来签名请求：如果还不认识它，就连回去（只在一边手动添加也能双向同步）
-			if r.Header.Get("X-Lanvia-Sig") != "" {
-				if port := r.Header.Get("X-Lanvia-Port"); port != "" {
-					if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-						a.peers.noticeCaller(r.Header.Get("X-Lanvia-Node"), net.JoinHostPort(host, port))
-					}
-				}
+		c, cfg := a.creds(), a.cfgSnapshot()
+		kind, nonce, ts := checkSigned(r, c)
+		var encResp bool
+		switch kind {
+		case authFail:
+			errJSON(w, 401, "unauthorized")
+			return
+		case authToken: // 快捷指令、curl：明文
+			if cfg.TokenOff {
+				errJSON(w, 403, "这台电脑已关闭 token 访问")
+				return
 			}
 			h(w, r)
 			return
+		case authV1: // 旧版本设备：按对方要求决定是否加密
+			if r.Header.Get("X-Lanvia-Enc") != "1" && cfg.StrictEnc {
+				errJSON(w, 403, "这台电脑只允许加密连接，请把对方升级到最新版本")
+				return
+			}
+			encResp = r.Header.Get("X-Lanvia-Enc") == "1"
+		case authV2:
+			if r.Method != http.MethodGet && r.Method != http.MethodHead && !a.nonces.use(nonce, ts) {
+				errJSON(w, 409, "重复的请求（可能被截获后重放），已拒绝")
+				return
+			}
+			// 很大的文件，网页可以选择明文下载（在手机上整个解密要占用同样大的内存）；只允许加密连接时不行
+			encResp = r.URL.Query().Get("_plain") != "1" || cfg.StrictEnc
 		}
-		errJSON(w, 401, "unauthorized")
+		if r.Header.Get("X-Lanvia-Body-Enc") == "1" {
+			r.Body = openReadCloser{newOpenReader(r.Body, c.enc), r.Body}
+			r.ContentLength = -1
+		}
+		if encResp {
+			if stream {
+				r = r.WithContext(context.WithValue(r.Context(), ctxEventKey, c.enc))
+			} else {
+				ew := newEncResponseWriter(w, c.enc)
+				defer ew.Close()
+				w = ew
+			}
+		}
+		// 配对码相同的节点发来签名请求：如果还不认识它，就连回去（只在一边手动添加也能双向同步）
+		if port := r.Header.Get("X-Lanvia-Port"); port != "" {
+			if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+				a.peers.noticeCaller(r.Header.Get("X-Lanvia-Node"), net.JoinHostPort(host, port))
+			}
+		}
+		h(w, r)
 	}
 }
 
@@ -312,7 +358,7 @@ func (a *App) requireLocal(h http.HandlerFunc) http.HandlerFunc {
 
 func (a *App) info(local bool) *Info {
 	c := a.cfgSnapshot()
-	in := &Info{ID: c.ID, Name: c.Name, OS: runtime.GOOS, Version: Version, Port: c.Port, Now: nowMs(), Clients: a.hub.List(), Enc: true}
+	in := &Info{ID: c.ID, Name: c.Name, OS: runtime.GOOS, Version: Version, Port: c.Port, Now: nowMs(), Clients: a.hub.List(), Enc: true, Auth: 2}
 	if local {
 		s := c.Settings
 		in.Local, in.Code, in.Token, in.Settings = true, formatCode(c.Code), a.creds().token, &s
@@ -352,7 +398,14 @@ func (a *App) handleEvents(w http.ResponseWriter, r *http.Request) {
 	h.Set("Cache-Control", "no-cache")
 	h.Set("X-Accel-Buffering", "no")
 	self := a.cfgSnapshot()
-	w.Write(sseFrame("hello", map[string]any{
+	key := eventKey(r)
+	send := func(msg []byte) {
+		if key != nil {
+			msg = sealEvent(msg, key)
+		}
+		w.Write(msg)
+	}
+	send(sseFrame("hello", map[string]any{
 		"you":   c.ID,
 		"node":  map[string]string{"id": self.ID, "name": self.Name, "os": runtime.GOOS},
 		"items": clientItems(a.store.List()),
@@ -360,6 +413,7 @@ func (a *App) handleEvents(w http.ResponseWriter, r *http.Request) {
 		"devices": a.devices(),
 		"local":   c.Local,
 		"now":     nowMs(),
+		"strict":  self.StrictEnc, // 只允许加密连接时，网页连大文件也要加密传输
 	}))
 	fl.Flush()
 	a.hub.Add(c)
@@ -372,13 +426,23 @@ func (a *App) handleEvents(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case msg := <-c.ch:
-			w.Write(msg)
+			send(msg)
 			fl.Flush()
 		case <-t.C:
 			io.WriteString(w, ": ping\n\n")
 			fl.Flush()
 		}
 	}
+}
+
+// sealEvent 把一条 SSE 事件的数据加密成 base64url（事件名不加密）。
+func sealEvent(msg, key []byte) []byte {
+	head, data, ok := bytes.Cut(msg, []byte("\ndata: "))
+	if !ok {
+		return msg
+	}
+	data = bytes.TrimSuffix(data, []byte("\n\n"))
+	return []byte(string(head) + "\ndata: " + base64.RawURLEncoding.EncodeToString(sealAll(data, key)) + "\n\n")
 }
 
 func (a *App) handleLatest(w http.ResponseWriter, r *http.Request) {
@@ -437,6 +501,9 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	os.Rename(part, final)
 	ct := r.Header.Get("Content-Type")
+	if t := q.Get("type"); t != "" { // 网页加密上传：类型放在加密的查询参数里
+		ct = trimRunes(t, 100)
+	}
 	if ct == "" || ct == "application/octet-stream" {
 		ct = mime.TypeByExtension(filepath.Ext(name))
 	}
@@ -602,6 +669,7 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		Lang        *string   `json:"lang"`
 		Notify      *bool     `json:"notify"`
 		BlockApps   *[]string `json:"blockApps"`
+		TokenOff    *bool     `json:"tokenOff"`
 	}
 	if json.NewDecoder(r.Body).Decode(&req) != nil {
 		errJSON(w, 400, "bad json")
@@ -638,6 +706,9 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.Notify != nil {
 			c.Notify = *req.Notify
+		}
+		if req.TokenOff != nil {
+			c.TokenOff = *req.TokenOff
 		}
 		if req.BlockApps != nil {
 			var list []string

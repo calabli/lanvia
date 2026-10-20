@@ -43,8 +43,10 @@ function itemHTML(it, latest) {
     const src = /^image\/(png|jpe?g|gif)$/i.test(mime) ? '/api/thumb/' + it.id
       : /^image\/(webp|avif|bmp)$/i.test(mime) && it.size < 2 << 20 ? '/api/blob/' + it.id : '';
     const media = src
-      ? `<img class="thumb" loading="lazy" alt="${esc(it.name)}" src="${esc(stableURL(src))}" data-act="view" onerror="this.remove()">`
-      : isVid ? `<video class="thumb" controls preload="metadata" src="${esc(stableURL('/api/blob/' + it.id))}"></video>` : '';
+      ? `<img class="thumb" alt="${esc(it.name)}" data-src="${src}" data-act="view" onerror="this.remove()">`
+      // 手机上的视频要先整个下载、解密才能播放，列表里只放一个按钮，点开预览再加载
+      : isVid ? (S.key && !plainOK(it) ? `<button class="thumb video-ph" data-act="view" aria-label="播放">${ICON.play}</button>`
+        : `<video class="thumb" controls preload="metadata" data-src="/api/blob/${it.id}"></video>`) : '';
     return `${meta}${media}
       <div class="file"><div class="file-icon">${ICON.file}</div><div><div class="file-name" data-raw>${esc(it.name)}</div><div class="muted small">${fmtSize(it.size || 0)}</div></div></div>
       <div class="actions">
@@ -186,6 +188,16 @@ function renderFromFilter() {
    先显示 PAGE 条，滚动到底部再加载更多。 */
 
 const PAGE = 50;
+
+// 图片滚动到附近才加载（手机上要下载并解密）
+function loadMedia(m) {
+  const it = S.items.find(x => x.id === m.closest('[data-id]')?.dataset.id);
+  if (!it) return;
+  mediaURL(m.dataset.src, it).then(u => { m.src = u; }, () => m.remove());
+}
+const mediaIO = 'IntersectionObserver' in window
+  ? new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { mediaIO.unobserve(e.target); loadMedia(e.target); } }), { rootMargin: '600px' })
+  : null;
 const ROWS = new Map(); // id -> { key, el }
 S.limit = PAGE;
 
@@ -217,6 +229,7 @@ function renderList() {
       el.dataset.id = it.id;
       el.innerHTML = html;
       if (terms) markTerms(el, S.terms);
+      el.querySelectorAll('[data-src]').forEach(m => (mediaIO ? mediaIO.observe(m) : loadMedia(m)));
       if (prev) el.style.animation = 'none'; // 只是内容更新，不重播出现动画
       ROWS.set(it.id, { key, el });
     }
@@ -289,8 +302,8 @@ function connect() {
   const es = new EventSource(signedURL('/api/events', { name: myName(), kind: KIND }));
   S.es = es;
   es.addEventListener('hello', e => {
-    const d = JSON.parse(e.data);
-    S.you = d.you; S.node = d.node; S.local = d.local; S.items = d.items || [];
+    const d = evData(e);
+    S.you = d.you; S.node = d.node; S.local = d.local; S.items = d.items || []; S.strict = !!d.strict;
     if (d.devices) S.devices = d.devices;
     S.connected = true; S.retry = 0;
     document.body.classList.toggle('is-local', S.local);
@@ -306,7 +319,7 @@ function connect() {
     }
   });
   es.addEventListener('item', e => {
-    const it = JSON.parse(e.data);
+    const it = evData(e);
     if (S.items.some(x => x.id === it.id)) return;
     const i = S.items.findIndex(x => x.ts < it.ts);
     i < 0 ? S.items.push(it) : S.items.splice(i, 0, it);
@@ -314,26 +327,29 @@ function connect() {
     const li = $(`.item[data-id="${it.id}"]`); li?.classList.add('flash');
     if (!PREVIEW && it.from !== myName() && Date.now() + S.offset - it.ts < 30e3) onIncoming(it);
   });
-  es.addEventListener('update', e => onItemUpdated(JSON.parse(e.data)));
+  es.addEventListener('update', e => onItemUpdated(evData(e)));
   es.addEventListener('settings', e => {
+    const st = evData(e);
+    S.strict = !!st.strictEnc;
     if (!S.info) return;
-    S.info.settings = JSON.parse(e.data);
+    S.info.settings = st;
     $('#optApply').checked = S.info.settings.autoApply;
     $('#optKeep').value = String(S.info.settings.historyDays);
     $('#optFetch').value = String(S.info.settings.autoFetchMB);
     $('#optStrict').checked = !!S.info.settings.strictEnc;
+    $('#optToken').checked = !S.info.settings.tokenOff; $('#tokenBox').hidden = !!S.info.settings.tokenOff;
     $('#optNotify').checked = S.info.settings.notify !== false;
     renderBlock();
     if ((S.info.settings.lang || '') !== (store.get('lang') || '')) applyLang(S.info.settings.lang || '');
     renderMode();
   });
   es.addEventListener('delete', e => {
-    const { id } = JSON.parse(e.data);
+    const { id } = evData(e);
     S.items = S.items.filter(x => x.id !== id); renderList();
     if (PV?.id === id) PREVIEW ? showPreviewMissing() : $('#previewDlg').close();
   });
-  es.addEventListener('clear', e => { const { ts } = JSON.parse(e.data); S.items = S.items.filter(x => x.ts > ts); renderList(); });
-  es.addEventListener('devices', e => { S.devices = JSON.parse(e.data); renderDevices(); renderList(); });
+  es.addEventListener('clear', e => { const { ts } = evData(e); S.items = S.items.filter(x => x.ts > ts); renderList(); });
+  es.addEventListener('devices', e => { S.devices = evData(e); renderDevices(); renderList(); });
   es.onerror = () => {
     es.close(); S.connected = false; renderDevices();
     const wait = Math.min(1000 * 2 ** S.retry++, 15000);
@@ -403,11 +419,22 @@ async function saveLocal(it, then) {
   } catch (e) { toast('保存失败：' + e.message); }
 }
 
-function download(it) {
+async function download(it) {
   if (S.local) return saveLocal(it, 'none');
   const a = document.createElement('a');
-  a.href = signedURL('/api/blob/' + it.id, { dl: '1' });
   a.download = it.name;
+  if (!S.key || plainOK(it)) {
+    a.href = signedURL('/api/blob/' + it.id, S.key ? { dl: '1', _plain: 1 } : { dl: '1' });
+  } else { // 加密传输：下载、解密后再交给浏览器保存
+    try {
+      const size = it.size || 0;
+      const blob = await fetchBlob('/api/blob/' + it.id, it.mime, got => {
+        if (size > 1 << 20) toast(`正在下载 ${Math.round(got / size * 100)}%`);
+      });
+      a.href = URL.createObjectURL(blob);
+      setTimeout(() => URL.revokeObjectURL(a.href), 60e3);
+    } catch (e) { toast('下载失败：' + e.message); return; }
+  }
   document.body.appendChild(a); a.click(); a.remove();
 }
 
@@ -435,8 +462,11 @@ function uploadFile(file) {
   $('#uploads').appendChild(row);
   const pct = $('.muted', row), bar = $('i', row);
   const xhr = new XMLHttpRequest();
-  xhr.open('POST', signedURL('/api/upload', { name: file.name || 'file', from: myName() }, 'POST'));
-  xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+  // 文件名、类型放在（加密的）查询参数里；内容加密，很大的文件除外（见 PLAIN_MAX）
+  xhr.open('POST', signedURL('/api/upload', { name: file.name || 'file', from: myName(), type: file.type || '' }, 'POST'));
+  xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+  const encrypt = S.key && !plainOK(file);
+  if (encrypt) xhr.setRequestHeader('X-Lanvia-Body-Enc', '1');
   xhr.upload.onprogress = e => {
     if (!e.lengthComputable) return;
     const p = Math.round(e.loaded / e.total * 100);
@@ -445,7 +475,9 @@ function uploadFile(file) {
   const done = msg => { if (msg) toast(msg); setTimeout(() => row.remove(), msg ? 0 : 600); };
   xhr.onload = () => (xhr.status === 200 ? done() : done('上传失败：HTTP ' + xhr.status));
   xhr.onerror = () => done('上传失败，请检查网络');
-  xhr.send(file);
+  if (!encrypt) return xhr.send(file);
+  sealFile(file, p => { pct.textContent = `正在加密 ${Math.round(p * 100)}%`; })
+    .then(b => xhr.send(b), () => done('读取文件失败'));
 }
 
 /* ---- 发送文件夹：先在本机打包成 zip，再按普通文件上传 ---- */

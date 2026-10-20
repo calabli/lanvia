@@ -186,6 +186,15 @@ function bind() {
     }
     saveSettings({ strictEnc: e.target.checked });
   };
+  $('#optToken').onchange = async e => {
+    await saveSettings({ tokenOff: !e.target.checked });
+    $('#tokenBox').hidden = !e.target.checked;
+  };
+  $('#resetToken').onclick = async () => {
+    if (!(await uiConfirm('重新生成后，旧 token 立即失效，使用它的快捷指令和脚本需要更新。确定吗？', { ok: '重新生成', danger: true }))) return;
+    try { await api('POST', '/api/token/reset'); await loadInfo(); toast('已重新生成 token'); }
+    catch (e) { toast('操作失败：' + e.message); }
+  };
   $('#optStorage').onchange = async e => {
     const mb = +e.target.value, u = S.info?.storage;
     if (mb && u && u.own + u.replicas > mb * 1048576 && !(await uiConfirm(`当前文件占用 ${fmtSize(u.own + u.replicas)}，超过新上限，将清理较旧的副本。确定吗？`, { ok: '确定' }))) {

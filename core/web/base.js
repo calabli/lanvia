@@ -73,7 +73,7 @@ const PANEL = DESKTOP === 'panel';
 const PREVIEW = DESKTOP === 'preview'; // 桌面端的悬浮预览窗口
 const PREVIEW_ID = QS.get('id');
 const S = {
-  key: null, offset: 0, items: [], devices: [], you: null, node: null, local: false,
+  key: null, ek: null, strict: false, offset: 0, items: [], devices: [], you: null, node: null, local: false,
   info: null, filter: '', kind: 'all', from: '', since: 0, fuzzy: false, es: null, connected: false, retry: 0, unseen: 0,
   view: [], sel: 0, // 当前显示的列表和键盘选中项（快捷面板）
 };
@@ -81,16 +81,24 @@ const desktop = (action, id) => api('POST', '/api/desktop/' + action + (id ? '?i
 
 function setCode(code) {
   S.key = code ? sha256(enc.encode('lanvia-key:' + code)) : null;
+  // 内容加密密钥（与电脑之间用的相同），见 crypto.js
+  S.ek = S.key ? LC.newKey(hmac(S.key, enc.encode('lanvia-content-encryption'))) : null;
 }
-function sign(method, path) {
-  const ts = String(Date.now() + S.offset);
-  return { ts, sig: hex(hmac(S.key, enc.encode(ts + '\n' + method + '\n' + path))) };
+// 签名 v2：带随机 nonce、覆盖查询参数；写请求的 nonce 电脑只接受一次，截获的请求不能重放
+function sign(method, path, query = '') {
+  const ts = String(Date.now() + S.offset), n = hex(crypto.getRandomValues(new Uint8Array(8)));
+  return { ts, n, sig: hex(hmac(S.key, enc.encode(`lanvia2\n${ts}\n${n}\n${method}\n${path}\n${query}`))) };
 }
+const sealQuery = q => LC.b64(LC.seal(S.ek, enc.encode(q)));
+// 带签名的地址（EventSource、明文下载等没法加请求头的场合）；查询参数加密成 _q
 function signedURL(path, params = {}, method = 'GET') {
-  const q = new URLSearchParams(params);
-  if (S.key) { const { ts, sig } = sign(method, path); q.set('_t', ts); q.set('_s', sig); }
-  const qs = q.toString();
-  return path + (qs ? '?' + qs : '');
+  const q = new URLSearchParams(params).toString();
+  if (!S.key) return path + (q ? '?' + q : '');
+  const { ts, n, sig } = sign(method, path, q);
+  const out = new URLSearchParams();
+  if (q) out.set('_q', sealQuery(q));
+  out.set('_v', '2'); out.set('_t', ts); out.set('_n', n); out.set('_s', sig);
+  return path + '?' + out;
 }
 // 列表里图片等地址：同一地址 4 分钟内复用同一个签名（签名 5 分钟有效），
 // 否则每次渲染签名都不同，卡片会被当成“有变化”而重建、图片重新加载。
@@ -103,16 +111,97 @@ function stableURL(path) {
   return url;
 }
 
-async function api(method, path, body) {
+// 发出请求：签名，加密查询参数和请求体。body 可以是对象（JSON）或 Uint8Array。
+function send(method, path, body) {
+  const [p, q = ''] = path.split(/\?(.*)/s);
   const headers = {};
-  if (S.key) { const { ts, sig } = sign(method, path.split('?')[0]); headers['X-Lanvia-TS'] = ts; headers['X-Lanvia-Sig'] = sig; }
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
-  const r = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  let url = path, data = body;
+  if (body !== undefined && !(body instanceof Uint8Array)) { data = enc.encode(JSON.stringify(body)); headers['Content-Type'] = 'application/json'; }
+  if (S.key) {
+    const { ts, n, sig } = sign(method, p, q);
+    Object.assign(headers, { 'X-Lanvia-Auth': '2', 'X-Lanvia-TS': ts, 'X-Lanvia-Nonce': n, 'X-Lanvia-Sig': sig });
+    if (q) url = p + '?_q=' + sealQuery(q);
+    if (data !== undefined) { data = LC.seal(S.ek, data); headers['X-Lanvia-Body-Enc'] = '1'; }
+  }
+  return fetch(url, { method, headers, body: data });
+}
+const isEnc = r => r.headers.get('X-Lanvia-Enc') === '1';
+async function readBody(r) {
+  const b = new Uint8Array(await r.arrayBuffer());
+  return isEnc(r) ? LC.open(S.ek, b) : b;
+}
+const dec = new TextDecoder();
+// SSE 事件：发给手机的是加密后的 base64url，本机窗口是明文 JSON
+const evData = e => JSON.parse(/^[[{]/.test(e.data) ? e.data : dec.decode(LC.open(S.ek, LC.unb64(e.data))));
+
+async function api(method, path, body) {
+  const r = await send(method, path, body);
   if (r.status === 401 && !isLoopback) { unpair('配对已失效，请重新输入配对码'); throw new Error('unauthorized'); }
-  const data = await r.json().catch(() => ({}));
+  let data = {};
+  try { data = JSON.parse(dec.decode(await readBody(r))); } catch {}
   if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status);
   return data;
 }
+
+/* ---- 文件内容：手机上要先下载、解密，再交给 <img> / <video> / 下载 ---- */
+
+// 更大的文件在手机上整个解密要占用同样大的内存，改为明文传输（只允许加密连接时除外）
+const PLAIN_MAX = 256 << 20;
+const plainOK = it => !S.strict && (it.size || 0) > PLAIN_MAX;
+
+async function fetchBlob(path, type, onProgress) {
+  const r = await send('GET', path);
+  if (!r.ok) throw new Error(r.status === 404 ? '文件不存在' : 'HTTP ' + r.status);
+  const op = isEnc(r) ? new LC.Opener(S.ek) : null, parts = [], reader = r.body.getReader();
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    for (const p of op ? op.push(value) : [value]) { parts.push(p); got += p.length; }
+    onProgress?.(got);
+  }
+  op?.end();
+  return new Blob(parts, { type: type || '' });
+}
+
+// 图片、视频的可用地址：本机窗口直接用地址；手机上解密成 blob: 地址并缓存（缩略图和小图）
+const MEDIA = new Map(); // path -> Promise<url>
+let mediaBytes = 0;
+function mediaURL(path, it, onProgress) {
+  if (!S.key) return Promise.resolve(path);
+  if (plainOK(it)) return Promise.resolve(signedURL(path, { _plain: 1 }));
+  const hit = MEDIA.get(path);
+  if (hit) return hit;
+  const p = fetchBlob(path, path.startsWith('/api/thumb/') ? 'image/jpeg' : it.mime, onProgress).then(b => {
+    const url = URL.createObjectURL(b);
+    if (b.size > 8 << 20) { setTimeout(() => URL.revokeObjectURL(url), 10 * 60e3); MEDIA.delete(path); return url; } // 大文件不缓存
+    mediaBytes += b.size;
+    if (mediaBytes > 64 << 20) { // 缓存超过 64 MB：清掉最早的一半
+      for (const [k, v] of [...MEDIA].slice(0, MEDIA.size >> 1)) { MEDIA.delete(k); v.then(URL.revokeObjectURL); }
+      mediaBytes = 0;
+    }
+    return url;
+  });
+  p.catch(() => MEDIA.delete(path));
+  MEDIA.set(path, p);
+  return p;
+}
+
+// 把文件加密成上传用的 Blob（与电脑之间的帧格式相同）。分块读，读的过程中界面不卡住
+async function sealFile(file, onProgress) {
+  const s = new LC.Sealer(S.ek), parts = [], CHUNK = 64 * LC.FRAME, size = file.size;
+  if (!size) return new Blob([s.frame(new Uint8Array(0), true)]);
+  for (let off = 0; off < size; off += CHUNK) {
+    const buf = new Uint8Array(await file.slice(off, off + CHUNK).arrayBuffer());
+    for (let i = 0; i < buf.length; i += LC.FRAME) {
+      const end = Math.min(buf.length, i + LC.FRAME);
+      parts.push(s.frame(buf.subarray(i, end), off + end === size));
+    }
+    onProgress?.(Math.min(size, off + CHUNK) / size);
+  }
+  return new Blob(parts);
+}
+
 async function syncTime() {
   try {
     const t0 = Date.now();
@@ -152,6 +241,7 @@ const ICON = {
   gear: I('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'),
   close: I('<path d="M6 6l12 12M18 6 6 18"/>'),
   chevron: I('<path d="m6 15 6-6 6 6"/>'),
+  play: I('<path fill="currentColor" d="M8 5.5v13l10.5-6.5z"/>'),
   phone: I('<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 18h2"/>'),
   tablet: I('<rect x="4.5" y="3" width="15" height="18" rx="2.5"/><path d="M11 18h2"/>'),
   laptop: I('<rect x="4.5" y="5" width="15" height="10" rx="1.5"/><path d="M2.5 19h19"/>'),

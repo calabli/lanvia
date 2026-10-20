@@ -37,6 +37,8 @@ async function loadInfo() {
   renderStorage(i.storage, i.settings.storageMB);
   $('#clipWarn').hidden = !!i.clipboard;
   $('#token').textContent = i.token;
+  $('#optToken').checked = !i.settings.tokenOff;
+  $('#tokenBox').hidden = !!i.settings.tokenOff;
   const base = (i.urls || [])[0] || `http://localhost:${i.port}`;
   $('#curl').textContent =
 `# 发送文本
@@ -84,7 +86,7 @@ function unpair(msg) {
 async function tryCode(code) {
   setCode(code);
   try {
-    const r = await fetch('/api/info', { headers: (() => { const { ts, sig } = sign('GET', '/api/info'); return { 'X-Lanvia-TS': ts, 'X-Lanvia-Sig': sig }; })() });
+    const r = await send('GET', '/api/info');
     if (r.status === 401) return false;
     return r.ok;
   } catch { return false; }

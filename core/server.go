@@ -67,6 +67,16 @@ func (a *App) routes(web fs.FS) http.Handler {
 	m.HandleFunc("POST /api/clip", auth(a.handleClip))
 	m.HandleFunc("POST /api/upload", auth(a.handleUpload))
 	m.HandleFunc("GET /api/blob/{id}", auth(a.handleBlob))
+	m.HandleFunc("GET /api/thumb/{id}", auth(func(w http.ResponseWriter, r *http.Request) {
+		p, err := a.Thumbnail(a.store.Get(r.PathValue("id")))
+		if err != nil {
+			errJSON(w, 404, "no thumbnail")
+			return
+		}
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Cache-Control", "private, max-age=604800")
+		http.ServeFile(w, r, p)
+	}))
 	m.HandleFunc("DELETE /api/items/{id}", auth(func(w http.ResponseWriter, r *http.Request) {
 		a.remove(r.PathValue("id"), "")
 		writeJSON(w, 200, ok)

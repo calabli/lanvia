@@ -464,13 +464,12 @@ func (a *App) handleBlob(w http.ResponseWriter, r *http.Request) {
 		io.Copy(w, resp.Body)
 		return
 	}
-	quotaMu.Lock()
-	fits := a.makeRoom(it.Size)
-	quotaMu.Unlock()
-	if !fits { // 超出文件占用上限：只转发，不缓存
+	release, ok := a.reserve(it.Size)
+	if !ok { // 超出文件占用上限：只转发，不缓存
 		io.Copy(w, resp.Body)
 		return
 	}
+	defer release()
 	part := a.store.blobPath(id) + "." + randHex(4) + ".part"
 	f, err := os.Create(part)
 	if err != nil {

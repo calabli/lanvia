@@ -2,8 +2,45 @@ package core
 
 import (
 	"strings"
+	"sync"
 	"unicode/utf8"
 )
+
+// 长正文转小写的结果缓存起来，不用每次搜索都转一遍（按内容 ID 和版本号失效）。
+type lowerCache struct {
+	mu sync.Mutex
+	m  map[string]lowerEntry
+}
+
+type lowerEntry struct {
+	rev, size int
+	lower     string
+}
+
+func (c *lowerCache) get(it *Item) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.m == nil {
+		c.m = map[string]lowerEntry{}
+	}
+	if e, ok := c.m[it.ID]; ok && e.rev == it.Rev && e.size == len(it.Text) {
+		return e.lower
+	}
+	l := strings.ToLower(it.Text)
+	c.m[it.ID] = lowerEntry{it.Rev, len(it.Text), l}
+	return l
+}
+
+// prune 去掉已经不在列表里的内容的缓存。
+func (c *lowerCache) prune(alive map[string]bool) {
+	c.mu.Lock()
+	for id := range c.m {
+		if !alive[id] {
+			delete(c.m, id)
+		}
+	}
+	c.mu.Unlock()
+}
 
 // 网页列表里的长正文只有前 16 KB，超出部分的搜索由节点在全文里完成。
 
@@ -20,11 +57,14 @@ func (a *App) SearchFull(query string) []SearchHit {
 		return []SearchHit{}
 	}
 	out := []SearchHit{}
+	alive := map[string]bool{}
+	defer func() { a.lower.prune(alive) }()
 	for _, it := range a.store.List() {
 		if it.Kind != "text" || len(it.Text) <= previewBytes {
 			continue // 短内容网页自己就能搜到
 		}
-		lower := strings.ToLower(it.Text)
+		alive[it.ID] = true
+		lower := a.lower.get(it)
 		// 定位到“最晚才出现”的那个关键词：它往往就是在摘要之外、需要全文搜索才能找到的那个
 		pos := -1
 		for _, t := range terms {

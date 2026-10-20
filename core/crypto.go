@@ -60,13 +60,14 @@ type sealWriter struct {
 	aead    cipher.AEAD
 	base    [12]byte
 	i       uint64
-	buf     []byte
+	buf     []byte // 待加密的明文，最多一帧，复用
+	ct      []byte // 密文缓冲，复用
 	started bool
 	closed  bool
 }
 
 func newSealWriter(w io.Writer, key []byte) *sealWriter {
-	s := &sealWriter{w: w, aead: newAEAD(key)}
+	s := &sealWriter{w: w, aead: newAEAD(key), buf: make([]byte, 0, encFrame)}
 	rand.Read(s.base[:])
 	return s
 }
@@ -78,7 +79,8 @@ func (s *sealWriter) frame(plain []byte, final bool) error {
 		}
 		s.started = true
 	}
-	ct := s.aead.Seal(nil, frameNonce(s.base, s.i), plain, frameAAD(s.i, final))
+	s.ct = s.aead.Seal(s.ct[:0], frameNonce(s.base, s.i), plain, frameAAD(s.i, final))
+	ct := s.ct
 	hdr := uint32(len(ct))
 	if final {
 		hdr |= finalFlag
@@ -96,14 +98,19 @@ func (s *sealWriter) frame(plain []byte, final bool) error {
 }
 
 func (s *sealWriter) Write(p []byte) (int, error) {
-	s.buf = append(s.buf, p...)
-	for len(s.buf) > encFrame {
-		if err := s.frame(s.buf[:encFrame], false); err != nil {
-			return 0, err
+	n := len(p)
+	for len(p) > 0 {
+		if len(s.buf) == encFrame { // 缓冲满了，并且后面还有数据：这一帧不是最后一帧
+			if err := s.frame(s.buf, false); err != nil {
+				return 0, err
+			}
+			s.buf = s.buf[:0]
 		}
-		s.buf = s.buf[encFrame:]
+		k := copy(s.buf[len(s.buf):encFrame], p)
+		s.buf = s.buf[:len(s.buf)+k]
+		p = p[k:]
 	}
-	return len(p), nil
+	return n, nil
 }
 
 func (s *sealWriter) Close() error {
@@ -128,7 +135,9 @@ type openReader struct {
 	aead cipher.AEAD
 	base [12]byte
 	i    uint64
-	buf  []byte
+	buf  []byte // 尚未读走的明文
+	ct   []byte // 密文缓冲，复用
+	pt   []byte // 明文缓冲，复用（buf 读完后才会解下一帧）
 	head bool
 	done bool
 }
@@ -157,16 +166,19 @@ func (o *openReader) Read(p []byte) (int, error) {
 		if n > encFrame+o.aead.Overhead() {
 			return 0, errors.New("加密帧过大")
 		}
-		ct := make([]byte, n)
+		if cap(o.ct) < n {
+			o.ct = make([]byte, n)
+		}
+		ct := o.ct[:n]
 		if _, err := io.ReadFull(o.r, ct); err != nil {
 			return 0, errEncTruncated
 		}
-		plain, err := o.aead.Open(nil, frameNonce(o.base, o.i), ct, frameAAD(o.i, final))
+		plain, err := o.aead.Open(o.pt[:0], frameNonce(o.base, o.i), ct, frameAAD(o.i, final))
 		if err != nil {
 			return 0, errors.New("加密数据校验失败（配对码不一致或数据被篡改）")
 		}
 		o.i++
-		o.buf, o.done = plain, final
+		o.pt, o.buf, o.done = plain, plain, final
 	}
 	n := copy(p, o.buf)
 	o.buf = o.buf[n:]

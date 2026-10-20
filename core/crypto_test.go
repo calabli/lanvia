@@ -74,3 +74,22 @@ func TestEncDetectsTampering(t *testing.T) {
 		t.Fatal("wrong key not detected")
 	}
 }
+
+// 加密传输 16 MB（大文件中转的典型路径），关注每次操作的内存分配
+func BenchmarkEncStream(b *testing.B) {
+	plain := make([]byte, 16<<20)
+	key := testKey()
+	b.SetBytes(int64(len(plain)))
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		var buf bytes.Buffer
+		w := newSealWriter(&buf, key)
+		for p := plain; len(p) > 0; { // 按 32 KB 写入，和 io.Copy 一样
+			n := min(len(p), 32<<10)
+			w.Write(p[:n])
+			p = p[n:]
+		}
+		w.Close()
+		io.Copy(io.Discard, newOpenReader(&buf, key))
+	}
+}

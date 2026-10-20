@@ -37,11 +37,14 @@ function itemHTML(it, latest) {
   const fromDev = S.devices.find(d => d.name === it.from);
   const meta = `<div class="meta">${kindIcon(fromDev?.kind)}<span class="from" data-raw>${esc(it.from)}</span><span>· ${relTime(it.ts)}</span>${latest ? '<span class="badge">最新</span>' : ''}${it.rev ? `<span class="badge soft" title="${esc(it.editedBy || '')} 修改">已编辑</span>` : ''}${it.fav ? '' : expiryBadge(it)}</div>${it.fav ? `<div class="fav-title">${ICON.starOn}${it.title ? `<span data-raw>${esc(it.title)}</span>` : '<span>已收藏</span>'}</div>` : ''}`;
   if (it.kind === 'file') {
-    const isImg = /^image\/(png|jpe?g|gif|webp|heic|avif|bmp)$/i.test(it.mime || '');
-    const isVid = /^video\//.test(it.mime || '');
-    const media = isImg
-      ? `<img class="thumb" loading="lazy" alt="${esc(it.name)}" src="${esc(signedURL('/api/blob/' + it.id))}" data-act="view">`
-      : isVid ? `<video class="thumb" controls preload="metadata" src="${esc(signedURL('/api/blob/' + it.id))}"></video>` : '';
+    const mime = it.mime || '';
+    const isVid = /^video\//.test(mime);
+    // 列表里只加载缩略图；没法生成缩略图的格式，小于 2 MB 才直接显示原图，否则只显示文件图标
+    const src = /^image\/(png|jpe?g|gif)$/i.test(mime) ? '/api/thumb/' + it.id
+      : /^image\/(webp|avif|bmp)$/i.test(mime) && it.size < 2 << 20 ? '/api/blob/' + it.id : '';
+    const media = src
+      ? `<img class="thumb" loading="lazy" alt="${esc(it.name)}" src="${esc(stableURL(src))}" data-act="view" onerror="this.remove()">`
+      : isVid ? `<video class="thumb" controls preload="metadata" src="${esc(stableURL('/api/blob/' + it.id))}"></video>` : '';
     return `${meta}${media}
       <div class="file"><div class="file-icon">${ICON.file}</div><div><div class="file-name" data-raw>${esc(it.name)}</div><div class="muted small">${fmtSize(it.size || 0)}</div></div></div>
       <div class="actions">

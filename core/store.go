@@ -208,6 +208,7 @@ func (s *Store) load() {
 // dropFiles 删除一条内容在磁盘上的所有附属文件（调用方持有锁）。
 func (s *Store) dropFiles(id string) {
 	os.Remove(s.blobPath(id))
+	os.Remove(s.thumbPath(id))
 	os.Remove(s.textPath(id))
 	os.Remove(s.verPath(id))
 	delete(s.versions, id)

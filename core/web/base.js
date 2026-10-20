@@ -92,6 +92,17 @@ function signedURL(path, params = {}, method = 'GET') {
   const qs = q.toString();
   return path + (qs ? '?' + qs : '');
 }
+// 列表里图片等地址：同一地址 4 分钟内复用同一个签名（签名 5 分钟有效），
+// 否则每次渲染签名都不同，卡片会被当成“有变化”而重建、图片重新加载。
+const URLS = new Map();
+function stableURL(path) {
+  const hit = URLS.get(path);
+  if (hit && Date.now() - hit.t < 4 * 60e3) return hit.url;
+  const url = signedURL(path);
+  URLS.set(path, { url, t: Date.now() });
+  return url;
+}
+
 async function api(method, path, body) {
   const headers = {};
   if (S.key) { const { ts, sig } = sign(method, path.split('?')[0]); headers['X-Lanvia-TS'] = ts; headers['X-Lanvia-Sig'] = sig; }

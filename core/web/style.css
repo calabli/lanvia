@@ -430,3 +430,26 @@ button.chip-item.add:hover { background: var(--accent-soft); }
 /* ---- 分页 ---- */
 .list-more { display: flex; justify-content: center; padding: 14px 0 4px; }
 .list-more .btn { color: var(--muted); }
+
+/* 清单 */
+.todo-head { display: flex; align-items: baseline; gap: 10px; margin: 2px 0 8px; }
+.todo-title { font-weight: 650; font-size: 16px; min-width: 0; overflow-wrap: anywhere; }
+.todo-prog { margin-left: auto; flex: none; font-variant-numeric: tabular-nums; }
+.todo-bar { height: 3px; border-radius: 2px; background: var(--surface-2); overflow: hidden; margin-bottom: 6px; }
+.todo-bar i { display: block; height: 100%; background: var(--accent); transition: width .25s; }
+.todo { list-style: none; margin: 0; padding: 0; }
+.todo-e { display: flex; align-items: center; gap: 2px; border-radius: 8px; }
+.todo-e:hover { background: var(--surface-2); }
+.todo-e label { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 10px; padding: 7px 6px; cursor: pointer; }
+.todo-e input[type=checkbox] { flex: none; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--accent); cursor: pointer; }
+.todo-t { font-size: 15px; line-height: 1.45; overflow-wrap: anywhere; user-select: text; }
+.todo-t a { color: var(--accent); }
+.todo-e.done .todo-t { color: var(--muted); text-decoration: line-through; }
+.todo-x { width: 28px; height: 28px; flex: none; opacity: 0; }
+.todo-x svg { width: 14px; height: 14px; }
+.todo-e:hover .todo-x, .todo-x:focus-visible { opacity: .65; }
+@media (pointer: coarse) { .todo-x { opacity: .45; } }
+.item:not(.open) .todo.fold .todo-e:nth-child(n+11) { display: none; }
+.todo-add { margin: 6px 0 2px; }
+.todo-add input { width: 100%; font-size: 15px; padding: 8px 10px; border-radius: 10px; background: transparent; border: 1px dashed var(--border); box-shadow: none; }
+.todo-add input:focus { border-style: solid; }

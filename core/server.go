@@ -112,6 +112,43 @@ func (a *App) routes(web fs.FS) http.Handler {
 		}
 		writeJSON(w, 200, map[string]any{"item": it, "versions": a.store.Versions(id)})
 	}))
+	// 清单：新建，以及勾选、添加、修改、删除其中的项
+	m.HandleFunc("POST /api/todo", auth(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Title string   `json:"title"`
+			Items []string `json:"items"`
+			From  string   `json:"from"`
+		}
+		if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req) != nil {
+			errJSON(w, 400, "bad request")
+			return
+		}
+		if req.From == "" {
+			req.From = a.cfgSnapshot().Name
+		}
+		it, err := a.NewTodo(req.Title, req.Items, trimRunes(req.From, 40))
+		if err != nil {
+			errJSON(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, it)
+	}))
+	m.HandleFunc("POST /api/items/{id}/todo", auth(func(w http.ResponseWriter, r *http.Request) {
+		var ch TodoChange
+		if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&ch) != nil {
+			errJSON(w, 400, "bad request")
+			return
+		}
+		if ch.By == "" {
+			ch.By = a.cfgSnapshot().Name
+		}
+		it, err := a.UpdateTodo(r.PathValue("id"), ch)
+		if err != nil {
+			errJSON(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, it)
+	}))
 	m.HandleFunc("GET /api/items/{id}/comments", auth(func(w http.ResponseWriter, r *http.Request) {
 		if a.store.Get(r.PathValue("id")) == nil {
 			errJSON(w, 404, "内容不存在")
@@ -655,6 +692,14 @@ func (a *App) handleRelay(w http.ResponseWriter, r *http.Request) {
 	case "add":
 		if validItem(env.Item) {
 			a.ingest(env.Item, from, true)
+		}
+	case "todo":
+		if idRe.MatchString(env.ID) && env.Item != nil {
+			d := *env.Item
+			d.ID, d.Kind = env.ID, "todo"
+			if validTodo(&d) {
+				a.applyRemoteTodo(&d, from)
+			}
 		}
 	case "edit":
 		if idRe.MatchString(env.ID) && validVersion(env.Version) {

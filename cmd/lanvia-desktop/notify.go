@@ -98,6 +98,9 @@ func (n *notifier) flush() {
 	if it.Kind == "file" {
 		opts.Body = fmt.Sprintf("📄 %s", it.Name)
 		opts.CategoryID = catFile
+	} else if it.Kind == "todo" {
+		opts.Body = notifyPreview("☑ " + it.PlainText())
+		opts.CategoryID = catText
 	} else {
 		opts.Body = notifyPreview(it.Text)
 		opts.CategoryID = catText

@@ -153,7 +153,13 @@ func (a *App) merge(s storeFile, from string) {
 			touched[it.ID] = true
 			continue
 		}
-		// 已有的内容：补上对方更新过的保留设置和收藏
+		// 已有的内容：补上对方更新过的保留设置、收藏和清单
+		if it.Kind == "todo" {
+			if u := a.store.applyTodo(it.ID, it.Todo, it.Text, it.TextTS); u != nil {
+				a.bcastItem("update", u)
+				touched[it.ID] = true
+			}
+		}
 		if it.MetaTS > 0 {
 			if u := a.store.applyMeta(it.ID, it.ExpiresAt, it.Keep, it.MetaTS); u != nil {
 				a.bcastItem("update", u)
@@ -210,7 +216,7 @@ func (a *App) relaySync(items []*Item, from string) {
 	}
 	for _, it := range items {
 		vs, cs := a.store.Versions(it.ID), a.store.allComments(it.ID)
-		n := len(it.Text) + 300
+		n := len(it.Text) + 300 + len(it.Todo)*150
 		for _, v := range vs {
 			n += len(v.Text) + 100
 		}
@@ -241,13 +247,18 @@ func validItem(it *Item) bool {
 		return len(it.Text) <= maxTextLen && utf8.ValidString(it.Text)
 	case "file":
 		return it.Name != ""
+	case "todo":
+		return validTodo(it)
 	}
 	return false
 }
 
 func preview(it *Item) string {
-	if it.Kind == "file" {
+	switch it.Kind {
+	case "file":
 		return L("[文件] ", "[file] ") + it.Name
+	case "todo":
+		return L("[清单] ", "[list] ") + it.Text
 	}
 	r := []rune(it.Text)
 	if len(r) > 40 {

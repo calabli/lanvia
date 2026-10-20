@@ -165,10 +165,10 @@ func (a *App) CopyToClipboard(id string) error {
 	if it == nil {
 		return errors.New("内容不存在")
 	}
-	if it.Kind != "text" {
+	if it.Kind == "file" {
 		return errors.New("只能复制文本")
 	}
-	return a.clip.Apply(it.Text)
+	return a.clip.Apply(it.PlainText()) // 清单复制为“- [ ] 项”的列表
 }
 
 // OnChange 注册一个回调，在历史或设置变化时调用（在独立的 goroutine 中）。

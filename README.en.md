@@ -58,6 +58,7 @@ Common flags:
 | `--name "Study PC"` | Device name |
 | `--port 8686` | HTTP port (discovery always uses UDP 8687) |
 | `--no-watch` | Don't watch this computer's clipboard |
+| `--lang en` | Language of terminal output and logs (`zh` / `en`), defaults to the system language |
 | `--data DIR` | Data directory, defaults to `Lanvia/` under the system config directory |
 
 ## Building

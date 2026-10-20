@@ -152,7 +152,7 @@ func (a *App) applyRemoteEdit(id string, v *TextVersion, fromPeer string) {
 }
 
 func (a *App) afterEdit(it *Item, changed bool, v *TextVersion, fromPeer string) {
-	a.hub.Broadcast("update", it)
+	a.bcastItem("update", it)
 	// 改的是最新一条时，各电脑剪贴板里的内容也跟着更新
 	if changed && a.store.isLatest(it.ID) && a.cfgSnapshot().AutoApply {
 		a.clip.Apply(it.Text)

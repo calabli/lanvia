@@ -77,7 +77,7 @@ func (a *App) ingest(it *Item, fromPeer string, apply bool) bool {
 	if !a.store.Add(it) {
 		return false
 	}
-	a.hub.Broadcast("item", it)
+	a.bcastItem("item", it)
 	if apply && it.Kind == "text" && a.cfgSnapshot().AutoApply && !a.Paused() {
 		if err := a.clip.Apply(it.Text); err != nil && a.clip.ok {
 			log.Printf("写入剪贴板失败: %v", err)
@@ -136,20 +136,20 @@ func (a *App) merge(s storeFile, from string) {
 			continue
 		}
 		if a.store.Add(it) {
-			a.hub.Broadcast("item", it)
+			a.bcastItem("item", it)
 			touched[it.ID] = true
 			continue
 		}
 		// 已有的内容：补上对方更新过的保留设置和收藏
 		if it.MetaTS > 0 {
 			if u := a.store.applyMeta(it.ID, it.ExpiresAt, it.Keep, it.MetaTS); u != nil {
-				a.hub.Broadcast("update", u)
+				a.bcastItem("update", u)
 				touched[it.ID] = true
 			}
 		}
 		if it.FavTS > 0 {
 			if u := a.store.applyFav(it.ID, it.Fav, it.Title, it.FavTS); u != nil {
-				a.hub.Broadcast("update", u)
+				a.bcastItem("update", u)
 				touched[it.ID] = true
 			}
 		}
@@ -157,7 +157,7 @@ func (a *App) merge(s storeFile, from string) {
 	// 合并编辑历史。对方的内容里已经是编辑后的文本，所以这里不能把当前文本当成原始版本
 	for id, vs := range s.Versions {
 		if it, added, _ := a.store.applyVersions(id, vs, false); added {
-			a.hub.Broadcast("update", it)
+			a.bcastItem("update", it)
 			touched[id] = true
 		}
 	}
@@ -313,7 +313,7 @@ func (a *App) SetFavorite(id string, fav bool, title string) (*Item, error) {
 }
 
 func (a *App) afterFav(it *Item, fromPeer string) {
-	a.hub.Broadcast("update", it)
+	a.bcastItem("update", it)
 	a.peers.relay(Envelope{Op: "fav", ID: it.ID, Item: &Item{Fav: it.Fav, Title: it.Title, FavTS: it.FavTS}}, fromPeer)
 	a.changed()
 }
@@ -330,7 +330,7 @@ func (a *App) Favorites() []Item {
 }
 
 func (a *App) afterMeta(it *Item, fromPeer string) {
-	a.hub.Broadcast("update", it)
+	a.bcastItem("update", it)
 	a.peers.relay(Envelope{Op: "meta", ID: it.ID, Item: &Item{ExpiresAt: it.ExpiresAt, Keep: it.Keep, MetaTS: it.MetaTS}}, fromPeer)
 	a.changed()
 }

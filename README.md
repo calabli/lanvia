@@ -56,6 +56,7 @@ go run ./cmd/lanvia
 | `--name 书房电脑` | 设备名 |
 | `--port 8686` | HTTP 端口（广播固定使用 UDP 8687） |
 | `--no-watch` | 不监听本机剪贴板 |
+| `--lang en` | 终端输出和日志的语言（`zh` / `en`），默认跟随系统 |
 | `--data DIR` | 数据目录，默认在系统配置目录下的 `Lanvia/` |
 
 ## 打包

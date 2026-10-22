@@ -73,7 +73,7 @@ const PANEL = DESKTOP === 'panel';
 const PREVIEW = DESKTOP === 'preview'; // 桌面端的悬浮预览窗口
 const PREVIEW_ID = QS.get('id');
 const S = {
-  key: null, ek: null, strict: false, offset: 0, items: [], devices: [], you: null, node: null, local: false,
+  key: null, ek: null, ekRaw: null, strict: false, offset: 0, items: [], devices: [], you: null, node: null, local: false,
   info: null, filter: '', tag: '', kind: 'all', from: '', since: 0, fuzzy: false, es: null, connected: false, retry: 0, unseen: 0,
   view: [], sel: 0, // 当前显示的列表和键盘选中项（快捷面板）
 };
@@ -82,7 +82,9 @@ const desktop = (action, id) => api('POST', '/api/desktop/' + action + (id ? '?i
 function setCode(code) {
   S.key = code ? sha256(enc.encode('lanvia-key:' + code)) : null;
   // 内容加密密钥（与电脑之间用的相同），见 crypto.js
-  S.ek = S.key ? LC.newKey(hmac(S.key, enc.encode('lanvia-content-encryption'))) : null;
+  S.ekRaw = S.key ? hmac(S.key, enc.encode('lanvia-content-encryption')) : null;
+  S.ek = S.ekRaw ? LC.newKey(S.ekRaw) : null;
+  if (CW) CW.postMessage({ type: 'key', raw: S.ekRaw });
 }
 // 签名 v2：带随机 nonce、覆盖查询参数；写请求的 nonce 电脑只接受一次，截获的请求不能重放
 function sign(method, path, query = '') {
@@ -111,8 +113,8 @@ function stableURL(path) {
   return url;
 }
 
-// 发出请求：签名，加密查询参数和请求体。body 可以是对象（JSON）或 Uint8Array。
-function send(method, path, body) {
+// 准备请求：签名，加密查询参数和请求体。body 可以是对象（JSON）或 Uint8Array。返回 fetch 的参数
+function prepare(method, path, body) {
   const [p, q = ''] = path.split(/\?(.*)/s);
   const headers = {};
   let url = path, data = body;
@@ -123,7 +125,11 @@ function send(method, path, body) {
     if (q) url = p + '?_q=' + sealQuery(q);
     if (data !== undefined) { data = LC.seal(S.ek, data); headers['X-Lanvia-Body-Enc'] = '1'; }
   }
-  return fetch(url, { method, headers, body: data });
+  return { url, init: { method, headers, body: data } };
+}
+function send(method, path, body) {
+  const { url, init } = prepare(method, path, body);
+  return fetch(url, init);
 }
 const isEnc = r => r.headers.get('X-Lanvia-Enc') === '1';
 async function readBody(r) {
@@ -149,7 +155,44 @@ async function api(method, path, body) {
 const PLAIN_MAX = 256 << 20;
 const plainOK = it => !S.strict && (it.size || 0) > PLAIN_MAX;
 
-async function fetchBlob(path, type, onProgress) {
+/* ---- 后台线程（crypto-worker.js）：大文件的下载解密、上传加密不占用页面主线程 ---- */
+
+let CW = null; // Worker；false 表示不可用
+const CW_JOBS = new Map();
+let cwSeq = 0;
+function cryptoWorker() {
+  if (CW !== null) return CW;
+  try {
+    CW = new Worker('crypto-worker.js');
+    CW.onmessage = ({ data: m }) => {
+      const j = CW_JOBS.get(m.id);
+      if (!j) return;
+      if (m.type === 'progress') { j.onProgress?.(m.done, m.total); return; }
+      CW_JOBS.delete(m.id);
+      if (m.type === 'done') j.resolve(m.blob);
+      else j.reject(Object.assign(new Error(m.status === 404 ? '文件不存在' : m.message), { aborted: m.message === 'aborted' }));
+    };
+    CW.onerror = () => { for (const j of CW_JOBS.values()) j.reject(new Error('后台线程出错')); CW_JOBS.clear(); };
+    CW.postMessage({ type: 'key', raw: S.ekRaw });
+  } catch { CW = false; }
+  return CW;
+}
+// 交给后台线程做一件事，返回 Promise；signal 可以取消
+function cwRun(msg, onProgress, signal) {
+  const w = cryptoWorker(), id = ++cwSeq;
+  return new Promise((resolve, reject) => {
+    CW_JOBS.set(id, { resolve, reject, onProgress });
+    signal?.addEventListener('abort', () => w.postMessage({ type: 'cancel', id }));
+    w.postMessage({ ...msg, id });
+  });
+}
+
+// 下载一个文件（加密时同时解密），返回 Blob。onProgress(已收到字节数)
+async function fetchBlob(path, type, onProgress, signal) {
+  if (cryptoWorker()) {
+    const { url, init } = prepare('GET', path);
+    return cwRun({ type: 'open', url, headers: init.headers, mime: type }, onProgress, signal);
+  }
   const r = await send('GET', path);
   if (!r.ok) throw new Error(r.status === 404 ? '文件不存在' : 'HTTP ' + r.status);
   const op = isEnc(r) ? new LC.Opener(S.ek) : null, parts = [], reader = r.body.getReader();
@@ -187,8 +230,9 @@ function mediaURL(path, it, onProgress) {
   return p;
 }
 
-// 把文件加密成上传用的 Blob（与电脑之间的帧格式相同）。分块读，读的过程中界面不卡住
-async function sealFile(file, onProgress) {
+// 把文件加密成上传用的 Blob（与电脑之间的帧格式相同）。onProgress(0–1)
+async function sealFile(file, onProgress, signal) {
+  if (cryptoWorker()) return cwRun({ type: 'seal', file }, (done, total) => onProgress?.(done / total), signal);
   const s = new LC.Sealer(S.ek), parts = [], CHUNK = 64 * LC.FRAME, size = file.size;
   if (!size) return new Blob([s.frame(new Uint8Array(0), true)]);
   for (let off = 0; off < size; off += CHUNK) {

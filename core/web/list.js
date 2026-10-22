@@ -394,6 +394,15 @@ function renderDevices() {
 }
 
 let toastTimer;
+// 一直显示的进度提示（下载大文件时），带“取消”；结束后调用 toast() 换成普通提示
+function toastProgress(msg, onCancel) {
+  const t = $('#toast');
+  t.innerHTML = `<span class="t-msg">${esc(msg)}</span>` + (onCancel ? '<button>取消</button>' : '');
+  if (onCancel) $('button', t).onclick = onCancel;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+}
+
 function toast(msg, action) {
   const t = $('#toast');
   t.innerHTML = `<span class="t-msg">${esc(msg)}</span>` + (action ? `<button>${esc(action.label)}</button>` : '');
@@ -534,15 +543,17 @@ async function download(it) {
   a.download = it.name;
   if (!S.key || plainOK(it)) {
     a.href = signedURL('/api/blob/' + it.id, S.key ? { dl: '1', _plain: 1 } : { dl: '1' });
-  } else { // 加密传输：下载、解密后再交给浏览器保存
+  } else { // 加密传输：在后台线程里下载、解密，再交给浏览器保存（页面不会卡住）
+    const size = it.size || 0, ac = new AbortController();
+    if (size > 1 << 20) toastProgress('正在下载 0%', () => ac.abort());
     try {
-      const size = it.size || 0;
       const blob = await fetchBlob('/api/blob/' + it.id, it.mime, got => {
-        if (size > 1 << 20) toast(`正在下载 ${Math.round(got / size * 100)}%`);
-      });
+        if (size > 1 << 20) toastProgress(`正在下载 ${Math.min(100, Math.round(got / size * 100))}%`, () => ac.abort());
+      }, ac.signal);
       a.href = URL.createObjectURL(blob);
-      setTimeout(() => URL.revokeObjectURL(a.href), 60e3);
-    } catch (e) { toast('下载失败：' + e.message); return; }
+      setTimeout(() => URL.revokeObjectURL(a.href), 120e3);
+      if (size > 1 << 20) toast('下载完成');
+    } catch (e) { toast(e.aborted ? '已取消下载' : '下载失败：' + e.message); return; }
   }
   document.body.appendChild(a); a.click(); a.remove();
 }

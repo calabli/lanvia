@@ -108,7 +108,7 @@ const I18N = (() => {
     '怀疑 token 泄露时使用，旧 token 立即失效，需要更新快捷指令和脚本。': 'Use this if the token may have leaked. The old token stops working right away, so update your shortcuts and scripts.',
     '重新生成后，旧 token 立即失效，使用它的快捷指令和脚本需要更新。确定吗？': 'The old token will stop working right away, and shortcuts and scripts using it need updating. Continue?',
     '已重新生成 token': 'Token regenerated', '操作失败：{0}': 'Failed: {0}',
-    '正在加载…': 'Loading…', '正在加载 {0}%': 'Loading {0}%', '正在下载 {0}%': 'Downloading {0}%', '正在加密 {0}%': 'Encrypting {0}%',
+    '正在加载…': 'Loading…', '正在加载 {0}%': 'Loading {0}%', '正在下载 {0}%': 'Downloading {0}%', '下载完成': 'Downloaded', '已取消下载': 'Download canceled', '后台线程出错': 'Background worker failed', '正在加密 {0}%': 'Encrypting {0}%',
     '下载失败：{0}': 'Download failed: {0}',
     '标签': 'Tags', '输入标签，回车添加': 'Type a tag and press Enter', '新标签': 'New tag', '还没有标签': 'No tags yet',
     '移除标签': 'Remove tag', '只看这个标签': 'Show only this tag', '按标签筛选': 'Filter by tag', '每条内容最多 20 个标签': 'An item can have at most 20 tags',

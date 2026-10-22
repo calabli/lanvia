@@ -37,6 +37,8 @@ The preview window detects and highlights JSON, JavaScript, Go, Python, Shell, S
 
 **Auto copy / auto paste**: two independent toggles. With auto copy on, anything you copy on the computer is sent; with it off nothing is sent until you choose **Send current clipboard (发送当前剪贴板)** in the tray menu or on the page. With auto paste on, text from other devices goes straight onto this clipboard; with it off it only appears in the list. Files copied in Finder and passwords copied from a password manager are never sent automatically — drag files into the window instead.
 
+**Images**: images you copy or capture on macOS or Windows (when the clipboard holds an image and no text) are sent as image files under the same rules as text (auto copy, pause and the app blocklist all apply). With auto paste on, images from other devices (up to 20 MB) go straight onto this clipboard. Linux doesn't support images yet.
+
 On first launch the main window opens so you can pair your phone. Closing a window doesn't quit; Lanvia keeps syncing in the background.
 
 - **Notifications**: when another device sends something you get a system notification — Copy right from it for text, or click it to open the preview. Not shown while a Lanvia window is in front.

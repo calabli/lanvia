@@ -25,12 +25,23 @@ var (
 	pGlobalFree              = kernel32.NewProc("GlobalFree")
 	pGlobalLock              = kernel32.NewProc("GlobalLock")
 	pGlobalUnlock            = kernel32.NewProc("GlobalUnlock")
+	pGlobalSize              = kernel32.NewProc("GlobalSize")
 )
 
 const (
 	cfUnicodeText = 13
+	cfDIB         = 8
+	cfHDrop       = 15
+	cfDIBV5       = 17
 	gmemMoveable  = 0x0002
 )
+
+// 浏览器、截图工具等会另外放一份 PNG（支持透明）
+var cfPNG = func() uintptr {
+	p, _ := syscall.UTF16PtrFromString("PNG")
+	f, _, _ := pRegisterClipboardFormat.Call(uintptr(unsafe.Pointer(p)))
+	return f
+}()
 
 // 密码管理器（1Password、KeePass、Bitwarden 等）会用这些格式标记敏感内容。
 var excludeFormats = func() []uintptr {
@@ -130,6 +141,106 @@ func writeClipboard(s string) error {
 
 // Windows 复制文件时剪贴板里没有文字，敏感内容在 readClipboard 里已经跳过。
 func skipClipboardChange() bool { return false }
+
+func clipSeq() int64 {
+	seq, _, _ := pGetSequenceNumber.Call()
+	if seq == 0 {
+		return -1
+	}
+	return int64(seq)
+}
+
+// globalBytes 复制出剪贴板里某个格式的数据（调用方已打开剪贴板）。
+func globalBytes(format uintptr) []byte {
+	if format == 0 {
+		return nil
+	}
+	if r, _, _ := pIsFormatAvailable.Call(format); r == 0 {
+		return nil
+	}
+	h, _, _ := pGetClipboardData.Call(format)
+	if h == 0 {
+		return nil
+	}
+	n, _, _ := pGlobalSize.Call(h)
+	p, _, _ := pGlobalLock.Call(h)
+	if p == 0 || n == 0 || n > maxClipImage*4 {
+		if p != 0 {
+			pGlobalUnlock.Call(h)
+		}
+		return nil
+	}
+	defer pGlobalUnlock.Call(h)
+	return append([]byte(nil), unsafe.Slice((*byte)(unsafe.Pointer(p)), n)...)
+}
+
+func readClipboardImage() ([]byte, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	if err := openClipboard(); err != nil {
+		return nil, err
+	}
+	defer pCloseClipboard.Call()
+	// 资源管理器里复制的文件、密码管理器标记的内容都不算
+	if r, _, _ := pIsFormatAvailable.Call(cfHDrop); r != 0 {
+		return nil, errNoImage
+	}
+	for _, f := range excludeFormats {
+		if r, _, _ := pIsFormatAvailable.Call(f); r != 0 {
+			return nil, errSkip
+		}
+	}
+	if b := globalBytes(cfPNG); len(b) > 8 && string(b[:8]) == "\x89PNG\r\n\x1a\n" {
+		return b, nil
+	}
+	for _, f := range []uintptr{cfDIBV5, cfDIB} {
+		if b := globalBytes(f); b != nil {
+			return dibToPNG(b)
+		}
+	}
+	return nil, errNoImage
+}
+
+// setGlobal 把数据放进剪贴板的某个格式（调用方已打开并清空剪贴板）。
+func setGlobal(format uintptr, data []byte) error {
+	h, _, _ := pGlobalAlloc.Call(gmemMoveable, uintptr(len(data)))
+	if h == 0 {
+		return errors.New("GlobalAlloc failed")
+	}
+	p, _, _ := pGlobalLock.Call(h)
+	if p == 0 {
+		pGlobalFree.Call(h)
+		return errors.New("GlobalLock failed")
+	}
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(p)), len(data)), data)
+	pGlobalUnlock.Call(h)
+	if r, _, _ := pSetClipboardData.Call(format, h); r == 0 {
+		pGlobalFree.Call(h)
+		return errors.New("SetClipboardData failed")
+	}
+	return nil
+}
+
+func writeClipboardImage(data []byte) error {
+	dib, pngData, err := imageToClip(data)
+	if err != nil {
+		return err
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	if err := openClipboard(); err != nil {
+		return err
+	}
+	defer pCloseClipboard.Call()
+	pEmptyClipboard.Call()
+	if err := setGlobal(cfDIB, dib); err != nil {
+		return err
+	}
+	if cfPNG != 0 {
+		setGlobal(cfPNG, pngData) // 支持透明的程序会优先用它；失败也不影响位图
+	}
+	return nil
+}
 
 var (
 	pGetForegroundWindow        = user32.NewProc("GetForegroundWindow")

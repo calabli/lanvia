@@ -599,7 +599,8 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		from = "快捷指令"
 	}
 	it := &Item{ID: id, Kind: "file", Name: name, Mime: ct, Size: n, From: from, Origin: a.cfgSnapshot().ID, TS: nowMs()}
-	a.ingest(it, "", false)
+	// 手机等其他设备传来的图片：开着“主动粘贴”时也放进这台电脑的剪贴板（本机窗口拖进来的不放）
+	a.ingest(it, "", !isLocalAdmin(r))
 	go a.enforceQuota() // 原件不删，必要时给它腾出副本占的空间
 	writeJSON(w, 200, it)
 }

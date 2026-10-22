@@ -40,13 +40,7 @@ func validVersion(v *TextVersion) bool {
 func (s *Store) applyVersions(id string, in []*TextVersion, synthOriginal bool) (*Item, bool, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	idx := -1
-	for i, x := range s.items {
-		if x.ID == id {
-			idx = i
-			break
-		}
-	}
+	idx := s.indexOf(id)
 	if idx < 0 || s.items[idx].Kind != "text" {
 		return nil, false, false
 	}
@@ -90,7 +84,7 @@ func (s *Store) applyVersions(id string, in []*TextVersion, synthOriginal bool) 
 	if cur.ID != it.ID {
 		n.EditedAt, n.EditedBy = cur.TS, cur.By
 	}
-	s.items[idx] = &n
+	s.setAt(idx, &n)
 	if n.Text != it.Text && (len(n.Text) > previewBytes || len(it.Text) > previewBytes) {
 		s.dirtyText[id] = true // 长正文变了，或者在长短之间切换
 	}
@@ -104,10 +98,8 @@ func (s *Store) Versions(id string) []*TextVersion {
 	defer s.mu.Unlock()
 	vs := s.versions[id]
 	if len(vs) == 0 {
-		for _, x := range s.items {
-			if x.ID == id && x.Kind == "text" {
-				return []*TextVersion{{ID: x.ID, Text: x.Text, By: x.From, TS: x.TS}}
-			}
+		if x := s.byID[id]; x != nil && x.Kind == "text" {
+			return []*TextVersion{{ID: x.ID, Text: x.Text, By: x.From, TS: x.TS}}
 		}
 		return nil
 	}

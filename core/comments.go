@@ -45,13 +45,7 @@ func liveComments(cs []*Comment) int {
 func (s *Store) applyComments(id string, in []*Comment) *Item {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	idx := -1
-	for i, x := range s.items {
-		if x.ID == id {
-			idx = i
-			break
-		}
-	}
+	idx := s.indexOf(id)
 	if idx < 0 {
 		return nil
 	}
@@ -111,7 +105,7 @@ func (s *Store) applyComments(id string, in []*Comment) *Item {
 	s.touch(id)
 	n := *s.items[idx]
 	n.Comments = liveComments(cs)
-	s.items[idx] = &n
+	s.setAt(idx, &n)
 	s.markDirty()
 	return &n
 }

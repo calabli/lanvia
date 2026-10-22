@@ -101,7 +101,8 @@ type Store struct {
 	mu        sync.Mutex
 	path      string
 	blobDir   string
-	items     []*Item // 新的在前
+	items     []*Item          // 新的在前（按 TS 从大到小）
+	byID      map[string]*Item // 按 ID 索引，与 items 同步维护
 	tomb      map[string]int64
 	clearedAt int64
 	versions  map[string][]*TextVersion // 内容 ID -> 历史版本（含原始版本），只有被编辑过的才有
@@ -140,6 +141,7 @@ func openStore(dir string) *Store {
 		comments:  map[string][]*Comment{},
 		dirtyCom:  map[string]bool{},
 		tomb:      map[string]int64{},
+		byID:      map[string]*Item{},
 		versions:  map[string][]*TextVersion{},
 		dirtyText: map[string]bool{},
 		dirtyVer:  map[string]bool{},
@@ -188,8 +190,10 @@ func (s *Store) load() {
 	}
 	known := map[string]bool{}
 	now := nowMs()
+	sort.SliceStable(s.items, func(i, j int) bool { return s.items[i].TS > s.items[j].TS }) // 保证按时间排列，见 indexOf
 	for _, it := range s.items {
 		known[it.ID] = true
+		s.byID[it.ID] = it
 		if v, ok := f.Seen[it.ID]; ok {
 			s.seen[it.ID] = v
 		} else {
@@ -287,10 +291,8 @@ func (s *Store) Add(it *Item) bool {
 	if it.expired(nowMs(), s.keepMs.Load()) { // 已过期的不再收（包括其他设备同步来的）
 		return false
 	}
-	for _, x := range s.items {
-		if x.ID == it.ID {
-			return false
-		}
+	if s.byID[it.ID] != nil {
+		return false
 	}
 	it.Comments = liveComments(s.comments[it.ID]) // 对方算的评论数不作数，评论随后单独合并
 	if it.Kind == "todo" {
@@ -303,6 +305,7 @@ func (s *Store) Add(it *Item) bool {
 	s.items = append(s.items, nil)
 	copy(s.items[i+1:], s.items[i:])
 	s.items[i] = it
+	s.byID[it.ID] = it
 	s.touch(it.ID)
 	if len(it.Text) > previewBytes {
 		s.dirtyText[it.ID] = true
@@ -310,7 +313,7 @@ func (s *Store) Add(it *Item) bool {
 	// 超过上限时从最旧的开始删，跳过“永久保留”的
 	for i := len(s.items) - 1; len(s.items) > maxItems && i >= 0; i-- {
 		if old := s.items[i]; !old.pinned() {
-			s.items = append(s.items[:i], s.items[i+1:]...)
+			s.removeAt(i)
 			s.dropFiles(old.ID)
 		}
 	}
@@ -329,11 +332,8 @@ func (s *Store) Delete(id string) bool {
 		return false
 	}
 	s.tomb[id] = time.Now().UnixMilli()
-	for i, x := range s.items {
-		if x.ID == id {
-			s.items = append(s.items[:i], s.items[i+1:]...)
-			break
-		}
+	if i := s.indexOf(id); i >= 0 {
+		s.removeAt(i)
 	}
 	s.dropFiles(id)
 	s.markDirty()
@@ -352,6 +352,7 @@ func (s *Store) Clear(ts int64) bool {
 		if x.TS > ts {
 			kept = append(kept, x)
 		} else {
+			delete(s.byID, x.ID)
 			s.dropFiles(x.ID)
 		}
 	}
@@ -375,6 +376,7 @@ func (s *Store) Prune() []string {
 	for _, x := range s.items {
 		if x.expired(now, k) {
 			gone = append(gone, x.ID)
+			delete(s.byID, x.ID)
 			s.dropFiles(x.ID)
 		} else {
 			kept = append(kept, x)
@@ -406,60 +408,82 @@ func newerMeta(ts, expiresAt int64, keep bool, x *Item) bool {
 func (s *Store) applyFav(id string, fav bool, title string, ts int64) *Item {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for i, x := range s.items {
-		if x.ID != id {
-			continue
-		}
-		newer := ts > x.FavTS || (ts == x.FavTS && (fav && !x.Fav || fav == x.Fav && title > x.Title))
-		if !newer {
-			return nil
-		}
-		n := *x
-		n.Fav, n.Title, n.FavTS = fav, title, ts
-		if !fav {
-			n.Title = ""
-		}
-		s.items[i] = &n
-		s.touch(id)
-		s.markDirty()
-		return &n
+	i := s.indexOf(id)
+	if i < 0 {
+		return nil
 	}
-	return nil
+	x := s.items[i]
+	newer := ts > x.FavTS || (ts == x.FavTS && (fav && !x.Fav || fav == x.Fav && title > x.Title))
+	if !newer {
+		return nil
+	}
+	n := *x
+	n.Fav, n.Title, n.FavTS = fav, title, ts
+	if !fav {
+		n.Title = ""
+	}
+	s.setAt(i, &n)
+	s.touch(id)
+	s.markDirty()
+	return &n
 }
 
 // applyMeta 更新一条内容的保留设置，只接受比现有设置更新的修改。
 func (s *Store) applyMeta(id string, expiresAt int64, keep bool, metaTS int64) *Item {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for i, x := range s.items {
-		if x.ID != id {
-			continue
-		}
-		if !newerMeta(metaTS, expiresAt, keep, x) {
-			return nil
-		}
-		n := *x // 写时复制
-		n.ExpiresAt, n.Keep, n.MetaTS = expiresAt, keep, metaTS
-		if keep {
-			n.ExpiresAt = 0
-		}
-		s.items[i] = &n
-		s.touch(id)
-		s.markDirty()
-		return &n
+	i := s.indexOf(id)
+	if i < 0 || !newerMeta(metaTS, expiresAt, keep, s.items[i]) {
+		return nil
 	}
-	return nil
+	n := *s.items[i] // 写时复制
+	n.ExpiresAt, n.Keep, n.MetaTS = expiresAt, keep, metaTS
+	if keep {
+		n.ExpiresAt = 0
+	}
+	s.setAt(i, &n)
+	s.touch(id)
+	s.markDirty()
+	return &n
 }
 
 func (s *Store) Get(id string) *Item {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, x := range s.items {
-		if x.ID == id {
-			return x
+	return s.byID[id]
+}
+
+// indexOf 返回内容在 s.items 里的位置，找不到返回 -1（调用方持有锁）。
+// items 按时间从新到旧排列：先按 ID 查到时间，再二分查找位置。
+func (s *Store) indexOf(id string) int {
+	it := s.byID[id]
+	if it == nil {
+		return -1
+	}
+	i := sort.Search(len(s.items), func(i int) bool { return s.items[i].TS <= it.TS })
+	for ; i < len(s.items) && s.items[i].TS == it.TS; i++ {
+		if s.items[i].ID == id {
+			return i
 		}
 	}
-	return nil
+	for i, x := range s.items { // 顺序被打乱时（不应发生）退回逐个查找
+		if x.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// setAt 用新的副本替换第 i 条（写时复制，调用方持有锁）。
+func (s *Store) setAt(i int, n *Item) {
+	s.items[i] = n
+	s.byID[n.ID] = n
+}
+
+// removeAt 移除第 i 条（调用方持有锁）。
+func (s *Store) removeAt(i int) {
+	delete(s.byID, s.items[i].ID)
+	s.items = append(s.items[:i], s.items[i+1:]...)
 }
 
 func (s *Store) List() []*Item {

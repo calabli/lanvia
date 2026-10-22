@@ -65,14 +65,12 @@ const I18N = (() => {
     '外观：{0}，切换为{1}': 'Appearance: {0}. Switch to {1}', '外观：{0}，点击切换': 'Appearance: {0}. Click to switch',
     // ---- 发送模式 ----
     '切换发送模式': 'Switch send mode', '主动': 'Active', '被动': 'Passive', '复制即发送': 'Copy to send', '手动发送': 'Send manually',
-    '发送模式': 'Send mode', '被动模式 · 本机剪贴板': 'Passive mode · This clipboard', '发送剪贴板': 'Send clipboard',
+    '发送模式': 'Send mode', '发送剪贴板': 'Send clipboard',
     '在这台电脑上复制文字，会自动发送到所有设备。': 'Text you copy on this computer is sent to all devices automatically.',
     '复制不会自动发送。需要时点“发送剪贴板”，或在托盘菜单里选“发送当前剪贴板”（桌面版）。':
       "Copying doesn't send anything. Use “Send clipboard”, or “Send current clipboard” in the tray menu (desktop app).",
-    '主动模式：复制即发送。点击切换为被动模式': 'Active mode: copying sends. Click for passive mode',
-    '被动模式：手动发送。点击切换为主动模式': 'Passive mode: send manually. Click for active mode',
     '也可以在托盘菜单里选“发送当前剪贴板”': 'Or choose “Send current clipboard” in the tray menu',
-    '已切换为主动模式：复制即发送': 'Switched to active mode: copying sends', '已切换为被动模式：需要手动发送': 'Switched to passive mode: send manually',
+    
     '这台电脑不支持读取剪贴板': "This computer can't read the clipboard", '剪贴板里是文件或敏感内容，不会发送': "The clipboard holds a file or sensitive content and won't be sent",
     '读取剪贴板失败': "Couldn't read the clipboard", '剪贴板里没有文字': 'No text on the clipboard', '内容太长': 'Too long',
     // ---- 设置 ----
@@ -114,6 +112,14 @@ const I18N = (() => {
     '下载失败：{0}': 'Download failed: {0}',
     '标签': 'Tags', '输入标签，回车添加': 'Type a tag and press Enter', '新标签': 'New tag', '还没有标签': 'No tags yet',
     '移除标签': 'Remove tag', '只看这个标签': 'Show only this tag', '按标签筛选': 'Filter by tag', '每条内容最多 20 个标签': 'An item can have at most 20 tags',
+    '主动复制': 'Auto copy', '主动粘贴': 'Auto paste', '手动': 'Manual', '主动复制 · 粘贴': 'Auto copy · paste', '同步方式': 'Sync behavior', '· 仅本机': '· this computer only',
+    '主动复制已关闭 · 本机剪贴板': 'Auto copy is off · This clipboard', '主动复制 / 主动粘贴': 'Auto copy / auto paste',
+    '在这台电脑上复制文字，自动发送到所有设备。关闭后需要手动点“发送剪贴板”': 'Text you copy on this computer is sent to all devices. When off, use “Send clipboard”',
+    '其他设备发来的文字自动放进本机剪贴板，直接 ⌘V / Ctrl+V 粘贴': 'Text from other devices goes straight onto this clipboard, ready for ⌘V / Ctrl+V',
+    '复制后自动发送到所有设备': 'Send what you copy to all devices', '收到的文字自动放进本机剪贴板': 'Put received text on this clipboard',
+    '主动复制：{0} · 主动粘贴：{1}。点击修改': 'Auto copy: {0} · Auto paste: {1}. Click to change', '开': 'on', '关': 'off',
+    '已开启主动复制：复制后自动发送': 'Auto copy on: what you copy is sent', '已关闭主动复制：需要手动发送': 'Auto copy off: send manually',
+    '已开启主动粘贴：收到的文字自动放进剪贴板': 'Auto paste on: received text goes onto the clipboard', '已关闭主动粘贴：收到的内容只出现在列表里': 'Auto paste off: received items only appear in the list',
     '字体大小': 'Text size', '· 仅本设备': '· this device only', '恢复默认': 'Reset', '快捷键：': 'Shortcuts:', '字体大小 {0}%': 'Text size {0}%',
     '新建清单': 'New list', '清单': 'Lists', '添加一项…': 'Add an item…', '添加一项': 'Add an item', '清除已完成': 'Clear completed',
     '修改这一项': 'Edit item', '删除这一项': 'Delete item', '重命名': 'Rename', '清单名称': 'List name', '例如：周末购物': 'e.g. Weekend shopping',

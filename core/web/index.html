@@ -38,7 +38,7 @@
     <div class="brand"><span class="logo" aria-hidden="true"></span><span>Lanvia<span class="brand-caption">你的设备，流畅相连</span></span></div>
     <div class="top-actions">
       <span class="top-caption">LOCAL CONNECTION</span>
-      <button id="modeBtn" class="chip mode-chip" hidden title="切换发送模式"></button>
+      <button id="modeBtn" class="chip mode-chip" hidden title="主动复制 / 主动粘贴" aria-haspopup="dialog"></button>
       <button id="devicesBtn" class="chip" aria-label="在线设备">
         <span id="connDot" class="dot"></span><span id="devCount">连接中</span>
       </button>
@@ -99,7 +99,7 @@
     <div class="content-column">
     <section id="clipCard" class="card clip-card" hidden aria-labelledby="clipTitle">
       <div class="clip-head">
-        <span class="eyebrow" id="clipTitle">被动模式 · 本机剪贴板</span>
+        <span class="eyebrow" id="clipTitle">主动复制已关闭 · 本机剪贴板</span>
         <span id="clipInfo" class="muted small"></span>
       </div>
       <div id="clipText" class="clip-text"></div>
@@ -179,13 +179,9 @@
     <label class="field"><span>语言</span>
       <select id="optLang"><option value="">跟随系统</option><option value="zh" data-raw>中文</option><option value="en" data-raw>English</option></select>
     </label>
-    <div class="field"><span>发送模式</span>
-      <div class="segmented" role="radiogroup" aria-label="发送模式">
-        <label><input type="radio" name="sendMode" value="active"><span><b>主动</b><small>复制即发送</small></span></label>
-        <label><input type="radio" name="sendMode" value="passive"><span><b>被动</b><small>手动发送</small></span></label>
-      </div>
-    </div>
-    <p id="modeHint" class="muted small"></p>
+    <label class="switch"><input type="checkbox" id="optWatch"><span><b>主动复制</b><small>在这台电脑上复制文字，自动发送到所有设备。关闭后需要手动点“发送剪贴板”</small></span></label>
+    <label class="switch"><input type="checkbox" id="optApply"><span><b>主动粘贴</b><small>其他设备发来的文字自动放进本机剪贴板，直接 ⌘V / Ctrl+V 粘贴</small></span></label>
+    <p id="clipWarn" class="warn small" hidden>未找到系统剪贴板工具，只能通过网页手动复制。</p>
     <div class="field"><span>暂停同步</span>
       <div id="pauseRow" class="row wrap pause-row"></div>
       <small class="muted">暂停期间本机复制的不发送，收到的不写入剪贴板（仍会出现在列表里）。</small>
@@ -196,8 +192,6 @@
       <div id="recentApps" class="chips recent"></div>
     </div>
     <label class="switch"><input type="checkbox" id="optNotify"><span><b>收到内容时弹出通知</b><small>仅桌面版；有 Lanvia 窗口在前台时不弹</small></span></label>
-    <label class="switch"><input type="checkbox" id="optApply"><span><b>自动写入本机剪贴板</b><small>其他设备发来的文字直接可以 ⌘V / Ctrl+V 粘贴</small></span></label>
-    <p id="clipWarn" class="warn small" hidden>未找到系统剪贴板工具，只能通过网页手动复制。</p>
     <label class="field"><span>历史保留时间</span>
       <select id="optKeep">
         <option value="1">1 天</option>
@@ -315,6 +309,11 @@
 </dialog>
 <div id="expiryMenu" class="pop-menu" role="menu" hidden></div>
 <div id="fontMenu" class="pop-menu" role="menu" hidden></div>
+<div id="modeMenu" class="pop-menu mode-menu" role="dialog" aria-label="主动复制 / 主动粘贴" hidden>
+  <div class="pop-title">同步方式 <span class="muted">· 仅本机</span></div>
+  <label class="switch"><input type="checkbox" data-mode="watch"><span><b>主动复制</b><small>复制后自动发送到所有设备</small></span></label>
+  <label class="switch"><input type="checkbox" data-mode="autoApply"><span><b>主动粘贴</b><small>收到的文字自动放进本机剪贴板</small></span></label>
+</div>
 <div id="tagMenu" class="pop-menu tag-menu" role="dialog" aria-label="标签" hidden></div>
 <dialog id="askDlg" class="sheet ask">
   <p id="askMsg"></p>

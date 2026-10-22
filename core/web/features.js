@@ -2,9 +2,11 @@
 
 // 发送模式、页内对话框、收藏、单条保留时长、文件占用与手动添加设备的渲染。
 
-/* ================= 发送模式（主动 / 被动） ================= */
+/* ================= 主动复制 / 主动粘贴 ================= */
 
+// 主动复制：本机复制后自动发送（settings.watch）；主动粘贴：收到的文字自动写入本机剪贴板（settings.autoApply）。两者互相独立
 const isActive = () => S.info?.settings?.watch !== false;
+const isAutoPaste = () => !!S.info?.settings?.autoApply;
 
 const pausedUntil = () => S.info?.settings?.pausedUntil || 0;
 const isPaused = () => { const p = pausedUntil(); return p === -1 || p > Date.now() + S.offset; };
@@ -12,23 +14,22 @@ const hhmm = ms => new Date(ms).toTimeString().slice(0, 5);
 
 function renderMode() {
   if (!S.local || !S.info) return;
-  const active = isActive();
+  const active = isActive(), paste = isAutoPaste();
   renderPause();
-  document.querySelectorAll('input[name="sendMode"]').forEach(r => { r.checked = (r.value === 'active') === active; });
-  $('#modeHint').textContent = active
-    ? '在这台电脑上复制文字，会自动发送到所有设备。'
-    : '复制不会自动发送。需要时点“发送剪贴板”，或在托盘菜单里选“发送当前剪贴板”（桌面版）。';
+  $('#optWatch').checked = active;
+  $('#optApply').checked = paste;
+  document.querySelectorAll('#modeMenu [data-mode]').forEach(c => { c.checked = c.dataset.mode === 'watch' ? active : paste; });
   const b = $('#modeBtn');
   b.hidden = PREVIEW;
-  b.classList.toggle('passive', !active);
+  b.classList.toggle('passive', !active && !paste);
   b.classList.toggle('paused', isPaused());
   if (isPaused()) {
     const p = pausedUntil();
     b.innerHTML = `<span class="mode-dot"></span><span>已暂停</span>${p > 0 ? ` <span>· 到 ${hhmm(p)}</span>` : ''}`;
     b.title = '同步已暂停，点击恢复';
   } else {
-    b.innerHTML = `<span class="mode-dot"></span>${active ? '主动' : '被动'}`;
-    b.title = active ? '主动模式：复制即发送。点击切换为被动模式' : '被动模式：手动发送。点击切换为主动模式';
+    b.innerHTML = `<span class="mode-dot"></span>${active && paste ? '主动复制 · 粘贴' : active ? '主动复制' : paste ? '主动粘贴' : '手动'}`;
+    b.title = `主动复制：${active ? '开' : '关'} · 主动粘贴：${paste ? '开' : '关'}。点击修改`;
   }
   $('#clipCard').hidden = active || PREVIEW;
   $('#clipHint').textContent = '也可以在托盘菜单里选“发送当前剪贴板”';
@@ -77,10 +78,29 @@ async function setBlockList(list) {
   renderBlock();
 }
 
-async function setMode(active) {
-  await saveSettings({ watch: active });
+async function setMode(key, on) {
+  await saveSettings({ [key]: on });
   renderMode();
-  toast(active ? '已切换为主动模式：复制即发送' : '已切换为被动模式：需要手动发送');
+  toast(key === 'watch'
+    ? (on ? '已开启主动复制：复制后自动发送' : '已关闭主动复制：需要手动发送')
+    : (on ? '已开启主动粘贴：收到的文字自动放进剪贴板' : '已关闭主动粘贴：收到的内容只出现在列表里'));
+}
+
+function bindModeMenu() {
+  const m = $('#modeMenu'), btn = $('#modeBtn');
+  btn.onclick = () => {
+    if (isPaused()) return pause(0); // 暂停中点一下就恢复
+    if (!m.hidden) { m.hidden = true; return; }
+    renderMode();
+    m.hidden = false;
+    const r = btn.getBoundingClientRect(), w = m.offsetWidth;
+    m.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
+    m.style.top = r.bottom + 6 + 'px';
+    $('input', m).focus();
+  };
+  m.addEventListener('change', e => { const c = e.target.closest('[data-mode]'); if (c) setMode(c.dataset.mode, c.checked); });
+  m.addEventListener('keydown', e => { if (e.key === 'Escape') { m.hidden = true; btn.focus(); } });
+  document.addEventListener('mousedown', e => { if (!m.hidden && !m.contains(e.target) && !btn.contains(e.target)) m.hidden = true; });
 }
 
 let clipBusy = false;

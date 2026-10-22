@@ -488,3 +488,7 @@ button.chip-item.add:hover { background: var(--accent-soft); }
 .tag-menu .tag { display: inline-flex; width: auto; padding: 2px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2); font-size: calc(11.5px * var(--fs)); }
 .tag-menu .tag.on { background: color-mix(in srgb, var(--accent) 12%, transparent); padding-right: 3px; }
 .tag-menu .tag-sugg .tag:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+/* 主动复制 / 主动粘贴 */
+.mode-menu { width: 290px; }
+.mode-menu .switch { padding: 8px 10px; margin: 0; border-radius: 9px; }
+.mode-menu .switch:hover { background: var(--surface-hover); }

@@ -345,8 +345,9 @@ func (d *desktop) fillMenu() {
 	m.AddSeparator()
 
 	s := d.node.Settings()
-	m.AddRadio(d.tr("主动模式 · 复制即发送"), s.Watch).OnClick(func(*application.Context) { d.node.SetWatch(true) })
-	m.AddRadio(d.tr("被动模式 · 手动发送"), !s.Watch).OnClick(func(*application.Context) { d.node.SetWatch(false) })
+	// 两个独立的开关：复制后要不要自动发出去、收到的要不要自动放进剪贴板
+	m.AddCheckbox(d.tr("主动复制 · 复制后自动发送"), s.Watch).OnClick(func(c *application.Context) { d.node.SetWatch(c.IsChecked()) })
+	m.AddCheckbox(d.tr("主动粘贴 · 收到后放进剪贴板"), s.AutoApply).OnClick(func(c *application.Context) { d.node.SetAutoApply(c.IsChecked()) })
 	m.Add(d.tr("发送当前剪贴板")).OnClick(func(*application.Context) { d.sendClipboard() })
 	// 暂停同步：本机复制的不发送，收到的不写入剪贴板
 	if until := d.node.PausedUntil(); until != 0 {
@@ -362,9 +363,6 @@ func (d *desktop) fillMenu() {
 		ps.Add(d.tr("直到手动恢复")).OnClick(func(*application.Context) { d.node.Pause(-1) })
 	}
 	m.AddSeparator()
-	m.AddCheckbox(d.tr("自动写入本机剪贴板"), s.AutoApply).OnClick(func(c *application.Context) {
-		d.node.SetAutoApply(c.IsChecked())
-	})
 	auto, _ := d.app.Autostart.IsEnabled()
 	m.AddCheckbox(d.tr("开机时启动"), auto).OnClick(func(c *application.Context) {
 		var err error

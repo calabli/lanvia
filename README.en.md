@@ -17,7 +17,7 @@ Instantly share clipboard text and files between devices on the same local netwo
 | Action | What it does |
 | --- | --- |
 | Click the tray icon | Opens the quick panel: type to search, ↑↓ to choose, Enter copies to the clipboard and closes, Esc closes |
-| Right-click the tray icon | Copy any of the 6 latest items (files are saved and shown in Finder / Explorer), favorites, active / passive mode, send current clipboard, pause syncing, launch at login, check for updates, quit |
+| Right-click the tray icon | Copy any of the 6 latest items (files are saved and shown in Finder / Explorer), favorites, auto copy / auto paste toggles, send current clipboard, pause syncing, launch at login, check for updates, quit |
 | **Space** or **⌘Y** in the panel | Floating preview window: read long content in full, Enter copies everything, select part and ⌘C copies just that |
 | **⌘E** in the panel, or Edit (编辑) in the preview | Edit the content; ⌘S saves it as a new version and syncs it to every device |
 | Clock button in the preview | Version history: who changed what and when, line-by-line diff, copy or restore any version |
@@ -35,7 +35,7 @@ Instantly share clipboard text and files between devices on the same local netwo
 
 The preview window detects and highlights JSON, JavaScript, Go, Python, Shell, SQL, HTML, CSS and YAML, and formats JSON in one click.
 
-**Send mode**: in active mode, anything you copy is sent automatically; in passive mode nothing is sent until you choose **Send current clipboard (发送当前剪贴板)** in the tray menu or on the page. Files copied in Finder and passwords copied from a password manager are never sent automatically — drag files into the window instead.
+**Auto copy / auto paste**: two independent toggles. With auto copy on, anything you copy on the computer is sent; with it off nothing is sent until you choose **Send current clipboard (发送当前剪贴板)** in the tray menu or on the page. With auto paste on, text from other devices goes straight onto this clipboard; with it off it only appears in the list.
 
 On first launch the main window opens so you can pair your phone. Closing a window doesn't quit; Lanvia keeps syncing in the background.
 

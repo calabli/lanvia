@@ -140,13 +140,7 @@ func liveTodo(es []*TodoEntry) int {
 func (s *Store) applyTodo(id string, entries []*TodoEntry, title string, titleTS int64) *Item {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	idx := -1
-	for i, x := range s.items {
-		if x.ID == id {
-			idx = i
-			break
-		}
-	}
+	idx := s.indexOf(id)
 	if idx < 0 || s.items[idx].Kind != "todo" {
 		return nil
 	}
@@ -163,7 +157,7 @@ func (s *Store) applyTodo(id string, entries []*TodoEntry, title string, titleTS
 	if !changed {
 		return nil
 	}
-	s.items[idx] = &n
+	s.setAt(idx, &n)
 	s.touch(id)
 	s.markDirty()
 	return &n

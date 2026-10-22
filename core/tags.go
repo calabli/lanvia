@@ -96,22 +96,20 @@ func mergeTags(cur, in map[string]int64) (map[string]int64, bool) {
 func (s *Store) applyTags(id string, in map[string]int64) *Item {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for i, x := range s.items {
-		if x.ID != id {
-			continue
-		}
-		tags, changed := mergeTags(x.Tags, in)
-		if !changed {
-			return nil
-		}
-		n := *x // 写时复制
-		n.Tags = tags
-		s.items[i] = &n
-		s.touch(id)
-		s.markDirty()
-		return &n
+	i := s.indexOf(id)
+	if i < 0 {
+		return nil
 	}
-	return nil
+	tags, changed := mergeTags(s.items[i].Tags, in)
+	if !changed {
+		return nil
+	}
+	n := *s.items[i] // 写时复制
+	n.Tags = tags
+	s.setAt(i, &n)
+	s.touch(id)
+	s.markDirty()
+	return &n
 }
 
 // SetTags 在本机给一条内容添加、移除标签，并同步给所有设备。

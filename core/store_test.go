@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -130,4 +131,39 @@ func TestStoreMigratesOldFormat(t *testing.T) {
 	if _, dead := r.tomb["dead000000000000"]; !dead {
 		t.Fatal("tombstones lost during migration")
 	}
+}
+
+// 索引（byID）在各种增删改之后始终与列表一致，indexOf 能找到每一条
+func TestStoreIndexConsistent(t *testing.T) {
+	dir := t.TempDir()
+	s := openStore(dir)
+	check := func(step string) {
+		t.Helper()
+		if len(s.byID) != len(s.items) {
+			t.Fatalf("%s: byID %d, items %d", step, len(s.byID), len(s.items))
+		}
+		for i, it := range s.items {
+			if s.byID[it.ID] != it || s.indexOf(it.ID) != i {
+				t.Fatalf("%s: item %s at %d not indexed", step, it.ID, i)
+			}
+		}
+	}
+	now := nowMs()
+	for i := 0; i < maxItems+50; i++ {
+		ts := now - int64(i%40)*1000 // 很多条时间相同，考验二分查找后的线性部分
+		s.Add(&Item{ID: fmt.Sprintf("%016x", i+1), Kind: "text", Text: "x", From: "x", Origin: "o", TS: ts, Keep: i%7 == 0})
+	}
+	check("add over cap")
+	s.applyFav(s.items[10].ID, true, "t", now)
+	s.applyMeta(s.items[20].ID, 0, true, now)
+	s.applyTags(s.items[30].ID, map[string]int64{"a": now})
+	check("apply")
+	s.Delete(s.items[5].ID)
+	s.Delete("ffffffffffffffff")
+	check("delete")
+	s.Clear(now - 20_000)
+	check("clear")
+	s.Flush()
+	s = openStore(dir)
+	check("reload")
 }

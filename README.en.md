@@ -35,7 +35,7 @@ Instantly share clipboard text and files between devices on the same local netwo
 
 The preview window detects and highlights JSON, JavaScript, Go, Python, Shell, SQL, HTML, CSS and YAML, and formats JSON in one click.
 
-**Auto copy / auto paste**: two independent toggles. With auto copy on, anything you copy on the computer is sent; with it off nothing is sent until you choose **Send current clipboard (发送当前剪贴板)** in the tray menu or on the page. With auto paste on, text from other devices goes straight onto this clipboard; with it off it only appears in the list.
+**Auto copy / auto paste**: two independent toggles. With auto copy on, anything you copy on the computer is sent; with it off nothing is sent until you choose **Send current clipboard (发送当前剪贴板)** in the tray menu or on the page. With auto paste on, text from other devices goes straight onto this clipboard; with it off it only appears in the list. Files copied in Finder and passwords copied from a password manager are never sent automatically — drag files into the window instead.
 
 On first launch the main window opens so you can pair your phone. Closing a window doesn't quit; Lanvia keeps syncing in the background.
 

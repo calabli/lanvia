@@ -34,6 +34,7 @@ type App struct {
 	reserved int64      // 正在下载、还没落盘的副本预留的空间（.part 文件不计入占用）
 
 	nonces nonceCache // v2 写请求用过的 nonce，防重放
+	eids   eidCache   // 转发过的同步消息编号，见 compat.go
 }
 
 // credsFor 由配置得到密钥；重新生成过的 token 优先于由配对码派生的。
@@ -153,7 +154,10 @@ func (a *App) merge(s storeFile, from string) {
 			touched[it.ID] = true
 			continue
 		}
-		// 已有的内容：补上对方更新过的保留设置、收藏、标签和清单
+		// 已有的内容：补上对方更新过的保留设置、收藏、标签和清单，以及本机缺的未知字段
+		if u := a.store.adoptExtra(it.ID, it.Extra); u != nil {
+			touched[it.ID] = true
+		}
 		if len(it.Tags) > 0 {
 			if u := a.store.applyTags(it.ID, it.Tags); u != nil {
 				a.bcastItem("update", u)

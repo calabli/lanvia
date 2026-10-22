@@ -699,12 +699,26 @@ func (a *App) handleEdit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleRelay(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxTextLen*2))
 	var env Envelope
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxTextLen*2)).Decode(&env); err != nil {
+	if err != nil || json.Unmarshal(body, &env) != nil {
 		errJSON(w, 400, "bad envelope")
 		return
 	}
 	from := r.Header.Get("X-Lanvia-Node")
+	if env.EID != "" && !a.eids.first(env.EID) {
+		writeJSON(w, 200, ok) // 已经处理过（绕了一圈回来）
+		return
+	}
+	// 以后版本的新操作：这个版本不会处理，但原样转发出去，让更新的设备能收到
+	if !knownOps[env.Op] {
+		if idRe.MatchString(env.EID) {
+			log.Printf(L("收到不认识的同步操作 %q（来自更新的版本），已原样转发", "Forwarded unknown sync operation %q (from a newer version)"), env.Op)
+			a.peers.relayRaw(body, from)
+		}
+		writeJSON(w, 200, ok)
+		return
+	}
 	switch env.Op {
 	case "add":
 		if validItem(env.Item) {

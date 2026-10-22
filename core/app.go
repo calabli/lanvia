@@ -92,9 +92,14 @@ func (a *App) ingest(it *Item, fromPeer string, apply bool) bool {
 		return false
 	}
 	a.bcastItem("item", it)
-	if apply && it.Kind == "text" && a.cfgSnapshot().AutoApply && !a.Paused() {
-		if err := a.clip.Apply(it.Text); err != nil && a.clip.ok {
-			log.Printf(L("写入剪贴板失败: %v", "Writing to clipboard failed: %v"), err)
+	if apply && a.cfgSnapshot().AutoApply && !a.Paused() {
+		switch {
+		case it.Kind == "text":
+			if err := a.clip.Apply(it.Text); err != nil && a.clip.ok {
+				log.Printf(L("写入剪贴板失败: %v", "Writing to clipboard failed: %v"), err)
+			}
+		case it.Kind == "file" && isClipImageMime(it.Mime) && it.Size <= maxClipImage && a.clip.ok:
+			go a.applyImage(it) // 图片可能要先从对方下载
 		}
 	}
 	a.peers.relay(Envelope{Op: "add", Item: it}, fromPeer)

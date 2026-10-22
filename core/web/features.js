@@ -110,7 +110,11 @@ async function refreshClip() {
   try {
     const c = await api('GET', '/api/clipboard');
     const box = $('#clipText');
-    if (c.reason) {
+    if (c.image) {
+      delete box.dataset.raw;
+      box.textContent = `剪贴板里是一张图片（${fmtSize(c.image)}）`;
+      box.classList.remove('empty');
+    } else if (c.reason) {
       delete box.dataset.raw; // 提示文字需要翻译
       box.textContent = c.reason;
       box.classList.add('empty');
@@ -119,7 +123,7 @@ async function refreshClip() {
       box.textContent = c.text + (c.length > [...c.text].length ? '…' : '');
       box.classList.remove('empty');
     }
-    $('#clipInfo').textContent = c.reason ? '' : c.sent ? '已发送' : `${c.length} 字`;
+    $('#clipInfo').textContent = c.reason ? '' : c.sent ? '已发送' : c.image ? '' : `${c.length} 字`;
     $('#clipSend').disabled = !!c.reason || c.sent;
     $('#clipSend').textContent = c.sent ? '已发送' : '发送剪贴板';
   } catch {} finally { clipBusy = false; }

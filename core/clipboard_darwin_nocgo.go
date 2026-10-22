@@ -95,3 +95,8 @@ func frontApp() (id, name string) {
 	}
 	return id, name
 }
+
+// 这个平台暂不支持剪贴板里的图片。
+func clipSeq() int64                        { return -1 }
+func readClipboardImage() ([]byte, error)   { return nil, errNoImage }
+func writeClipboardImage(data []byte) error { return errNoImage }

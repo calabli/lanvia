@@ -179,8 +179,8 @@ function bind() {
   };
   $('#urlSelect').onchange = drawQR;
   $('#nodeName').addEventListener('change', e => e.target.value.trim() && saveSettings({ name: e.target.value.trim() }));
-  document.querySelectorAll('input[name="sendMode"]').forEach(r => { r.onchange = () => setMode(r.value === 'active'); });
-  $('#modeBtn').onclick = () => (isPaused() ? pause(0) : setMode(!S.info?.settings?.watch));
+  $('#optWatch').onchange = e => setMode('watch', e.target.checked);
+  bindModeMenu();
   $('#pauseRow').addEventListener('click', e => { const b = e.target.closest('[data-pause]'); if (b) pause(+b.dataset.pause); });
   $('#optNotify').onchange = e => saveSettings({ notify: e.target.checked });
   $('#blockForm').onsubmit = e => {
@@ -204,7 +204,7 @@ function bind() {
   bindExpiryMenu();
   addEventListener('focus', refreshClip);
   setInterval(() => { if (!document.hidden) refreshClip(); }, 2000);
-  $('#optApply').onchange = e => saveSettings({ autoApply: e.target.checked });
+  $('#optApply').onchange = e => setMode('autoApply', e.target.checked);
   $('#optFetch').onchange = e => saveSettings({ autoFetchMB: +e.target.value });
   $('#optLang').onchange = e => { applyLang(e.target.value); saveSettings({ lang: e.target.value }); };
   $('#myLang').onchange = e => applyLang(e.target.value);

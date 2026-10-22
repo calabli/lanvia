@@ -54,6 +54,9 @@ type Item struct {
 	TextLen int `json:"textLen,omitempty"`
 	// 只出现在 history.json 里：正文太长，存在 texts/<id>.txt
 	TextFile bool `json:"textFile,omitempty"`
+
+	// 这个版本不认识的字段（以后的新功能），原样保存和转发，见 compat.go
+	Extra map[string]json.RawMessage `json:"-"`
 }
 
 // 推给网页的列表里每条最多带这么多字节的正文；更长的在预览、编辑时再取全文（GET /api/items/{id}）。

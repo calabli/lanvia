@@ -452,7 +452,8 @@ func (p *Peers) syncHistory(id, addr string) {
 }
 
 type Envelope struct {
-	Op      string       `json:"op"` // add | delete | clear | edit | meta | fav | tags | todo | comment | sync
+	Op      string       `json:"op"`            // add | delete | clear | edit | meta | fav | tags | todo | comment | sync
+	EID     string       `json:"eid,omitempty"` // 消息编号：不认识的操作按它去重后原样转发，见 compat.go
 	Item    *Item        `json:"item,omitempty"`
 	ID      string       `json:"id,omitempty"`
 	TS      int64        `json:"ts,omitempty"`
@@ -464,7 +465,16 @@ type Envelope struct {
 // relay 把变更转发给除 except 以外的所有节点。
 // 每个节点只转发“自己第一次见到”的变更，所以即使不是全连通也能覆盖整个网络，且不会形成环路。
 func (p *Peers) relay(env Envelope, except string) {
+	if env.EID == "" {
+		env.EID = randHex(8)
+	}
+	p.a.eids.first(env.EID) // 自己发出的消息绕回来时不再转发
 	body, _ := json.Marshal(env)
+	p.relayRaw(body, except)
+}
+
+// relayRaw 把一条同步消息（JSON）原样发给除 except 以外的所有设备。
+func (p *Peers) relayRaw(body []byte, except string) {
 	strict := p.a.cfgSnapshot().StrictEnc
 	for _, x := range p.List() {
 		if x.ID == except || (strict && !x.Enc) {

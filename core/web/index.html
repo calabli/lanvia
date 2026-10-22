@@ -129,11 +129,13 @@
       <label class="search-field"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><input id="search" type="search" placeholder="搜索内容" aria-label="搜索历史"><kbd class="search-shortcut" aria-hidden="true">⌘ K</kbd></label>
     </div>
     <div id="kindFilters" class="kind-filters" role="group" aria-label="内容类型">
+      <span class="seg-ctl">
       <button class="filter-btn active" data-kind="all" aria-pressed="true">全部</button>
       <button class="filter-btn" data-kind="text" aria-pressed="false">文本与链接</button>
       <button class="filter-btn" data-kind="file" aria-pressed="false">文件</button>
       <button class="filter-btn" data-kind="todo" aria-pressed="false">清单</button>
       <button class="filter-btn" data-kind="fav" aria-pressed="false">收藏</button>
+      </span>
       <span class="filter-selects">
         <select id="fromFilter" class="mini-select" aria-label="按设备筛选"><option value="">所有设备</option></select>
         <select id="timeFilter" class="mini-select" aria-label="按时间筛选">

@@ -4,7 +4,7 @@
   "description": "局域网内多设备即时共享剪贴板与文件",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f2f5fa",
-  "theme_color": "#1765e8",
+  "background_color": "#f5f5f7",
+  "theme_color": "#22b9f2",
   "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
 }

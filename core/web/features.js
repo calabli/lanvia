@@ -132,7 +132,7 @@ async function refreshClip() {
 async function sendClipboard() {
   try {
     await api('POST', '/api/send-clipboard');
-    toast('已发送到所有设备');
+    toast('已保存到本机，可查看接收结果');
   } catch (e) { toast(e.message); }
   refreshClip();
 }

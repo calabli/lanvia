@@ -6,6 +6,32 @@
 
 const I18N = (() => {
   const EN = {
+    '调整侧边栏宽度': 'Resize sidebar', '调整内容列表宽度': 'Resize item list',
+    '拖动调整宽度 · 双击恢复默认': 'Drag to resize · Double-click to reset',
+    '已保存到本机 · 等待同步状态': 'Saved locally · Waiting for sync status',
+    '正在发送…': 'Sending…', '等待确认': 'Waiting', '已接收': 'Received', '未确认': 'Unconfirmed',
+    '已保存到本机 · 暂无其他设备在线': 'Saved locally · No other devices online',
+    '等待接收确认 · {0}/{1}': 'Waiting for receipts · {0}/{1}',
+    '部分设备未确认 · {0}/{1}': 'Some devices unconfirmed · {0}/{1}',
+    '已接收 · {0} 台设备': 'Received · {0} devices',
+    '文件信息已接收 · {0} 台设备': 'File details received · {0} devices',
+    '查看设备结果': 'Device results', '重试同步': 'Retry sync', '重试上传': 'Retry upload',
+    '需升级以支持加密': 'Upgrade required for encryption',
+    '接收确认针对文件信息，文件内容按需下载。': 'Receipt confirms file details. File content downloads on demand.',
+    '发送失败，内容已保留，请重试：{0}': 'Send failed. Your text is retained; please retry: {0}',
+    '重试失败：{0}': 'Retry failed: {0}',
+    '已保存到本机，可查看接收结果': 'Saved locally. Check the receipt results.',
+    // ---- Focused inbox ----
+    '收起侧边栏': 'Hide sidebar', '展开侧边栏': 'Show sidebar',
+    '收起内容列表': 'Hide item list', '展开内容列表': 'Show item list',
+    '我的空间': 'My workspace', '内容导航': 'Workspace navigation', '内容分类': 'Content types',
+    '所有内容': 'All items', '新建分享': 'New share', '内容列表': 'Inbox',
+    '条内容，随时接续。': 'items, ready when you are.', '搜索你的内容': 'Search your items',
+    '内容预览': 'Reading pane', '内容操作': 'Item actions',
+    '选中文字后复制': 'Select text to copy a passage',
+    '留一点空间，接着思考。': 'A little room for your next thought.',
+    '选择一条内容，在这里阅读、编辑或复制。': 'Select an item to read, edit or copy it here.',
+    '局域网直连 · 内容留在你的设备上': 'Local connection · Your content stays on your devices',
     // ---- 配对页 ----
     '让设备，': 'Your devices, ', '默契相连。': 'in sync.',
     '输入电脑上显示的配对码，': 'Enter the pairing code shown on your computer ',

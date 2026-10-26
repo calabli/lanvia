@@ -129,6 +129,7 @@ function prepare(method, path, body) {
 }
 function send(method, path, body) {
   const { url, init } = prepare(method, path, body);
+  if (S.you) init.headers['X-Lanvia-Client'] = S.you;
   return fetch(url, init);
 }
 const isEnc = r => r.headers.get('X-Lanvia-Enc') === '1';
@@ -275,6 +276,10 @@ const isTouch = matchMedia('(pointer: coarse)').matches;
 
 const I = (d, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
 const ICON = {
+  sidebar: I('<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/>'),
+  listPane: I('<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M8 4v16M11 8h6M11 12h6M11 16h4"/>'),
+  collapsePane: I('<path d="m14 6-6 6 6 6"/>'),
+  more: I('<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>'),
   copy: I('<rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H15"/>'),
   check: I('<path d="m5 12.5 4.5 4.5L19 7.5"/>'),
   trash: I('<path d="M4.5 7h15M10 11v6M14 11v6M6.5 7l.8 11.2A2 2 0 0 0 9.3 20h5.4a2 2 0 0 0 2-1.8L17.5 7M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>'),

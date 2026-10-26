@@ -4,6 +4,56 @@
 
 /* ================= 事件绑定 ================= */
 
+function handleItemAction(e) {
+    const el = e.target.closest('[data-act]');
+    if (!el || e.target.closest('a')) return;
+    const li = el.closest('.item');
+    if (!li) return;
+    const it = S.items.find(x => x.id === li.dataset.id);
+    if (!it) return;
+    switch (el.dataset.act) {
+      case 'select': selectInboxItem(it); break;
+      case 'copy':
+        if (el.classList.contains('text') && getSelection().toString()) return; // 正在选择文字
+        copyItem(it, el.classList.contains('btn') ? el : $('[data-act="copy"].btn', li));
+        break;
+      case 'code': doCopy(el.dataset.v, el); break;
+      case 'expand': li.classList.toggle('open'); el.textContent = li.classList.contains('open') ? '收起' : '展开全部'; break;
+      case 'download': download(it); break;
+      case 'view': case 'preview': openPreview(it); break;
+      case 'edit': openPreview(it, 'edit'); break;
+      case 'comments': openPreview(it, 'comments'); break;
+      case 'tags': openTagMenu(it, el); break;
+      case 'tag-filter': setTagFilter(el.dataset.tag); break;
+      case 'todo-check': todoChange(it, { id: el.closest('[data-eid]').dataset.eid, done: el.checked }); break;
+      case 'todo-del': todoChange(it, { id: el.closest('[data-eid]').dataset.eid, del: true }); break;
+      case 'todo-edit': {
+        const eid = el.closest('[data-eid]').dataset.eid, cur = (it.todo || []).find(x => x.id === eid);
+        uiPrompt('修改这一项', { value: cur?.text || '', ok: '保存' }).then(v => { if (v !== null && v.trim() !== cur?.text) todoChange(it, { id: eid, text: v }); });
+        break;
+      }
+      case 'todo-title':
+        uiPrompt('清单名称', { value: it.text || '', ok: '保存' }).then(v => { if (v !== null && v.trim() !== it.text) todoChange(it, { title: v }); });
+        break;
+      case 'todo-clear': todoChange(it, { clear: true }); break;
+      case 'expiry': openExpiryMenu(it, el); break;
+      case 'fav': toggleFav(it, el); break;
+      case 'delete':
+        api('DELETE', '/api/items/' + it.id).catch(err => toast('删除失败：' + err.message));
+        break;
+    }
+}
+
+function handleTodoSubmit(e) {
+    const form = e.target.closest('.todo-add');
+    if (!form) return;
+    e.preventDefault();
+    const inp = $('input', form), text = inp.value.trim(), it = S.items.find(x => x.id === form.closest('.item').dataset.id);
+    if (!text || !it) return;
+    inp.value = '';
+    todoChange(it, { add: [text] });
+}
+
 function bind() {
   applyTheme(store.get('theme') || 'system');
   applyFont(store.get('fontSize'));
@@ -15,7 +65,7 @@ function bind() {
   $('#settingsBtn').innerHTML = ICON.gear;
   $('#pairCollapse').innerHTML = ICON.chevron;
   document.querySelectorAll('[data-close]').forEach(b => { b.innerHTML = ICON.close; b.onclick = () => b.closest('dialog').close(); });
-  document.querySelectorAll('dialog').forEach(d => d.addEventListener('click', e => { if (e.target === d) d.close(); }));
+  document.querySelectorAll('dialog:not(#previewDlg)').forEach(d => d.addEventListener('click', e => { if (e.target === d) d.close(); }));
 
   const ta = $('#input');
   ta.addEventListener('input', () => { autosize(); updateSend(); });
@@ -55,7 +105,7 @@ function bind() {
     if (files.length) { e.preventDefault(); files.forEach(uploadFile); return; }
     const inField = e.target.closest?.('input, textarea, [contenteditable]');
     const text = e.clipboardData?.getData('text/plain');
-    if (!inField && text) { e.preventDefault(); ta.value = text; sendText(); toast('已发送'); }
+    if (!inField && text) { e.preventDefault(); ta.value = text; sendText(); }
   });
 
   let dragDepth = 0;
@@ -76,55 +126,13 @@ function bind() {
   });
 
   // 清单卡片里的“添加一项”
-  $('#list').addEventListener('submit', e => {
-    const form = e.target.closest('.todo-add');
-    if (!form) return;
-    e.preventDefault();
-    const inp = $('input', form), text = inp.value.trim(), it = S.items.find(x => x.id === form.closest('.item').dataset.id);
-    if (!text || !it) return;
-    inp.value = '';
-    todoChange(it, { add: [text] });
-  });
+  $('#list').addEventListener('submit', handleTodoSubmit);
+  $('#pvBody').addEventListener('submit', handleTodoSubmit);
   $('#todoBtn').onclick = newTodo;
   $('#tagBar').addEventListener('click', e => { const b = e.target.closest('[data-tag]'); if (b) setTagFilter(b.dataset.tag); });
   bindTagMenu();
-  $('#list').addEventListener('click', e => {
-    const el = e.target.closest('[data-act]');
-    if (!el || e.target.closest('a')) return;
-    const li = el.closest('.item');
-    const it = S.items.find(x => x.id === li.dataset.id);
-    if (!it) return;
-    switch (el.dataset.act) {
-      case 'copy':
-        if (el.classList.contains('text') && getSelection().toString()) return; // 正在选择文字
-        copyItem(it, el.classList.contains('btn') ? el : $('[data-act="copy"].btn', li));
-        break;
-      case 'code': doCopy(el.dataset.v, el); break;
-      case 'expand': li.classList.toggle('open'); el.textContent = li.classList.contains('open') ? '收起' : '展开全部'; break;
-      case 'download': download(it); break;
-      case 'view': case 'preview': openPreview(it); break;
-      case 'edit': openPreview(it, 'edit'); break;
-      case 'comments': openPreview(it, 'comments'); break;
-      case 'tags': openTagMenu(it, el); break;
-      case 'tag-filter': setTagFilter(el.dataset.tag); break;
-      case 'todo-check': todoChange(it, { id: el.closest('[data-eid]').dataset.eid, done: el.checked }); break;
-      case 'todo-del': todoChange(it, { id: el.closest('[data-eid]').dataset.eid, del: true }); break;
-      case 'todo-edit': {
-        const eid = el.closest('[data-eid]').dataset.eid, cur = (it.todo || []).find(x => x.id === eid);
-        uiPrompt('修改这一项', { value: cur?.text || '', ok: '保存' }).then(v => { if (v !== null && v.trim() !== cur?.text) todoChange(it, { id: eid, text: v }); });
-        break;
-      }
-      case 'todo-title':
-        uiPrompt('清单名称', { value: it.text || '', ok: '保存' }).then(v => { if (v !== null && v.trim() !== it.text) todoChange(it, { title: v }); });
-        break;
-      case 'todo-clear': todoChange(it, { clear: true }); break;
-      case 'expiry': openExpiryMenu(it, el); break;
-      case 'fav': toggleFav(it, el); break;
-      case 'delete':
-        api('DELETE', '/api/items/' + it.id).catch(err => toast('删除失败：' + err.message));
-        break;
-    }
-  });
+  $('#list').addEventListener('click', handleItemAction);
+  $('#pvBody').addEventListener('click', handleItemAction);
 
   $('#search').addEventListener('input', e => { S.filter = e.target.value; renderList(); deepSearch(); });
   // 分页：滚动到列表底部自动加载下一页
@@ -157,8 +165,10 @@ function bind() {
   });
   $('.search-shortcut').textContent = KIND === 'mac' || KIND === 'ipad' || KIND === 'ios' ? '⌘ K' : 'Ctrl K';
   document.addEventListener('keydown', e => {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && !$('#app').hidden && !document.querySelector('dialog[open]')) {
-      e.preventDefault(); $('#search').focus();
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && !$('#app').hidden && !blockingDialog()) {
+      e.preventDefault();
+      if (inboxListMode() && document.body.classList.contains('list-collapsed')) setInboxListCollapsed(false);
+      $('#search').focus();
     }
   });
 
@@ -301,6 +311,7 @@ function bind() {
   });
   setInterval(() => { if (!document.hidden && S.items.length) renderList(); }, 60e3);
   if (PANEL) bindPanel();
+  bindInbox();
 }
 
 /* 快捷面板：打开即搜索，↑↓ 选择，回车复制并收起 */

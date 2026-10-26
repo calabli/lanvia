@@ -73,6 +73,8 @@ func (a *App) routes(web fs.FS) http.Handler {
 	}))
 	m.HandleFunc("GET /api/latest", auth(a.handleLatest))
 	m.HandleFunc("POST /api/clip", auth(a.handleClip))
+	m.HandleFunc("POST /api/deliveries/ack", auth(a.handleDeliveryAck))
+	m.HandleFunc("POST /api/deliveries/{id}/retry", auth(a.handleDeliveryRetry))
 	m.HandleFunc("POST /api/upload", auth(a.handleUpload))
 	m.HandleFunc("GET /api/blob/{id}", auth(a.handleBlob))
 	m.HandleFunc("GET /api/thumb/{id}", auth(func(w http.ResponseWriter, r *http.Request) {
@@ -126,7 +128,7 @@ func (a *App) routes(web fs.FS) http.Handler {
 		if req.From == "" {
 			req.From = a.cfgSnapshot().Name
 		}
-		it, err := a.NewTodo(req.Title, req.Items, trimRunes(req.From, 40))
+		it, err := a.NewTodo(req.Title, req.Items, trimRunes(req.From, 40), r.Header.Get("X-Lanvia-Client"))
 		if err != nil {
 			errJSON(w, 400, err.Error())
 			return
@@ -477,6 +479,20 @@ func (a *App) handleEvents(w http.ResponseWriter, r *http.Request) {
 		ClientInfo: ClientInfo{ID: randHex(6), Name: trimRunes(name, 40), Kind: trimRunes(q.Get("kind"), 12), Since: nowMs(), Local: isLocalAdmin(r)},
 		ch:         make(chan []byte, 256),
 	}
+	// Reuse a tab's identity after a transient disconnect so pending receipts and
+	// retry targets still refer to the same browser. Concurrent tabs stay distinct.
+	if id := q.Get("client"); len(id) == 12 && strings.Trim(id, "0123456789abcdef") == "" {
+		used := false
+		for _, existing := range a.hub.List() {
+			if existing.ID == id {
+				used = true
+				break
+			}
+		}
+		if !used {
+			c.ID = id
+		}
+	}
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-cache")
@@ -490,9 +506,10 @@ func (a *App) handleEvents(w http.ResponseWriter, r *http.Request) {
 		w.Write(msg)
 	}
 	send(sseFrame("hello", map[string]any{
-		"you":   c.ID,
-		"node":  map[string]string{"id": self.ID, "name": self.Name, "os": runtime.GOOS},
-		"items": clientItems(a.store.List()),
+		"you":        c.ID,
+		"node":       map[string]string{"id": self.ID, "name": self.Name, "os": runtime.GOOS},
+		"items":      clientItems(a.store.List()),
+		"deliveries": a.deliverySnapshot(),
 		// 设备列表只在变化时推送；本机窗口连上时列表不变，所以首次连接必须带上当前列表
 		"devices": a.devices(),
 		"local":   c.Local,
@@ -562,7 +579,7 @@ func (a *App) handleClip(w http.ResponseWriter, r *http.Request) {
 		errJSON(w, 400, "empty text")
 		return
 	}
-	writeJSON(w, 200, a.newText(req.Text, trimRunes(req.From, 40), true))
+	writeJSON(w, 200, a.newText(req.Text, trimRunes(req.From, 40), true, r.Header.Get("X-Lanvia-Client")))
 }
 
 func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
@@ -600,7 +617,7 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	it := &Item{ID: id, Kind: "file", Name: name, Mime: ct, Size: n, From: from, Origin: a.cfgSnapshot().ID, TS: nowMs()}
 	// 手机等其他设备传来的图片：开着“主动粘贴”时也放进这台电脑的剪贴板（本机窗口拖进来的不放）
-	a.ingest(it, "", !isLocalAdmin(r))
+	a.ingest(it, "", !isLocalAdmin(r), r.Header.Get("X-Lanvia-Client"))
 	go a.enforceQuota() // 原件不删，必要时给它腾出副本占的空间
 	writeJSON(w, 200, it)
 }

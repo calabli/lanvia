@@ -221,7 +221,7 @@ func parseTodoLine(l string) (string, bool) {
 }
 
 // NewTodo 新建一个清单。lines 是初始的各项，可以带“- [ ]”之类的标记。
-func (a *App) NewTodo(title string, lines []string, from string) (*Item, error) {
+func (a *App) NewTodo(title string, lines []string, from string, sender ...string) (*Item, error) {
 	title = cleanTodoText(title, maxTodoTitle*4)
 	now := nowMs()
 	var es []*TodoEntry
@@ -244,7 +244,7 @@ func (a *App) NewTodo(title string, lines []string, from string) (*Item, error) 
 		return nil, errors.New("清单不能为空")
 	}
 	it := &Item{ID: randHex(8), Kind: "todo", Text: title, TextTS: now, Todo: es, From: from, Origin: a.cfgSnapshot().ID, TS: now}
-	if !a.ingest(it, "", false) {
+	if !a.ingest(it, "", false, sender...) {
 		return nil, errors.New("创建失败")
 	}
 	return it, nil

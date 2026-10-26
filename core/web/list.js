@@ -321,8 +321,8 @@ function renderList() {
   items.slice(0, S.limit).forEach((it, i) => {
     const prev = ROWS.get(it.id);
     const latest = i === 0 && !f;
-    const cls = `item card${latest ? ' latest' : ''}${prev?.el.classList.contains('open') ? ' open' : ''}${PANEL && i === S.sel ? ' sel' : ''}${isLong(it) ? ' long' : ''}`;
-    const html = itemHTML(it, latest);
+    const cls = `item card${latest ? ' latest' : ''}${prev?.el.classList.contains('open') ? ' open' : ''}${PANEL && i === S.sel ? ' sel' : ''}${isLong(it) ? ' long' : ''}${inboxListMode() && inboxSelection === it.id ? ' is-reading' : ''}`;
+    const html = (inboxListMode() ? inboxItemHTML(it) : itemHTML(it, latest)) + deliveryBadge(it.id);
     const key = cls + '\u0001' + terms + '\u0001' + html;
     let el = prev?.el;
     if (!prev || prev.key !== key) {
@@ -362,6 +362,7 @@ function renderList() {
   const filtered = !!f || S.kind !== 'all';
   $('#emptyTitle').textContent = filtered ? '还没有找到这份灵感。' : '好想法，从这里开始。';
   $('#emptyDescription').textContent = filtered ? '试试其他关键词，或切换内容类型。' : '在已连接的设备上复制文字，或发送你的第一条内容。';
+  syncInboxReader(items);
 }
 
 function renderDevices() {
@@ -416,19 +417,29 @@ function toast(msg, action) {
 
 function connect() {
   if (S.es) S.es.close();
-  const es = new EventSource(signedURL('/api/events', { name: myName(), kind: KIND }));
+  let client = '';
+  try { client = sessionStorage.getItem('lanvia.eventClient') || ''; } catch {}
+  const es = new EventSource(signedURL('/api/events', { name: myName(), kind: KIND, client }));
   S.es = es;
   es.addEventListener('hello', e => {
     const d = evData(e);
     S.you = d.you; S.node = d.node; S.local = d.local; S.items = d.items || []; S.strict = !!d.strict;
+    try { sessionStorage.setItem('lanvia.eventClient', S.you); } catch {}
     if (d.devices) S.devices = d.devices;
     S.connected = true; S.retry = 0;
+    DELIVERIES.clear(); lastDelivery = null;
+    (d.deliveries || []).sort((a, b) => a.ts - b.ts).forEach(receiveDelivery);
+    renderDelivery();
     document.body.classList.toggle('is-local', S.local);
     $('#settingsBtn').hidden = !S.local;
     $('#remoteOnly').hidden = S.local;
     $('#pairCard').hidden = !S.local || PANEL;
     if (S.local && !PREVIEW) loadInfo();
     renderList(); renderDevices();
+    // The hello snapshot also confirms receipt after a temporary disconnect.
+    for (const result of d.deliveries || []) {
+      if (result.targets.some(t => t.id === 'web:' + S.you && t.state !== 'received')) acknowledgeDelivery(result.id);
+    }
     if (PREVIEW) {
       const it = S.items.find(x => x.id === PREVIEW_ID);
       if (!it) showPreviewMissing();
@@ -445,6 +456,8 @@ function connect() {
     if (!PREVIEW && it.from !== myName() && Date.now() + S.offset - it.ts < 30e3) onIncoming(it);
   });
   es.addEventListener('update', e => onItemUpdated(evData(e)));
+  es.addEventListener('delivery', e => receiveDelivery(evData(e)));
+  es.addEventListener('delivery-request', e => acknowledgeDelivery(evData(e).id));
   es.addEventListener('settings', e => {
     const st = evData(e);
     S.strict = !!st.strictEnc;
@@ -522,11 +535,7 @@ async function doCopy(text, btn, id) {
   if (S.local && id) ok = await api('POST', '/api/copy/' + id).then(() => true, () => false);
   if (!ok) ok = await copyText(text);
   if (ok && PANEL) { desktop('hide'); return; }
-  if (btn) {
-    const old = btn.innerHTML;
-    btn.classList.add('ok'); btn.innerHTML = ICON.check + '<span>已复制</span>';
-    setTimeout(() => { btn.classList.remove('ok'); btn.innerHTML = old; }, 1400);
-  }
+  if (btn && ok) flashButton(btn, '已复制');
   if (!btn || !ok) toast(ok ? '已复制' : '复制失败，请长按文字手动复制');
 }
 
@@ -561,15 +570,20 @@ async function download(it) {
 /* ================= 发送 ================= */
 
 async function sendText() {
+  if (sendBusy) return;
   const ta = $('#input');
   const text = ta.value;
   if (!text.trim()) return;
   $('#sendBtn').disabled = true;
+  sendingStatus();
   try {
-    await api('POST', '/api/clip', { text, from: myName() });
-    ta.value = ''; autosize();
+    const it = await api('POST', '/api/clip', { text, from: myName() });
+    lastDelivery = it.id;
+    if (ta.value === text) ta.value = '';
+    autosize(); sendBusy = false; renderDelivery();
     if (isTouch) ta.blur();
   } catch (e) {
+    sendFailure(e);
     toast('发送失败：' + e.message);
   }
   updateSend();
@@ -585,6 +599,7 @@ function uploadFile(file) {
   // 文件名、类型放在（加密的）查询参数里；内容加密，很大的文件除外（见 PLAIN_MAX）
   xhr.open('POST', signedURL('/api/upload', { name: file.name || 'file', from: myName(), type: file.type || '' }, 'POST'));
   xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+  if (S.you) xhr.setRequestHeader('X-Lanvia-Client', S.you);
   const encrypt = S.key && !plainOK(file);
   if (encrypt) xhr.setRequestHeader('X-Lanvia-Body-Enc', '1');
   xhr.upload.onprogress = e => {
@@ -593,11 +608,26 @@ function uploadFile(file) {
     pct.textContent = `${p}% · ${fmtSize(e.total)}`; bar.style.width = p + '%';
   };
   const done = msg => { if (msg) toast(msg); setTimeout(() => row.remove(), msg ? 0 : 600); };
-  xhr.onload = () => (xhr.status === 200 ? done() : done('上传失败：HTTP ' + xhr.status));
-  xhr.onerror = () => done('上传失败，请检查网络');
+  xhr.onload = async () => {
+    if (xhr.status !== 200) { fail('上传失败：HTTP ' + xhr.status); return; }
+    try {
+      const raw = new Uint8Array(xhr.response);
+      const it = JSON.parse(dec.decode(xhr.getResponseHeader('X-Lanvia-Enc') === '1' ? LC.open(S.ek, raw) : raw));
+      lastDelivery = it.id; renderDelivery(); done();
+    } catch { done(); }
+  };
+  xhr.responseType = 'arraybuffer';
+  const fail = msg => {
+    pct.textContent = msg; row.classList.add('upload-failed');
+    const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'delivery-retry'; retry.textContent = '重试上传';
+    retry.onclick = () => { row.remove(); uploadFile(file); }; row.appendChild(retry);
+    const dismiss = document.createElement('button'); dismiss.type = 'button'; dismiss.className = 'delivery-retry'; dismiss.textContent = '移除'; dismiss.onclick = () => row.remove(); row.appendChild(dismiss);
+  };
+  xhr.onerror = () => fail('上传失败，请检查网络');
+  xhr.ontimeout = () => fail('上传超时');
   if (!encrypt) return xhr.send(file);
   sealFile(file, p => { pct.textContent = `正在加密 ${Math.round(p * 100)}%`; })
-    .then(b => xhr.send(b), () => done('读取文件失败'));
+    .then(b => xhr.send(b), () => fail('读取文件失败'));
 }
 
 /* ---- 发送文件夹：先在本机打包成 zip，再按普通文件上传 ---- */
@@ -634,4 +664,4 @@ function autosize() {
   ta.style.height = 'auto';
   ta.style.height = Math.min(ta.scrollHeight, innerHeight * 0.4) + 'px';
 }
-function updateSend() { $('#sendBtn').disabled = !$('#input').value.trim(); }
+function updateSend() { $('#sendBtn').disabled = sendBusy || !$('#input').value.trim(); }

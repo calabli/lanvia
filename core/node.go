@@ -12,7 +12,7 @@ import (
 	"strconv"
 )
 
-const Version = "0.12.2"
+const Version = "0.13.0"
 
 //go:embed web
 var webFS embed.FS

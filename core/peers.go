@@ -464,12 +464,20 @@ type Envelope struct {
 
 // relay 把变更转发给除 except 以外的所有节点。
 // 每个节点只转发“自己第一次见到”的变更，所以即使不是全连通也能覆盖整个网络，且不会形成环路。
-func (p *Peers) relay(env Envelope, except string) {
+func (p *Peers) relay(env Envelope, except string, sender ...string) {
 	if env.EID == "" {
 		env.EID = randHex(8)
 	}
 	p.a.eids.first(env.EID) // 自己发出的消息绕回来时不再转发
 	body, _ := json.Marshal(env)
+	if env.Op == "add" && env.Item != nil && except == "" {
+		skip := ""
+		if len(sender) > 0 {
+			skip = sender[0]
+		}
+		p.a.deliverItem(env.Item, body, skip, nil)
+		return
+	}
 	p.relayRaw(body, except)
 }
 

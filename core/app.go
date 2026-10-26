@@ -33,8 +33,9 @@ type App struct {
 	quotaMu  sync.Mutex // 保护 reserved，以及“腾空间”这一步
 	reserved int64      // 正在下载、还没落盘的副本预留的空间（.part 文件不计入占用）
 
-	nonces nonceCache // v2 写请求用过的 nonce，防重放
-	eids   eidCache   // 转发过的同步消息编号，见 compat.go
+	nonces   nonceCache  // v2 写请求用过的 nonce，防重放
+	eids     eidCache    // 转发过的同步消息编号，见 compat.go
+	delivery deliveryLog // Recent, in-memory receipt results; never part of synced history.
 }
 
 // credsFor 由配置得到密钥；重新生成过的 token 优先于由配对码派生的。
@@ -80,14 +81,14 @@ func (a *App) updateCfg(fn func(*Config)) error {
 
 // ---- 内容变更：本地产生、远端转发、历史合并都汇集到这里 ----
 
-func (a *App) newText(text, from string, apply bool) *Item {
+func (a *App) newText(text, from string, apply bool, sender ...string) *Item {
 	it := &Item{ID: randHex(8), Kind: "text", Text: text, From: from, Origin: a.cfgSnapshot().ID, TS: nowMs()}
-	a.ingest(it, "", apply)
+	a.ingest(it, "", apply, sender...)
 	return it
 }
 
 // ingest 加入一条新内容。apply 表示内容来自别的设备，应写入本机剪贴板。
-func (a *App) ingest(it *Item, fromPeer string, apply bool) bool {
+func (a *App) ingest(it *Item, fromPeer string, apply bool, sender ...string) bool {
 	if !a.store.Add(it) {
 		return false
 	}
@@ -102,7 +103,7 @@ func (a *App) ingest(it *Item, fromPeer string, apply bool) bool {
 			go a.applyImage(it) // 图片可能要先从对方下载
 		}
 	}
-	a.peers.relay(Envelope{Op: "add", Item: it}, fromPeer)
+	a.peers.relay(Envelope{Op: "add", Item: it}, fromPeer, sender...)
 	if fromPeer != "" && a.wantFetch(it) {
 		a.enqueueFetch(it.ID)
 	}

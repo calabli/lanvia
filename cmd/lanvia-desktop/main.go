@@ -57,6 +57,7 @@ func main() {
 		Services:    []application.Service{application.NewService(d.notify.ns)},
 		Name:        "Lanvia",
 		Description: "局域网内多设备即时共享剪贴板与文件",
+		Icon:        applicationIcon,
 		// 页面由 core 在 localhost 上提供，这里不需要打包前端资源
 		Assets: application.AssetOptions{Handler: http.NotFoundHandler()},
 		Mac: application.MacOptions{
@@ -185,10 +186,10 @@ func (d *desktop) mainWindow() *application.WebviewWindow {
 		d.main = d.app.Window.NewWithOptions(application.WebviewWindowOptions{
 			Name:      "main",
 			Title:     "Lanvia",
-			Width:     960,
-			Height:    760,
+			Width:     1200,
+			Height:    820,
 			MinWidth:  420,
-			MinHeight: 480,
+			MinHeight: 600,
 			URL:       d.node.LocalURL() + "/?desktop=main",
 		})
 		d.hideOnClose(d.main)

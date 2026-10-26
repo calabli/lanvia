@@ -28,14 +28,19 @@ function looksLikeCode(t) {
 function openPreview(it, mode = 'view') {
   // 快捷面板太窄，交给桌面端打开一个可拖动、可置顶的独立窗口
   if (PANEL) return desktop(mode === 'view' ? 'preview' : mode, it.id);
+  if (inboxListMode()) return selectInboxItem(it, mode, true);
   showPreview(it, mode);
 }
 
-async function showPreview(it, mode = 'view') {
+let previewRequest = 0;
+async function showPreview(it, mode = 'view', focus = true) {
+  const request = ++previewRequest;
+  const previousFocus = document.activeElement;
   // 列表里的长正文是截断的，预览前先取全文
   if (it.textLen) {
-    try { it = await loadFull(it); } catch (e) { toast('加载失败：' + e.message); return; }
+    try { it = await loadFull(it); } catch (e) { if (request === previewRequest) toast('加载失败：' + e.message); return false; }
   }
+  if (request !== previewRequest) return false;
   PV = it;
   PVS.lang = it.kind === 'text' ? HL.detect(it.text) : null;
   PVS.mono = it.kind === 'text' ? (!!PVS.lang || looksLikeCode(it.text)) : false;
@@ -48,11 +53,16 @@ async function showPreview(it, mode = 'view') {
   $('#pvWarn').hidden = true;
   renderPreview();
   const d = $('#previewDlg');
-  if (!d.open) PREVIEW ? d.show() : d.showModal();
+  if (!d.open) PREVIEW || inboxWide() ? d.show() : d.showModal();
+  if (inboxWide() && !focus) {
+    if (previousFocus?.isConnected && previousFocus !== document.body) previousFocus.focus({ preventScroll: true });
+    else if (d.contains(document.activeElement)) document.activeElement.blur();
+  }
   if (mode === 'edit') startEdit();
   else if (mode === 'history') openHistory();
   else if (mode === 'comments') $('#pvComInput').focus();
-  else { $('#pvBody').scrollTop = 0; $('#pvBody').focus({ preventScroll: true }); }
+  else { $('#pvBody').scrollTop = 0; if (focus) $('#pvBody').focus({ preventScroll: true }); }
+  return true;
 }
 
 /* ---- 评论 ---- */
@@ -134,6 +144,9 @@ function renderPreview() {
   renderComPanel();
   $('#pvHist').innerHTML = ICON.history + (it.rev ? `<span class="count">${it.rev + 1}</span>` : '');
   $('#pvDiff').textContent = PVS.diff ? '看全文' : '看改动';
+  delete $('#pvCopy').dataset.flash;
+  delete $('#pvCopy')._flashOriginal;
+  $('#pvCopy').classList.remove('ok');
   $('#pvCopy').innerHTML = it.kind === 'todo' ? `${ICON.copy}<span>复制全部</span>` : !isText ? `${ICON.download}<span>${S.local ? '保存' : '下载'}</span>`
     : m === 'history' ? `${ICON.copy}<span>复制此版本</span>` : `${ICON.copy}<span>复制全部</span>`;
   const mod = KIND === 'mac' ? '⌘' : 'Ctrl+';
@@ -142,6 +155,7 @@ function renderPreview() {
     : m === 'history' ? '<span><kbd>↑</kbd><kbd>↓</kbd> 切换版本</span><span><kbd>esc</kbd> 返回</span>'
     : `<span><kbd>↩</kbd> 复制全部并关闭</span><span><kbd>${mod}E</kbd> 编辑</span><span>选中文字后 <kbd>${mod}C</kbd> 只复制选中部分</span><span><kbd>esc</kbd> 关闭</span>`;
   $('#previewDlg').classList.toggle('with-hist', m === 'history');
+  renderInboxTools();
   if (m !== 'edit') renderPreviewBody();
 }
 
@@ -191,8 +205,14 @@ function renderPreviewBody() {
     }, e => { if (PV === it && tip) tip.textContent = '加载失败：' + e.message; });
     return;
   }
+  if (it.kind === 'todo') {
+    body.innerHTML = `<div class="item reader-todo" data-id="${it.id}">${todoHTML(it, '')}</div>`;
+    return;
+  }
   if (PVS.mode === 'history') return renderHistory();
-  body.innerHTML = textHTML(pvText());
+  let text = pvText();
+  if (inboxWide() && !$('#readerTitle').hidden && !it.title && !PVS.mono && !PVS.fmt && text.split('\n', 1)[0] === inboxTitle(it)) text = text.slice(text.indexOf('\n') + 1).replace(/^\n+/, '');
+  body.innerHTML = textHTML(text);
 }
 
 function showPreviewMissing() {
@@ -210,6 +230,10 @@ function showPreviewMissing() {
 async function closePreview() {
   if (PVS.mode === 'edit' && !(await cancelEdit())) return;
   if (PREVIEW) return desktop('hide-preview');
+  if (inboxWide()) {
+    (document.body.classList.contains('list-collapsed') ? $('#listToggle') : $(`.item[data-id="${PV?.id}"] .inbox-entry`))?.focus();
+    return;
+  }
   $('#previewDlg').close();
 }
 
@@ -448,7 +472,7 @@ function bindPreview() {
   $('#pvPin').onclick = () => { pinned = !pinned; $('#pvPin').classList.toggle('on', pinned); desktop(pinned ? 'pin' : 'unpin'); };
   $('[data-close]', d).onclick = closePreview;
   d.addEventListener('cancel', e => { e.preventDefault(); closePreview(); });
-  d.addEventListener('click', e => { if (e.target === d && !PREVIEW && PVS.mode !== 'edit') d.close(); });
+  d.addEventListener('click', e => { if (e.target === d && !PREVIEW && !inboxWide() && PVS.mode !== 'edit') d.close(); });
   $('#pvComBtn').onclick = () => {
     PVS.com = !PVS.com;
     renderComPanel();
@@ -458,6 +482,9 @@ function bindPreview() {
   $('#pvComList').onclick = e => { const b = e.target.closest('[data-cdel]'); if (b) deleteComment(b.dataset.cdel); };
   d.addEventListener('keydown', e => {
     if (e.isComposing || !PV) return;
+    // The embedded todo is editable: Enter submits its form and Space toggles
+    // its checkboxes instead of triggering the read-only preview shortcuts.
+    if (e.target.closest('.reader-todo') && e.target.closest('input, button, select, textarea')) return;
     // 在评论框里打字：回车发送（表单处理），Esc 只是离开输入框，其余快捷键都不生效
     if (e.target.closest('#pvCom')) {
       if (e.key === 'Escape') { e.preventDefault(); e.target.blur(); $('#pvBody').focus({ preventScroll: true }); }
@@ -491,7 +518,15 @@ function bindPreview() {
 }
 
 function flashButton(btn, label) {
-  const old = btn.innerHTML;
+  const old = btn._flashOriginal ?? btn.innerHTML;
+  btn._flashOriginal = old;
+  const token = String(++buttonFlashSequence);
+  btn.dataset.flash = token;
   btn.classList.add('ok'); btn.innerHTML = ICON.check + `<span>${esc(label)}</span>`;
-  setTimeout(() => { btn.classList.remove('ok'); btn.innerHTML = old; }, 1400);
+  setTimeout(() => {
+    if (btn.dataset.flash !== token) return;
+    delete btn.dataset.flash; delete btn._flashOriginal;
+    btn.classList.remove('ok'); btn.innerHTML = old;
+  }, 1400);
 }
+let buttonFlashSequence = 0;

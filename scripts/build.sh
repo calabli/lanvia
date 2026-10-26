@@ -70,7 +70,8 @@ build_mac_app() {
   rm -f "$DIST/Lanvia-macos.zip"
   # zip 给自动更新用（旧版本按这个文件名找 Mac 安装包）
   ditto -c -k --keepParent "$app" "$DIST/Lanvia-macos.zip"
-  rm -rf "$DIST/Lanvia.app" && cp -R "$app" "$DIST/Lanvia.app"
+  # 不在 dist 里留未打包的 Lanvia.app：Spotlight 和启动台会把它当成已安装的应用收录
+  rm -rf "$DIST/Lanvia.app"
   build_mac_dmg "$app"
   rm -rf "$tmp"
   echo "  ✓ Lanvia.app (universal) → Lanvia-macos.zip, Lanvia-macos.dmg"

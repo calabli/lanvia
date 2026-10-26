@@ -6,6 +6,9 @@
 
 const I18N = (() => {
   const EN = {
+    '窗口操作': 'Window controls', '最小化': 'Minimize', '最大化': 'Maximize',
+    '还原窗口': 'Restore window', '关闭窗口': 'Close window',
+    '窗口操作失败：{0}': 'Window action failed: {0}',
     '调整侧边栏宽度': 'Resize sidebar', '调整内容列表宽度': 'Resize item list',
     '拖动调整宽度 · 双击恢复默认': 'Drag to resize · Double-click to reset',
     '已保存到本机 · 等待同步状态': 'Saved locally · Waiting for sync status',

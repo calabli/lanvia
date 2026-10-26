@@ -262,3 +262,36 @@ body.inbox.resizing-panes, body.inbox.resizing-panes * { cursor: col-resize !imp
 body.inbox.resizing-panes iframe { pointer-events: none; }
 body.inbox.resizing-panes .pane-splitter:focus::after { background: var(--accent); }
 @media (prefers-reduced-motion: reduce) { body.inbox .pane-splitter::after { transition: none; } }
+/* One integrated Windows titlebar: a single brand, toolbar and caption controls. */
+.window-controls { display: none; }
+body.inbox.native-chrome .top { min-height: 64px; padding: 0 0 0 22px; gap: 12px; --wails-draggable: drag; app-region: drag; -webkit-app-region: drag; user-select: none; }
+body.inbox.native-chrome .top .brand { flex: none; gap: 9px; }
+body.inbox.native-chrome .top .brand, body.inbox.native-chrome .top .brand * { --wails-draggable: drag; app-region: drag; -webkit-app-region: drag; }
+body.inbox.native-chrome .top button, body.inbox.native-chrome .top button *, body.inbox.native-chrome .top input, body.inbox.native-chrome .top select { --wails-draggable: no-drag; app-region: no-drag; -webkit-app-region: no-drag; }
+body.inbox.native-chrome .top-actions { flex: none; gap: 7px; }
+body.inbox.native-chrome .top-actions .icon-btn, body.inbox.native-chrome .sidebar-toggle, body.inbox.native-chrome .list-toggle { color: var(--muted); }
+body.inbox.native-chrome .sidebar-toggle.on, body.inbox.native-chrome .list-toggle.on { color: var(--accent); }
+body.inbox.native-chrome .inbox-pair-button { color: var(--accent-ink); background: var(--accent); }
+body.inbox.native-chrome .window-controls { display: flex; align-self: stretch; flex: none; align-items: stretch; margin-left: 3px; padding-left: 7px; border-left: 1px solid var(--border); --wails-draggable: no-drag; app-region: no-drag; -webkit-app-region: no-drag; }
+body.inbox.native-chrome .window-controls button { display: grid; place-items: center; flex: none; width: 44px; border: 0; border-radius: 0; padding: 0; color: var(--muted); background: transparent; cursor: default; }
+body.inbox.native-chrome .window-controls button:hover { color: var(--text); background: var(--fill); }
+body.inbox.native-chrome .window-controls button.window-close:hover { color: white; background: #c42b1c; }
+body.inbox.native-chrome .window-controls button:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
+body.inbox.native-chrome .window-controls svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.2; pointer-events: none; }
+@media (max-width: 1000px) {
+  body.inbox.native-chrome .top { padding-left: 15px; gap: 8px; }
+  body.inbox.native-chrome .brand > span:last-child, body.inbox.native-chrome #modeBtn { display: none; }
+  body.inbox.native-chrome .window-controls button { width: 38px; }
+}
+@media (max-width: 650px) {
+  body.inbox.native-chrome .top { min-height: 56px; padding-left: 12px; gap: 5px; }
+  body.inbox.native-chrome .top-actions { gap: 3px; }
+  body.inbox.native-chrome #themeBtn { display: none; }
+  body.inbox.native-chrome #devicesBtn { width: 28px; padding: 0; gap: 0; }
+  body.inbox.native-chrome #devCount { display: none; }
+  body.inbox.native-chrome .sidebar-toggle, body.inbox.native-chrome .list-toggle { width: 30px; height: 32px; }
+  body.inbox.native-chrome .window-controls { margin-left: 0; padding-left: 3px; }
+  body.inbox.native-chrome .window-controls button { width: 32px; }
+  body.inbox.native-chrome .inbox-pair-button { font-size: 0; width: 28px; padding: 0; }
+  body.inbox.native-chrome .inbox-pair-button::before { content: '+'; font-size: 20px; }
+}

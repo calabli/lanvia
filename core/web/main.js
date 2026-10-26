@@ -55,6 +55,7 @@ function handleTodoSubmit(e) {
 }
 
 function bind() {
+  bindWindowChrome();
   applyTheme(store.get('theme') || 'system');
   applyFont(store.get('fontSize'));
   bindFontMenu();

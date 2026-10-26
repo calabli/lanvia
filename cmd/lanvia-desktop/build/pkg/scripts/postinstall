@@ -1,0 +1,8 @@
+#!/bin/sh
+# 安装完成后以当前登录的用户身份打开 Lanvia（安装器本身以 root 运行）
+user=$(stat -f %Su /dev/console)
+if [ -n "$user" ] && [ "$user" != "root" ]; then
+  uid=$(id -u "$user")
+  launchctl asuser "$uid" sudo -u "$user" open -a "/Applications/Lanvia.app" 2>/dev/null
+fi
+exit 0

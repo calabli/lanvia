@@ -61,13 +61,31 @@ build_mac_app() {
   iconutil -c icns "$iconset" -o "$app/Contents/Resources/AppIcon.icns"
 
   sed "s/{{VERSION}}/$VERSION/g" cmd/lanvia-desktop/build/Info.plist > "$app/Contents/Info.plist"
-  # 临时签名：没有开发者证书时，Apple 芯片也要求二进制至少有一个签名
-  codesign --force --deep -s - "$app" >/dev/null
+  # 临时签名：没有 Developer ID 证书时，Apple 芯片也要求二进制至少有一个完整的签名。
+  # 签名不完整时，从网上下载后 macOS 会直接报“已损坏”；签名完整时只提示“无法验证开发者”，可以放行。
+  # 先清掉附加属性（Finder 信息、资源分支），否则签名会失败或被判为无效。
+  xattr -cr "$app"
+  codesign --force --deep -s - --identifier app.lanvia.desktop "$app" >/dev/null
+  codesign --verify --deep --strict "$app" || { echo "签名校验失败" >&2; exit 1; }
   rm -f "$DIST/Lanvia-macos.zip"
+  # zip 给自动更新用（旧版本按这个文件名找 Mac 安装包）
   ditto -c -k --keepParent "$app" "$DIST/Lanvia-macos.zip"
   rm -rf "$DIST/Lanvia.app" && cp -R "$app" "$DIST/Lanvia.app"
+  build_mac_dmg "$app"
   rm -rf "$tmp"
-  echo "  ✓ Lanvia.app (universal) → Lanvia-macos.zip"
+  echo "  ✓ Lanvia.app (universal) → Lanvia-macos.zip, Lanvia-macos.dmg"
+}
+
+# DMG：给用户手动安装用。里面是 App、“应用程序”的快捷方式和安装说明（包括第一次打开被 macOS 拦下时怎么放行）。
+build_mac_dmg() {
+  local app=$1 stage
+  stage=$(mktemp -d)
+  cp -R "$app" "$stage/Lanvia.app"
+  ln -s /Applications "$stage/应用程序 Applications"
+  cp cmd/lanvia-desktop/build/dmg-readme.txt "$stage/安装说明 Install Guide.txt"
+  rm -f "$DIST/Lanvia-macos.dmg"
+  hdiutil create -quiet -volname "Lanvia $VERSION" -srcfolder "$stage" -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "$DIST/Lanvia-macos.dmg"
+  rm -rf "$stage"
 }
 
 build_windows_desktop() {
@@ -91,5 +109,5 @@ case $WHAT in
   all) build_cli; build_mac_app; build_windows_desktop ;;
   *) echo "用法: $0 [all|cli|desktop]"; exit 1 ;;
 esac
-(cd "$DIST" && rm -f SHA256SUMS.txt && shasum -a 256 *.zip *.exe *.tar.gz 2>/dev/null > SHA256SUMS.txt)
+(cd "$DIST" && rm -f SHA256SUMS.txt && shasum -a 256 *.dmg *.zip *.exe *.tar.gz 2>/dev/null > SHA256SUMS.txt)
 echo "完成 → $DIST/"

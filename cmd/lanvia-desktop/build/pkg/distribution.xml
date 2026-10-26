@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- macOS 安装器的配置。{{...}} 由 scripts/build.sh 替换。 -->
+<installer-gui-script minSpecVersion="2">
+    <title>Lanvia {{VERSION}}（{{ARCH_NAME}}）</title>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+    <!-- 只装在对应芯片的 Mac 上；装到“应用程序”，不让用户选别的磁盘或位置 -->
+    <options customize="never" require-scripts="false" hostArchitectures="{{HOST_ARCH}}" rootVolumeOnly="true"/>
+    <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+    <allowed-os-versions>
+        <os-version min="13.0"/>
+    </allowed-os-versions>
+    <choices-outline>
+        <line choice="app"/>
+    </choices-outline>
+    <choice id="app" visible="false" title="Lanvia">
+        <pkg-ref id="app.lanvia.desktop"/>
+    </choice>
+    <pkg-ref id="app.lanvia.desktop" version="{{VERSION}}" onConclusion="none">component.pkg</pkg-ref>
+</installer-gui-script>

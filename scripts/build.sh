@@ -36,6 +36,15 @@ build_cli() {
   done
 }
 
+# 临时签名并严格校验。没有 Developer ID 证书时，Apple 芯片也要求二进制至少有一个完整的签名；
+# 签名不完整时 macOS 会直接报“已损坏”，签名完整时只提示“无法验证开发者”，可以放行。
+# 先清掉附加属性（Finder 信息、资源分支），否则签名会失败或被判为无效。
+sign_app() {
+  xattr -cr "$1"
+  codesign --force --deep -s - --identifier app.lanvia.desktop "$1" >/dev/null
+  codesign --verify --deep --strict "$1" || { echo "签名校验失败：$1" >&2; exit 1; }
+}
+
 build_mac_app() {
   local tmp app
   tmp=$(mktemp -d)
@@ -59,34 +68,53 @@ build_mac_app() {
     sips -z $((s*2)) $((s*2)) cmd/lanvia-desktop/build/appicon.png --out "$iconset/icon_${s}x${s}@2x.png" >/dev/null
   done
   iconutil -c icns "$iconset" -o "$app/Contents/Resources/AppIcon.icns"
-
   sed "s/{{VERSION}}/$VERSION/g" cmd/lanvia-desktop/build/Info.plist > "$app/Contents/Info.plist"
-  # 临时签名：没有 Developer ID 证书时，Apple 芯片也要求二进制至少有一个完整的签名。
-  # 签名不完整时，从网上下载后 macOS 会直接报“已损坏”；签名完整时只提示“无法验证开发者”，可以放行。
-  # 先清掉附加属性（Finder 信息、资源分支），否则签名会失败或被判为无效。
-  xattr -cr "$app"
-  codesign --force --deep -s - --identifier app.lanvia.desktop "$app" >/dev/null
-  codesign --verify --deep --strict "$app" || { echo "签名校验失败" >&2; exit 1; }
-  rm -f "$DIST/Lanvia-macos.zip"
-  # zip 给自动更新用（旧版本按这个文件名找 Mac 安装包）
+
+  # 通用版（Apple 芯片和 Intel 都能用）：打成 zip 给自动更新用（旧版本按这个文件名找 Mac 安装包）
+  sign_app "$app"
+  rm -f "$DIST/Lanvia-macos.zip" "$DIST/Lanvia-macos.dmg" "$DIST"/Lanvia-macos-*.dmg
   ditto -c -k --keepParent "$app" "$DIST/Lanvia-macos.zip"
   # 不在 dist 里留未打包的 Lanvia.app：Spotlight 和启动台会把它当成已安装的应用收录
   rm -rf "$DIST/Lanvia.app"
-  build_mac_dmg "$app"
+
+  # 给用户下载安装的：每种芯片一个安装包，只带对应芯片的程序，体积小一半
+  for arch in arm64 amd64; do
+    local thin="$tmp/$arch/Lanvia.app"
+    mkdir -p "$tmp/$arch" && cp -R "$app" "$thin"
+    cp "$tmp/lanvia-$arch" "$thin/Contents/MacOS/Lanvia"
+    sign_app "$thin"
+    build_mac_dmg "$thin" "$arch"
+  done
   rm -rf "$tmp"
-  echo "  ✓ Lanvia.app (universal) → Lanvia-macos.zip, Lanvia-macos.dmg"
+  echo "  ✓ Lanvia.app → Lanvia-macos.zip（通用，自动更新用）、Lanvia-macos-apple-silicon.dmg、Lanvia-macos-intel.dmg"
 }
 
-# DMG：给用户手动安装用。里面是 App、“应用程序”的快捷方式和安装说明（包括第一次打开被 macOS 拦下时怎么放行）。
+# DMG：里面是 macOS 安装器（“安装 Lanvia.pkg”）和安装说明。用安装器而不是拖拽：
+# 有欢迎页和进度条，固定装到“应用程序”（装好后出现在启动台和 Spotlight），装完自动打开；
+# 安装器装上的程序不带隔离标记，所以放行一次安装器之后，打开 Lanvia 不会再被拦。
 build_mac_dmg() {
-  local app=$1 stage
-  stage=$(mktemp -d)
-  cp -R "$app" "$stage/Lanvia.app"
-  ln -s /Applications "$stage/应用程序 Applications"
+  local app=$1 arch=$2 file name name_en host
+  case $arch in
+    arm64) file=apple-silicon; name="Apple 芯片"; name_en="Apple silicon"; host=arm64 ;;
+    amd64) file=intel; name="Intel 芯片"; name_en="Intel"; host=x86_64 ;;
+  esac
+  local tmp root res stage tpl=cmd/lanvia-desktop/build/pkg
+  tmp=$(mktemp -d); root="$tmp/root"; res="$tmp/res"; stage="$tmp/stage"
+  mkdir -p "$root/Applications" "$res" "$stage"
+  cp -R "$app" "$root/Applications/Lanvia.app"
+  # 不允许“搬家”：否则电脑上别处已有 Lanvia.app 时，安装器会把新版本装到那里，而不是“应用程序”
+  pkgbuild --analyze --root "$root" "$tmp/component.plist" >/dev/null
+  plutil -replace 0.BundleIsRelocatable -bool NO "$tmp/component.plist"
+  pkgbuild --quiet --root "$root" --component-plist "$tmp/component.plist" --identifier app.lanvia.desktop \
+    --version "$VERSION" --install-location / --scripts "$tpl/scripts" "$tmp/component.pkg"
+  local subst="s/{{VERSION}}/$VERSION/g; s/{{ARCH_NAME}}/$name/g; s/{{ARCH_NAME_EN}}/$name_en/g; s/{{HOST_ARCH}}/$host/g"
+  sed "$subst" "$tpl/distribution.xml" > "$tmp/distribution.xml"
+  for f in welcome.html conclusion.html; do sed "$subst" "$tpl/resources/$f" > "$res/$f"; done
+  productbuild --quiet --distribution "$tmp/distribution.xml" --resources "$res" --package-path "$tmp" "$stage/安装 Lanvia.pkg"
   cp cmd/lanvia-desktop/build/dmg-readme.txt "$stage/安装说明 Install Guide.txt"
-  rm -f "$DIST/Lanvia-macos.dmg"
-  hdiutil create -quiet -volname "Lanvia $VERSION" -srcfolder "$stage" -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "$DIST/Lanvia-macos.dmg"
-  rm -rf "$stage"
+  hdiutil create -quiet -volname "Lanvia $VERSION（$name）" -srcfolder "$stage" -fs HFS+ -format UDZO \
+    -imagekey zlib-level=9 -ov "$DIST/Lanvia-macos-$file.dmg"
+  rm -rf "$tmp"
 }
 
 build_windows_desktop() {
@@ -107,8 +135,9 @@ echo "Lanvia $VERSION"
 case $WHAT in
   cli) build_cli ;;
   desktop) build_mac_app; build_windows_desktop ;;
+  mac) build_mac_app ;;
   all) build_cli; build_mac_app; build_windows_desktop ;;
-  *) echo "用法: $0 [all|cli|desktop]"; exit 1 ;;
+  *) echo "用法: $0 [all|cli|desktop|mac]"; exit 1 ;;
 esac
 (cd "$DIST" && rm -f SHA256SUMS.txt && shasum -a 256 *.dmg *.zip *.exe *.tar.gz 2>/dev/null > SHA256SUMS.txt)
 echo "完成 → $DIST/"

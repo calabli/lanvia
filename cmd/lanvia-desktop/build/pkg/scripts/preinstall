@@ -1,0 +1,5 @@
+#!/bin/sh
+# 安装前退出正在运行的 Lanvia，否则替换不了程序
+pkill -x Lanvia 2>/dev/null
+sleep 1
+exit 0

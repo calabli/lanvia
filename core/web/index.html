@@ -51,6 +51,11 @@
       <button id="themeBtn" class="icon-btn theme-btn" aria-label="切换外观" title="切换外观"></button>
       <button id="settingsBtn" class="icon-btn" aria-label="设置"></button>
     </div>
+    <div id="windowControls" class="window-controls" role="group" aria-label="窗口操作" hidden>
+      <button type="button" data-window-action="minimise" aria-label="最小化" title="最小化"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button>
+      <button type="button" id="windowMaximise" data-window-action="maximise" aria-label="最大化" title="最大化"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9"/></svg></button>
+      <button type="button" class="window-close" data-window-action="close" aria-label="关闭窗口" title="关闭窗口"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 3.5 9 9m-9 0 9-9"/></svg></button>
+    </div>
   </header>
 
   <main class="workspace inbox-layout">
@@ -315,6 +320,7 @@
 <script src="settings.js"></script>
 <script src="inbox.js"></script>
 <script src="splitters.js"></script>
+<script src="window-chrome.js"></script>
 <script src="main.js"></script>
 </body>
 </html>

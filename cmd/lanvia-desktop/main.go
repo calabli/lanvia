@@ -130,6 +130,22 @@ func (d *desktop) build() {
 		case "main":
 			d.panel.Hide()
 			d.showMain()
+		case "window-minimise", "window-maximise", "window-close", "window-state":
+			d.winMu.Lock()
+			w := d.main
+			d.winMu.Unlock()
+			if w == nil || runtime.GOOS != "windows" {
+				return false
+			}
+			switch action {
+			case "window-minimise":
+				w.Minimise()
+			case "window-maximise":
+				w.ToggleMaximise()
+			case "window-close":
+				w.Hide() // Closing keeps background sync and the tray alive.
+			}
+			syncWindowChrome(w)
 		case "preview", "edit", "history", "comments":
 			if id == "" {
 				return false
@@ -183,6 +199,11 @@ func (d *desktop) mainWindow() *application.WebviewWindow {
 	d.winMu.Lock()
 	defer d.winMu.Unlock()
 	if d.main == nil {
+		url := d.node.LocalURL() + "/?desktop=main"
+		integrated := runtime.GOOS == "windows"
+		if integrated {
+			url += "&chrome=windows"
+		}
 		d.main = d.app.Window.NewWithOptions(application.WebviewWindowOptions{
 			Name:      "main",
 			Title:     "Lanvia",
@@ -190,11 +211,23 @@ func (d *desktop) mainWindow() *application.WebviewWindow {
 			Height:    820,
 			MinWidth:  420,
 			MinHeight: 600,
-			URL:       d.node.LocalURL() + "/?desktop=main",
+			URL:       url,
+			Frameless: integrated,
+			Windows:   application.WindowsWindow{NonClientRegionSupport: true},
 		})
 		d.hideOnClose(d.main)
+		if integrated {
+			w := d.main
+			for _, event := range []events.WindowEventType{events.Common.WindowMaximise, events.Common.WindowUnMaximise} {
+				w.OnWindowEvent(event, func(*application.WindowEvent) { syncWindowChrome(w) })
+			}
+		}
 	}
 	return d.main
+}
+
+func syncWindowChrome(w *application.WebviewWindow) {
+	w.ExecJS(fmt.Sprintf("window.setNativeWindowMaximized?.(%t)", w.IsMaximised()))
 }
 
 // previewWindow 返回预览窗口；第一次创建时直接打开 url，返回 true。

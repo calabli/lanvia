@@ -180,3 +180,51 @@ func TestDownloadProgressAndHas(t *testing.T) {
 		t.Fatalf("progress: calls=%d last=%d total=%d", calls, last, total)
 	}
 }
+
+// 不用接口也能查到最新版本：跟随 /releases/latest 的跳转拿到版本号，从校验文件里得知有哪些安装包，再正常下载校验
+func TestLatestWeb(t *testing.T) {
+	body := []byte("mac zip bytes")
+	h := sha256.Sum256(body)
+	sum := hex.EncodeToString(h[:])
+	mux := http.NewServeMux()
+	mux.HandleFunc("/o/r/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/o/r/releases/tag/v9.9.9", http.StatusFound)
+	})
+	mux.HandleFunc("/o/r/releases/download/v9.9.9/SHA256SUMS.txt", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "%s  Lanvia-macos.zip\n%s *Lanvia-windows-amd64.exe\n", sum, sum)
+	})
+	mux.HandleFunc("/o/r/releases/download/v9.9.9/Lanvia-macos.zip", func(w http.ResponseWriter, r *http.Request) { w.Write(body) })
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	rel, err := latestWeb(context.Background(), srv.URL, "o/r")
+	if err != nil || rel.Tag != "v9.9.9" || rel.URL != srv.URL+"/o/r/releases/tag/v9.9.9" {
+		t.Fatalf("latestWeb: %v %+v", err, rel)
+	}
+	if !rel.Has("Lanvia-macos.zip") || !rel.Has("Lanvia-windows-amd64.exe") || rel.Has("Lanvia-windows-arm64.exe") {
+		t.Fatalf("assets: %+v", rel.Assets)
+	}
+	p, err := Download(context.Background(), rel, "Lanvia-macos.zip", t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(p); string(b) != string(body) {
+		t.Fatal("downloaded content differs")
+	}
+	// 没有发布过：404
+	if _, err := latestWeb(context.Background(), srv.URL, "x/none"); err != ErrNotFound {
+		t.Fatalf("missing repo: %v", err)
+	}
+}
+
+// 连真实的 GitHub 查一次（需要联网，默认跳过）：LANVIA_LIVE=1 go test -run TestLiveFind ./internal/update
+func TestLiveFind(t *testing.T) {
+	if os.Getenv("LANVIA_LIVE") == "" {
+		t.Skip("set LANVIA_LIVE=1 to query github.com")
+	}
+	rel, err := Find(context.Background(), DefaultAPI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("latest %s, %d assets, has mac zip: %v, notes: %d bytes", rel.Tag, len(rel.Assets), rel.Has("Lanvia-macos.zip"), len(Notes(context.Background(), DefaultAPI, rel.Tag)))
+}

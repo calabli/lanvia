@@ -319,7 +319,10 @@ function bind() {
 /* 快捷面板：打开即搜索，↑↓ 选择，回车复制并收起 */
 function bindPanel() {
   document.body.classList.add('panel');
-  $('#kbdHint').hidden = false;
+  // 面板很小：附件、清单按钮只显示图标，文字放到悬停提示里；输入框从一行开始长高
+  for (const b of ['#filePicker', '#todoBtn', '#pasteBtn']) { const el = $(b); if (el && !el.title) el.title = el.textContent.trim(); }
+  $('#input').rows = 1;
+  $('#input').placeholder = '输入或粘贴，回车发送';
   const search = $('#search');
   search.placeholder = '搜索，↑↓ 选择';
   const move = d => {

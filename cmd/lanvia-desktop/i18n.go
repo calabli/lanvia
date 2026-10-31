@@ -44,7 +44,16 @@ var trayEN = map[string]string{
 	"无法检查更新":            "Couldn't check for updates",
 	"有新版本 %s":           "Lanvia %s is available",
 	"点击托盘菜单里的“更新到 %s”即可安装": "Choose “Update to %s” in the tray menu to install",
-	"更新失败：%s": "Update failed: %s",
+	"更新失败：%s":                  "Update failed: %s",
+	"已更新到 %s":                  "Updated to %s",
+	"Lanvia 已经自动更新并重新打开":       "Lanvia updated itself and reopened",
+	"无法检查更新，请检查网络":             "Couldn't check for updates. Check your network connection",
+	"在设置或托盘菜单里点“立即更新”即可安装":     "Choose “Update now” in settings or the tray menu to install",
+	"只有从 Lanvia.app 运行时才能自动更新": "Automatic updates only work when running from Lanvia.app",
+	"下载失败：%s":                  "Download failed: %s",
+	"已取消更新":                    "Update canceled",
+	"正在下载更新 %d%%":              "Downloading update %d%%",
+	"正在检查更新…":                  "Checking for updates…",
 }
 
 func (d *desktop) lang() string {

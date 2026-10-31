@@ -458,6 +458,7 @@ function connect() {
   es.addEventListener('update', e => onItemUpdated(evData(e)));
   es.addEventListener('delivery', e => receiveDelivery(evData(e)));
   es.addEventListener('delivery-request', e => acknowledgeDelivery(evData(e).id));
+  es.addEventListener('updater', e => renderUpdate(evData(e)));
   es.addEventListener('settings', e => {
     const st = evData(e);
     S.strict = !!st.strictEnc;

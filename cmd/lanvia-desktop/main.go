@@ -151,8 +151,10 @@ func (d *desktop) build() {
 				return false
 			}
 			d.openPreviewMode(id, map[string]string{"preview": "view", "edit": "edit", "history": "history", "comments": "comments"}[action])
-		case "update":
+		case "update", "update-install":
 			go d.update.install()
+		case "update-check":
+			go d.update.check(true)
 		case "hide-preview":
 			if d.preview != nil {
 				d.preview.Hide()

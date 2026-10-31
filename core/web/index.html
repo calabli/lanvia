@@ -245,6 +245,16 @@
       <p class="muted small">怀疑 token 泄露时使用，旧 token 立即失效，需要更新快捷指令和脚本。</p>
     </div>
   </div>
+  <div class="sheet-section" id="updSection">
+    <h3>关于与更新</h3>
+    <div class="upd-row">
+      <div class="upd-info"><b>Lanvia <span id="updCur" data-raw></span></b><small id="updStatus" class="muted" role="status"></small></div>
+      <button id="updBtn" class="btn sm">检查更新</button>
+    </div>
+    <div id="updBar" class="bar" hidden><i></i></div>
+    <details id="updNotes" class="upd-notes" hidden><summary>更新内容</summary><div id="updNotesText" data-raw></div></details>
+    <label class="switch" id="updAuto"><input type="checkbox" id="optAutoUpdate"><span><b>自动更新</b><small>有新版本时在后台下载，等你没在用 Lanvia 窗口时自动安装并重新打开</small></span></label>
+  </div>
   <div class="sheet-section">
     <h3>危险操作</h3>
     <div class="row wrap">
@@ -318,6 +328,7 @@
 <script src="preview.js"></script>
 <script src="features.js"></script>
 <script src="settings.js"></script>
+<script src="updater.js"></script>
 <script src="inbox.js"></script>
 <script src="splitters.js"></script>
 <script src="window-chrome.js"></script>

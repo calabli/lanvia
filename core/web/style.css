@@ -773,3 +773,13 @@ body.panel .item.sel { box-shadow: 0 0 0 2px var(--accent); background: var(--su
   dialog.sheet { border-radius: 14px 14px 0 0; }
   .sheet-section { margin: 0 12px 12px; }
 }
+
+/* 关于与更新 */
+.upd-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.upd-info { display: grid; gap: 2px; min-width: 0; }
+.upd-info b { font-size: calc(15px * var(--fs)); font-weight: 600; }
+.upd-info small { font-size: calc(13px * var(--fs)); }
+.upd-info small.warn { color: var(--danger); }
+#updBar { margin-top: 0; }
+.upd-notes summary { cursor: pointer; color: var(--accent); font-size: calc(13px * var(--fs)); }
+.upd-notes > div { margin-top: 8px; max-height: 220px; overflow: auto; white-space: pre-wrap; font-size: calc(13px * var(--fs)); line-height: 1.55; color: var(--muted); padding: 10px 12px; border-radius: 10px; background: var(--fill); }

@@ -1,7 +1,10 @@
 #!/bin/sh
-# 安装完成后以当前登录的用户身份打开 Lanvia（安装器本身以 root 运行）
+# 安装器以 root 运行，装好的文件默认归 root 所有。交给当前登录的用户，
+# 这样 Lanvia 以后自动更新时可以直接替换自己，不用每次输入管理员密码。
 user=$(stat -f %Su /dev/console)
 if [ -n "$user" ] && [ "$user" != "root" ]; then
+  /usr/sbin/chown -R "$user":staff "/Applications/Lanvia.app"
+  # 装完以当前用户身份打开 Lanvia
   uid=$(id -u "$user")
   launchctl asuser "$uid" sudo -u "$user" open -a "/Applications/Lanvia.app" 2>/dev/null
 fi

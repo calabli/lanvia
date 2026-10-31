@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,8 +21,15 @@ import (
 	"time"
 )
 
-// DefaultAPI 是最新版本的查询地址。仓库是私有的时候 GitHub 返回 404，此时无法检查更新。
+// DefaultAPI 是 GitHub 接口里最新版本的地址。接口对不登录的访问每个公网 IP 每小时只给 60 次，
+// 共用出口的网络里很容易用完（返回 403），所以检查更新主要走网页地址，见 Find。
 const DefaultAPI = "https://api.github.com/repos/calabli/lanvia/releases/latest"
+
+// 发布所在的仓库和网站地址
+const (
+	DefaultRepo = "calabli/lanvia"
+	githubWeb   = "https://github.com"
+)
 
 var ErrNotFound = errors.New("找不到发布信息（仓库不是公开的，或还没有发布）")
 
@@ -56,7 +64,94 @@ func (r *Release) asset(name string) *Asset {
 
 var client = &http.Client{Timeout: 30 * time.Second}
 
-// Latest 查询最新发布的版本。
+// Find 查询最新发布的版本：先用网页地址（不受接口访问次数限制），失败时再试接口。
+// apiURL 不是 DefaultAPI 时（测试用的假服务器）直接用接口。网页方式拿不到更新说明，需要时用 Notes 补。
+func Find(ctx context.Context, apiURL string) (*Release, error) {
+	if apiURL != DefaultAPI {
+		return Latest(ctx, apiURL)
+	}
+	rel, err := latestWeb(ctx, githubWeb, DefaultRepo)
+	if err == nil {
+		return rel, nil
+	}
+	if r, e := Latest(ctx, apiURL); e == nil {
+		return r, nil
+	}
+	return nil, err
+}
+
+// Notes 尽量取某个版本的更新说明（走接口，可能因为访问次数用完而失败，失败时返回空）。
+func Notes(ctx context.Context, apiURL, tag string) string {
+	if apiURL != DefaultAPI {
+		return ""
+	}
+	u := "https://api.github.com/repos/" + DefaultRepo + "/releases/tags/" + url.PathEscape(tag)
+	req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	var r Release
+	if resp.StatusCode != 200 || json.NewDecoder(resp.Body).Decode(&r) != nil {
+		return ""
+	}
+	return r.Body
+}
+
+// latestWeb 不用接口查最新版本：github.com/<repo>/releases/latest 会跳转到 /releases/tag/<版本>，
+// 再读这个版本的 SHA256SUMS.txt，里面列出了它有哪些安装包；下载地址按固定格式拼出来。
+func latestWeb(ctx context.Context, base, repo string) (*Release, error) {
+	noRedirect := &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	req, _ := http.NewRequestWithContext(ctx, "GET", base+"/"+repo+"/releases/latest", nil)
+	resp, err := noRedirect.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	resp.Body.Close()
+	loc := resp.Header.Get("Location")
+	i := strings.LastIndex(loc, "/releases/tag/")
+	if resp.StatusCode/100 != 3 || i < 0 {
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("找不到最新版本（HTTP %d）", resp.StatusCode)
+	}
+	tag, err := url.PathUnescape(loc[i+len("/releases/tag/"):])
+	if err != nil || tag == "" {
+		return nil, fmt.Errorf("最新版本地址不对：%s", loc)
+	}
+	dl := base + "/" + repo + "/releases/download/" + url.PathEscape(tag) + "/"
+	rel := &Release{Tag: tag, URL: base + "/" + repo + "/releases/tag/" + url.PathEscape(tag)}
+	sums, err := fetch(ctx, dl+"SHA256SUMS.txt")
+	if err != nil {
+		return nil, fmt.Errorf("读取 %s 的校验文件失败：%w", tag, err)
+	}
+	rel.Assets = append(rel.Assets, Asset{Name: "SHA256SUMS.txt", URL: dl + "SHA256SUMS.txt"})
+	for _, line := range strings.Split(string(sums), "\n") {
+		if f := strings.Fields(line); len(f) == 2 {
+			name := strings.TrimPrefix(f[1], "*")
+			rel.Assets = append(rel.Assets, Asset{Name: name, URL: dl + url.PathEscape(name)})
+		}
+	}
+	return rel, nil
+}
+
+func fetch(ctx context.Context, u string) ([]byte, error) {
+	req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+}
+
+// Latest 通过 GitHub 接口查询最新发布的版本。
 func Latest(ctx context.Context, apiURL string) (*Release, error) {
 	req, _ := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	req.Header.Set("Accept", "application/vnd.github+json")

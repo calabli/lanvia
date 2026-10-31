@@ -99,7 +99,7 @@ func (u *updater) check(manual bool) {
 	u.publish(func(s *core.UpdateState) { s.Checking, s.Error = true, "" })
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	rel, err := update.Latest(ctx, apiURL())
+	rel, err := update.Find(ctx, apiURL())
 	if err != nil {
 		log.Printf("检查更新: %v", err)
 		u.publish(func(s *core.UpdateState) { s.Checking, s.Error = false, u.d.tr("无法检查更新，请检查网络") })
@@ -121,6 +121,9 @@ func (u *updater) check(manual bool) {
 			u.d.flash(u.d.tr("已是最新版本"))
 		}
 		return
+	}
+	if rel.Body == "" { // 网页方式查到的版本没有更新说明，尽量从接口补上（失败也不影响更新）
+		rel.Body = update.Notes(ctx, apiURL(), rel.Tag)
 	}
 	u.mu.Lock()
 	u.latest = rel

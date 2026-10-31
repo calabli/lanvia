@@ -60,7 +60,7 @@ func TestDownloadVerifies(t *testing.T) {
 		t.Fatalf("latest: %v %+v", err, rel)
 	}
 	dir := t.TempDir()
-	p, err := Download(context.Background(), rel, "Lanvia-windows-amd64.exe", dir)
+	p, err := Download(context.Background(), rel, "Lanvia-windows-amd64.exe", dir, nil)
 	if err != nil {
 		t.Fatalf("download: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestDownloadVerifies(t *testing.T) {
 	_, api2 := fakeRelease(t, "Lanvia-windows-amd64.exe", body, hex.EncodeToString(make([]byte, 32)))
 	rel2, _ := Latest(context.Background(), api2)
 	dir2 := t.TempDir()
-	if _, err := Download(context.Background(), rel2, "Lanvia-windows-amd64.exe", dir2); err == nil {
+	if _, err := Download(context.Background(), rel2, "Lanvia-windows-amd64.exe", dir2, nil); err == nil {
 		t.Fatal("tampered installer accepted")
 	}
 	if ents, _ := os.ReadDir(dir2); len(ents) != 0 {
@@ -151,5 +151,32 @@ func TestInstallMac(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(filepath.Join(installed, "Contents", "MacOS", "Lanvia")); string(b) != "new" {
 		t.Fatal("app damaged by failed install")
+	}
+}
+
+// 下载时报告进度；发布里没有本平台的安装包时 Has 返回 false
+func TestDownloadProgressAndHas(t *testing.T) {
+	body := make([]byte, 3<<20)
+	for i := range body {
+		body[i] = byte(i)
+	}
+	h := sha256.Sum256(body)
+	_, api := fakeRelease(t, "Lanvia-windows-amd64.exe", body, hex.EncodeToString(h[:]))
+	rel, err := Latest(context.Background(), api)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rel.Has("Lanvia-windows-amd64.exe") || rel.Has("Lanvia-macos.zip") || rel.Has("") {
+		t.Fatal("Has")
+	}
+	var last, total int64
+	calls := 0
+	p, err := Download(context.Background(), rel, "Lanvia-windows-amd64.exe", t.TempDir(), func(done, tot int64) { calls++; last, total = done, tot })
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Remove(p)
+	if calls == 0 || last != int64(len(body)) || total != int64(len(body)) {
+		t.Fatalf("progress: calls=%d last=%d total=%d", calls, last, total)
 	}
 }

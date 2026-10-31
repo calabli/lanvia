@@ -194,6 +194,7 @@ function bind() {
   bindModeMenu();
   $('#pauseRow').addEventListener('click', e => { const b = e.target.closest('[data-pause]'); if (b) pause(+b.dataset.pause); });
   $('#optNotify').onchange = e => saveSettings({ notify: e.target.checked });
+  bindUpdate();
   $('#blockForm').onsubmit = e => {
     e.preventDefault();
     const v = $('#blockInput').value.trim();

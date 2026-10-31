@@ -44,7 +44,7 @@ On first launch the main window opens so you can pair your phone. Closing a wind
 - **Notifications**: when another device sends something you get a system notification — Copy right from it for text, or click it to open the preview. Not shown while a Lanvia window is in front.
 - **Pause syncing**: pause for 15 minutes / 1 hour / until you resume from the tray. While paused, copies aren't sent and incoming items aren't written to the clipboard.
 - **App blocklist**: add apps in settings (or pick them from "Recently copied from"); content copied in those apps is never sent.
-- **Auto-update**: checks GitHub for a new version at startup and every 6 hours, and updates from the tray in one click (verified with SHA256, then replaced and relaunched). The repository must be public for this to work.
+- **Update checks and automatic updates**: checks GitHub for a new version at startup and every 6 hours, or on demand from "About & updates" in settings or the tray menu. With automatic updates on (the default), new versions download in the background, are verified with SHA256, and are installed and relaunched when you're not using a Lanvia window, followed by an "Updated to vX" notification; with it off you're only told, and choose "Update now" yourself. Apps installed with the Mac installer are handed to the current user, so updates need no password; older root-owned installs show the system password dialog once. No update is offered when a release has no package for your platform.
 
 **Command-line version**: for servers, Linux, or when you don't want a UI.
 

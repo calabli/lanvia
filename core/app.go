@@ -33,9 +33,10 @@ type App struct {
 	quotaMu  sync.Mutex // 保护 reserved，以及“腾空间”这一步
 	reserved int64      // 正在下载、还没落盘的副本预留的空间（.part 文件不计入占用）
 
-	nonces   nonceCache  // v2 写请求用过的 nonce，防重放
-	eids     eidCache    // 转发过的同步消息编号，见 compat.go
-	delivery deliveryLog // Recent, in-memory receipt results; never part of synced history.
+	nonces   nonceCache   // v2 写请求用过的 nonce，防重放
+	eids     eidCache     // 转发过的同步消息编号，见 compat.go
+	upd      *UpdateState // 桌面版的更新状态，见 update.go
+	delivery deliveryLog  // Recent, in-memory receipt results; never part of synced history.
 }
 
 // credsFor 由配置得到密钥；重新生成过的 token 优先于由配对码派生的。

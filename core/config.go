@@ -33,6 +33,8 @@ type Settings struct {
 	BlockApps []string `json:"blockApps"`
 	// 关闭 token 访问（快捷指令、curl）。token 和内容都是明文传输
 	TokenOff bool `json:"tokenOff"`
+	// 自动更新（桌面版）：有新版本时在后台下载，不使用 Lanvia 窗口时自动安装并重新打开
+	AutoUpdate bool `json:"autoUpdate"`
 }
 
 const (
@@ -50,6 +52,8 @@ type Config struct {
 	Peers []string `json:"peers,omitempty"`
 	// 重新生成过的自动化 token；空表示用由配对码派生的
 	Token string `json:"token,omitempty"`
+	// 上次运行的版本，用于自动更新后提示“已更新到 vX”
+	LastVersion string `json:"lastVersion,omitempty"`
 	Settings
 }
 
@@ -89,9 +93,12 @@ func loadConfig(dir string) (*Config, error) {
 			if _, ok := raw["notify"]; !ok {
 				c.Notify = true
 			}
+			if _, ok := raw["autoUpdate"]; !ok {
+				c.AutoUpdate = true
+			}
 		}
 	case errors.Is(err, fs.ErrNotExist):
-		c.Settings = Settings{AutoApply: true, Watch: true, HistoryDays: defaultHistoryDays, AutoFetchMB: defaultAutoFetchMB, StorageMB: defaultStorageMB, Notify: true}
+		c.Settings = Settings{AutoApply: true, Watch: true, HistoryDays: defaultHistoryDays, AutoFetchMB: defaultAutoFetchMB, StorageMB: defaultStorageMB, Notify: true, AutoUpdate: true}
 	default:
 		return nil, err
 	}

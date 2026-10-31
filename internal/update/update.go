@@ -25,11 +25,19 @@ const DefaultAPI = "https://api.github.com/repos/calabli/lanvia/releases/latest"
 
 var ErrNotFound = errors.New("找不到发布信息（仓库不是公开的，或还没有发布）")
 
+// ErrCanceled 表示用户在密码对话框里点了“取消”。
+var ErrCanceled = errors.New("已取消更新")
+
 type Release struct {
 	Tag    string  `json:"tag_name"`
+	Name   string  `json:"name"`
+	Body   string  `json:"body"` // 发布说明（Markdown）
 	URL    string  `json:"html_url"`
 	Assets []Asset `json:"assets"`
 }
+
+// Has 判断这个版本有没有某个安装包（有的版本只发布了部分平台）。
+func (r *Release) Has(name string) bool { return name != "" && r.asset(name) != nil }
 
 type Asset struct {
 	Name string `json:"name"`
@@ -108,7 +116,9 @@ func AssetName(goos, goarch string) string {
 
 // Download 下载安装包到 dir，并用发布里的 SHA256SUMS.txt 校验。dir 应和目标程序在同一磁盘上，
 // 这样后面可以直接改名替换。
-func Download(ctx context.Context, r *Release, name, dir string) (string, error) {
+//
+// onProgress（可以为 nil）在下载过程中被调用，参数是已下载和总共的字节数。
+func Download(ctx context.Context, r *Release, name, dir string, onProgress func(done, total int64)) (string, error) {
 	a := r.asset(name)
 	if a == nil {
 		return "", fmt.Errorf("这个版本没有 %s", name)
@@ -144,7 +154,18 @@ func Download(ctx context.Context, r *Release, name, dir string) (string, error)
 		return "", fmt.Errorf("下载失败：HTTP %d", resp.StatusCode)
 	}
 	h := sha256.New()
-	_, err = io.Copy(io.MultiWriter(f, h), resp.Body)
+	total := resp.ContentLength
+	if total <= 0 {
+		total = a.Size
+	}
+	var w io.Writer = io.MultiWriter(f, h)
+	if onProgress != nil {
+		w = &progressWriter{w: w, total: total, fn: onProgress}
+	}
+	n, err := io.Copy(w, resp.Body)
+	if err == nil && onProgress != nil {
+		onProgress(n, max(total, n)) // 下载完成：总是报告一次 100%（服务器没给大小时也一样）
+	}
 	f.Close()
 	if err != nil {
 		return "", err
@@ -231,3 +252,21 @@ func InstallWindows(newExe, exePath string) error {
 
 // CleanupOld 删除上次更新留下的旧版程序（Windows）。
 func CleanupOld(exePath string) { os.Remove(exePath + ".old") }
+
+type progressWriter struct {
+	w     io.Writer
+	done  int64
+	total int64
+	last  time.Time
+	fn    func(done, total int64)
+}
+
+func (p *progressWriter) Write(b []byte) (int, error) {
+	n, err := p.w.Write(b)
+	p.done += int64(n)
+	if now := time.Now(); now.Sub(p.last) > 200*time.Millisecond || p.done == p.total {
+		p.last = now
+		p.fn(p.done, p.total)
+	}
+	return n, err
+}

@@ -283,6 +283,21 @@ func (a *App) routes(web fs.FS) http.Handler {
 	m.HandleFunc("POST /api/relay", auth(a.handleRelay))
 	m.HandleFunc("POST /api/settings", local(a.handleSettings))
 	m.HandleFunc("POST /api/join", local(a.handleJoin))
+	// 检查更新、立即更新（桌面版）
+	m.HandleFunc("GET /api/update", local(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, a.GetUpdateState())
+	}))
+	m.HandleFunc("POST /api/update/{action}", local(func(w http.ResponseWriter, r *http.Request) {
+		action := r.PathValue("action")
+		a.mu.RLock()
+		hook := a.desktopHook
+		a.mu.RUnlock()
+		if (action != "check" && action != "install") || hook == nil || !hook("update-"+action, "") {
+			errJSON(w, 400, "这个版本不支持自动更新，请到 GitHub 下载新版本")
+			return
+		}
+		writeJSON(w, 200, a.GetUpdateState())
+	}))
 	// 重新生成自动化 token：旧 token 立即失效（token 是明文传输的，怀疑泄露时用）
 	m.HandleFunc("POST /api/token/reset", local(func(w http.ResponseWriter, r *http.Request) {
 		if err := a.updateCfg(func(c *Config) { c.Token = randHex(16) }); err != nil {
@@ -804,6 +819,7 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		Notify      *bool     `json:"notify"`
 		BlockApps   *[]string `json:"blockApps"`
 		TokenOff    *bool     `json:"tokenOff"`
+		AutoUpdate  *bool     `json:"autoUpdate"`
 	}
 	if json.NewDecoder(r.Body).Decode(&req) != nil {
 		errJSON(w, 400, "bad json")
@@ -843,6 +859,9 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.TokenOff != nil {
 			c.TokenOff = *req.TokenOff
+		}
+		if req.AutoUpdate != nil {
+			c.AutoUpdate = *req.AutoUpdate
 		}
 		if req.BlockApps != nil {
 			var list []string

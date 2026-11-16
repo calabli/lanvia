@@ -13,6 +13,7 @@ function handleItemAction(e) {
     if (!it) return;
     switch (el.dataset.act) {
       case 'select': selectInboxItem(it); break;
+      case 'pick': togglePick(it.id); break;
       case 'copy':
         if (el.classList.contains('text') && getSelection().toString()) return; // text is being selected
         copyItem(it, el.classList.contains('btn') ? el : $('[data-act="copy"].btn', li));
@@ -182,7 +183,8 @@ function bind() {
   });
   $('#forgetBtn').onclick = async () => { if (await uiConfirm('退出后需要重新输入配对码。确定吗？', { ok: '退出配对', danger: true })) { $('#devicesDlg').close(); unpair(); } };
 
-  $('#settingsBtn').onclick = () => { if (PANEL) return desktop('main'); loadInfo(); $('#settingsDlg').showModal(); };
+  $('#settingsBtn').onclick = () => { if (PANEL) return desktop('main'); loadInfo(); showSettingsCat(store.get('settingsCat') || 'general'); $('#settingsDlg').showModal(); };
+  bindSettingsNav();
   $('#pairCollapse').onclick = () => {
     const c = $('#pairCard').classList.toggle('collapsed');
     store.set('pairCollapsed', c ? '1' : '0');
@@ -289,10 +291,7 @@ function bind() {
     if (!(await uiConfirm('所有已配对的手机和电脑都需要重新配对。确定重新生成吗？', { ok: '重新生成', danger: true }))) return;
     await api('POST', '/api/join', { reset: true }); loadInfo(); toast('已生成新的配对码');
   };
-  $('#clearAll').onclick = async () => {
-    if (!(await uiConfirm('将清空所有已连接设备上的历史记录和文件。确定吗？', { ok: '清空', danger: true }))) return;
-    await api('POST', '/api/clear'); $('#settingsDlg').close();
-  };
+  $('#clearAll').onclick = async () => { $('#settingsDlg').close(); await askClearAll(); };
 
   // Pairing form: formats the input as you type
   const pi = $('#pairInput');

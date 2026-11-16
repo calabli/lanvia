@@ -479,6 +479,12 @@ function connect() {
     S.items = S.items.filter(x => x.id !== id); renderList();
     if (PV?.id === id) PREVIEW ? showPreviewMissing() : $('#previewDlg').close();
   });
+  // Batch delete: refresh once
+  es.addEventListener('deletes', e => {
+    const gone = new Set(evData(e).ids || []);
+    S.items = S.items.filter(x => !gone.has(x.id)); renderList();
+    if (PV && gone.has(PV.id)) PREVIEW ? showPreviewMissing() : $('#previewDlg').close();
+  });
   es.addEventListener('clear', e => { const { ts } = evData(e); S.items = S.items.filter(x => x.ts > ts); renderList(); });
   es.addEventListener('devices', e => { S.devices = evData(e); renderDevices(); renderList(); });
   es.onerror = () => {

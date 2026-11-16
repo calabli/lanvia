@@ -48,7 +48,7 @@ async function showPreview(it, mode = 'view', focus = true) {
   PVS.fmt = PVS.lang === 'json' && !it.text.trim().includes('\n') && it.text.length > 80;
   PVS.mode = 'view';
   // Comment panel: opened from the comment button, or expanded by default when the item already has comments; the wide reading area uses tabs and starts on "Content"
-  PVS.com = mode === 'comments' || !!it.comments;
+  PVS.com = mode === 'comments' || (!!it.comments && !inboxWide());
   PVS.coms = null; PVS.comFor = null;
   $('#pvWarn').hidden = true;
   renderPreview();
@@ -95,6 +95,7 @@ function renderComPanel() {
   $('#pvCom').hidden = !show;
   $('#pvComBtn').classList.toggle('on', show);
   if (show && PVS.comFor !== PV.id) { PVS.comScrolled = false; $('#pvComList').innerHTML = ''; loadComments(); }
+  if (typeof renderReaderTabs === 'function') renderReaderTabs();
 }
 
 async function sendComment() {
@@ -221,7 +222,8 @@ function showPreviewMissing() {
   $('#pvBody').innerHTML = '<div class="pv-file muted">这条内容已被删除</div>';
   ['#pvCopy', '#pvEdit', '#pvHist', '#pvComBtn', '#pvCom', '#pvSave', '#pvCancel', '#pvRestore', '#pvDiff', '#pvWrap', '#pvMono'].forEach(s => { $(s).hidden = true; });
   $('#pvFoot').innerHTML = '';
-  $('#previewDlg').classList.remove('with-hist');
+  $('#previewDlg').classList.remove('with-hist', 'tabbed', 'tab-comments');
+  $('#pvTabs').hidden = true;
   $('#pvHistList').innerHTML = '';
   const d = $('#previewDlg');
   if (!d.open) d.show();

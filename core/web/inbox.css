@@ -5,6 +5,14 @@ body.inbox { min-width: 320px; }
 body.inbox::before { display: none; }
 body.inbox #app:not([hidden]) { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
 body.inbox .top { position: relative; flex: none; min-height: 64px; gap: 14px; padding: calc(env(safe-area-inset-top) + 12px) 24px 12px; background: var(--surface-solid); }
+/* 黑色顶栏（浅色、深色外观都一样）：在顶栏里把配色变量换成深色，按钮、标签、窗口按钮跟着变 */
+body.inbox .top {
+  --text: #f5f5f7; --muted: #c7c7cc; --surface: #272729; --surface-solid: #272729; --surface-2: #2c2c2e;
+  --fill: rgba(255,255,255,.14); --border: rgba(255,255,255,.12); --accent: #2997ff; --accent-soft: rgba(41,151,255,.18);
+  color-scheme: dark; color: var(--text); background: #000; border-bottom: 1px solid rgba(255,255,255,.08);
+}
+body.inbox .top .dot.on { background: #2997ff; box-shadow: 0 0 0 4px rgba(41,151,255,.18); }
+body.inbox .top .inbox-pair-button, body.inbox.native-chrome .top .inbox-pair-button { color: #fff; background: #0071e3; border-color: transparent; }
 body.inbox .brand { font-size: calc(20px * var(--fs)); font-weight: 600; gap: 9px; }
 body.inbox .brand .logo { width: 31px; height: 31px; }
 body.inbox .brand-caption, body.inbox .top-caption { display: none; }
@@ -37,6 +45,23 @@ body.inbox .inbox-navigation .filter-btn.active { background: var(--surface-soli
 body.inbox .inbox-sidebar .tag-bar { display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin: 8px 0 0; }
 body.inbox .inbox-sidebar .tag-bar .tag { justify-content: space-between; padding: 7px 11px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: calc(12px * var(--fs)); }
 body.inbox .inbox-sidebar .tag-bar .tag.on { background: var(--accent-soft); color: var(--accent); }
+/* 侧栏的设备：在线的实心蓝点，离线的空心圆 */
+.inbox-sidebar-devices { margin-top: 20px; }
+.side-devices { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+.side-device { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 40px; padding: 6px 11px; border: 0; border-radius: 9px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.side-device:hover { background: var(--surface-2); }
+.side-device.on { background: var(--surface-solid); box-shadow: 0 2px 5px color-mix(in srgb, var(--text) 6%, transparent); }
+.side-dot { width: 9px; height: 9px; flex: none; border-radius: 50%; border: 1.5px solid var(--muted); }
+.side-dot.online { border-color: var(--accent); background: var(--accent); }
+.side-dev-name { display: flex; flex-direction: column; min-width: 0; font-size: calc(12px * var(--fs)); line-height: 1.35; }
+.side-dev-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-dev-name small { color: var(--muted); font-size: calc(10px * var(--fs)); }
+.side-device .nav-count { margin-left: auto; color: var(--muted); font: calc(11px * var(--fs)) var(--mono); }
+/* 侧栏可见时用它筛选设备，列表上方只留时间筛选 */
+@media (min-width: 651px) {
+  body.inbox:not(.sidebar-collapsed):has(#sideDevicesBox:not([hidden])) #fromFilter { display: none; }
+  body.inbox:not(.sidebar-collapsed):has(#sideDevicesBox:not([hidden])) .inbox-list-filters #timeFilter { width: 100%; }
+}
 .inbox-sidebar-footer { display: flex; align-items: center; gap: 5px; margin-top: auto; padding: 17px 3px 0; border-top: 1px solid var(--border); }
 body.inbox .inbox-sidebar-footer .devices-peek { flex: 1; width: auto; min-width: 0; flex-direction: row; align-items: center; gap: 8px; padding: 0; }
 body.inbox .inbox-sidebar-footer .device-preview { min-height: 30px; }
@@ -63,6 +88,19 @@ body.inbox #list > .item.latest::before { display: none; }
 body.inbox #list > .item.is-reading { border-color: color-mix(in srgb, var(--accent) 18%, transparent); background: var(--accent-soft); }
 .inbox-entry { display: block; width: 100%; min-width: 0; padding: 14px 12px 13px; border: 0; border-radius: inherit; background: transparent; text-align: left; cursor: pointer; }
 .inbox-entry:hover { background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
+/* 批量选择：条目左边一个勾选框，选中的条目淡蓝底 */
+.select-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: -8px 16px 14px; padding: 6px 6px 6px 14px; border-radius: 12px; background: var(--surface-2); }
+.select-count { flex: 1 1 auto; min-width: 70px; font-size: calc(12px * var(--fs)); font-weight: 600; }
+.select-bar .btn.sm { min-height: 32px; }
+.select-bar .btn:disabled { opacity: .4; cursor: default; }
+.inbox-entry.picking { display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: 12px; align-items: start; }
+.inbox-entry.picking > :not(.pick-box) { grid-column: 2; }
+.pick-box { grid-row: 1 / span 4; align-self: center; display: grid; place-items: center; width: 22px; height: 22px; border: 1.5px solid var(--muted); border-radius: 50%; color: #fff; }
+.pick-box.on { border-color: var(--accent); background: var(--accent); }
+.pick-box svg { width: 14px; height: 14px; stroke-width: 2.4; }
+body.inbox #list > .item:has(.pick-box.on) { background: var(--accent-soft); }
+body.picking #list > .item.is-reading:not(:has(.pick-box.on)) { border-color: transparent; background: transparent; }
+#selectBtn.on { color: var(--accent); background: var(--accent-soft); }
 .inbox-entry-meta { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: calc(10px * var(--fs)); line-height: 1.5; }
 .inbox-entry-meta svg { width: 12px; height: 12px; flex: none; }
 .inbox-from { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -111,6 +149,15 @@ body.inbox dialog.inline-preview.with-hist .pv-main { flex-direction: column; }
 body.inbox dialog.inline-preview.with-hist .pv-hist { width: 100%; max-height: 135px; border-right: 0; border-bottom: 1px solid var(--border); }
 body.inbox dialog.inline-preview .hv { padding: 7px 9px; }
 body.inbox dialog.inline-preview .pv-com { border-radius: 10px; max-height: 40%; }
+/* 阅读区标签页：内容 / 评论 / 历史版本 */
+.pv-tabs { display: flex; flex-wrap: wrap; gap: 6px; flex: none; padding: 0 0 6px; }
+.pv-tab { min-height: 32px; padding: 0 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-solid); color: var(--text); font-size: calc(12px * var(--fs)); cursor: pointer; }
+.pv-tab:hover { background: var(--surface-2); }
+.pv-tab.on { border-color: var(--text); background: var(--text); color: var(--surface-solid); font-weight: 600; }
+body.inbox dialog.tabbed #pvComBtn, body.inbox dialog.tabbed #pvHist { display: none; }
+body.inbox dialog.inline-preview.tab-comments .pv-main, body.inbox dialog.inline-preview.tab-comments .reader-title, body.inbox dialog.inline-preview.tab-comments .pv-foot { display: none; }
+body.inbox dialog.inline-preview.tab-comments .pv-com { flex: 1; max-height: none; min-height: 0; margin-top: 8px; border: 1px solid var(--border); }
+body.inbox dialog.inline-preview.tab-comments .pv-com-list { flex: 1; }
 body.inbox .reader-todo { padding: 2px 0 12px; animation: none; }
 body.inbox .reader-todo .actions { border-top: 0; }
 body.inbox .reader-todo > .actions { display: none; }
@@ -185,7 +232,7 @@ body.inbox.list-collapsed .inbox-reader-column { display: flex; flex: 1; }
   body.inbox #fontBtn { display: none; }
   body.inbox .workspace.inbox-layout { display: flex; flex-direction: column; }
   body.inbox .inbox-sidebar { flex: none; padding: 9px 11px; overflow: visible; border-right: 0; border-bottom: 1px solid var(--border); }
-  body.inbox .inbox-sidebar > .inbox-nav-label, body.inbox .inbox-sidebar-tags, body.inbox .inbox-sidebar-footer { display: none; }
+  body.inbox .inbox-sidebar > .inbox-nav-label, body.inbox .inbox-sidebar-tags, body.inbox .inbox-sidebar-devices, body.inbox .inbox-sidebar-footer { display: none; }
   body.inbox .inbox-sidebar-heading { display: none; }
   body.inbox .kind-filters.inbox-navigation { flex-direction: row; gap: 4px; overflow-x: auto; scrollbar-width: none; }
   body.inbox .inbox-navigation .filter-btn { justify-content: center; width: auto; flex: 1 0 auto; padding: 7px 5px; min-height: 35px; font-size: calc(11px * var(--fs)); white-space: nowrap; }

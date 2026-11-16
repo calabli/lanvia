@@ -91,6 +91,17 @@ func (a *App) routes(web fs.FS) http.Handler {
 		a.remove(r.PathValue("id"), "")
 		writeJSON(w, 200, ok)
 	}))
+	// Bulk delete: {"ids": [...]}, returns the number of items actually deleted
+	m.HandleFunc("POST /api/items/delete", auth(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			IDs []string `json:"ids"`
+		}
+		if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req) != nil || len(req.IDs) > maxBatchDelete {
+			errJSON(w, 400, "bad request")
+			return
+		}
+		writeJSON(w, 200, map[string]int{"count": a.removeMany(req.IDs)})
+	}))
 	m.HandleFunc("POST /api/items/{id}/edit", auth(a.handleEdit))
 	// full-text search inside truncated long bodies (the web page searches short items itself)
 	m.HandleFunc("GET /api/search", auth(func(w http.ResponseWriter, r *http.Request) {

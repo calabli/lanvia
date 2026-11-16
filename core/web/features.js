@@ -139,16 +139,23 @@ async function sendClipboard() {
 
 /* ================= In-Page Dialogs (no dependency on the browser / WebView confirm, prompt) ================= */
 
-function uiAsk(message, { input = false, value = '', placeholder = '', ok = '确定', cancel = '取消', danger = false } = {}) {
+// check: adds a checkbox below the message (e.g. “keep favorites and list”); OK returns { checked }, cancel returns false
+function uiAsk(message, { input = false, value = '', placeholder = '', ok = '确定', cancel = '取消', danger = false, check = '', checked = false, onCheck = null } = {}) {
   return new Promise(resolve => {
     const d = $('#askDlg');
     $('#askMsg').textContent = message;
     const inp = $('#askInput');
     inp.hidden = !input; inp.value = value; inp.placeholder = placeholder;
+    const box = $('#askCheck');
+    $('#askCheckRow').hidden = !check;
+    $('#askCheckText').textContent = check;
+    box.checked = checked;
+    // the message and the buttons can be rewritten when the checkbox changes (e.g. the count)
+    box.onchange = () => { const r = onCheck?.(box.checked); if (r) { $('#askMsg').textContent = r.message; $('#askOk').textContent = r.ok; } };
     $('#askOk').textContent = ok; $('#askCancel').textContent = cancel;
     $('#askOk').classList.toggle('danger', danger);
     const done = v => { d.close(); resolve(v); };
-    $('#askOk').onclick = () => done(input ? inp.value : true);
+    $('#askOk').onclick = () => done(input ? inp.value : check ? { checked: box.checked } : true);
     $('#askCancel').onclick = () => done(input ? null : false);
     d.oncancel = e => { e.preventDefault(); done(input ? null : false); };
     inp.onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); done(inp.value); } };

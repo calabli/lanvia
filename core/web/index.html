@@ -70,6 +70,7 @@
         <button class="filter-btn" data-kind="fav" aria-pressed="false"><span class="nav-symbol" aria-hidden="true">☆</span><span>收藏</span><span class="nav-count" data-kind-count="fav">0</span></button>
       </nav>
       <div class="inbox-sidebar-tags"><div id="inboxTagHeading" class="inbox-nav-label" hidden>标签</div><div id="tagBar" class="tag-bar" role="group" aria-label="按标签筛选" hidden></div></div>
+      <div class="inbox-sidebar-devices" id="sideDevicesBox" hidden><div class="inbox-nav-label">设备</div><div id="sideDevices" class="side-devices" role="group" aria-label="按设备筛选"></div></div>
       <div class="inbox-sidebar-footer">
         <button id="devicesPeek" class="devices-peek" aria-label="查看所有在线设备"><span id="devicePreview" class="device-preview"></span><span class="inbox-host"><span id="nodeLabel" data-raw>Lanvia</span><span id="spaceStatus" role="status">正在连接你的空间</span></span></button>
         <button id="sidebarSettings" class="icon-btn" aria-label="设置"></button>
@@ -77,7 +78,8 @@
     </aside>
 
     <section id="inboxListPanel" class="content-column inbox-list-column" aria-label="内容列表">
-      <div class="inbox-list-heading"><div><h1 id="inboxTitle">所有内容</h1><div class="inbox-list-subtitle"><span id="itemCount">0</span><span> 条内容，随时接续。</span></div></div><div class="inbox-heading-actions"><button id="listCollapse" class="icon-btn pane-collapse" aria-label="收起内容列表" title="收起内容列表" aria-controls="inboxListPanel" aria-expanded="true"></button><button id="newShareBtn" class="icon-btn" aria-label="新建分享" title="新建分享"></button></div></div>
+      <div class="inbox-list-heading"><div><h1 id="inboxTitle">所有内容</h1><div class="inbox-list-subtitle"><span id="itemCount">0</span><span> 条内容，随时接续。</span></div></div><div class="inbox-heading-actions"><button id="listCollapse" class="icon-btn pane-collapse" aria-label="收起内容列表" title="收起内容列表" aria-controls="inboxListPanel" aria-expanded="true"></button><button id="selectBtn" class="icon-btn" aria-label="选择多条" title="选择多条" aria-pressed="false"></button><button id="clearBtn" class="icon-btn" aria-label="清空历史" title="清空历史"></button><button id="newShareBtn" class="icon-btn" aria-label="新建分享" title="新建分享"></button></div></div>
+      <div id="selectBar" class="select-bar" role="toolbar" aria-label="批量操作" hidden><span id="selectCount" class="select-count" role="status">已选 0 条</span><button id="selectAll" class="btn ghost sm" type="button">全选</button><button id="selectDelete" class="btn primary danger sm" type="button" disabled>删除</button><button id="selectDone" class="btn sm" type="button">完成</button></div>
       <div class="list-head inbox-search-row"><label class="search-field"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><input id="search" type="search" placeholder="搜索你的内容" aria-label="搜索历史"><kbd class="search-shortcut" aria-hidden="true">⌘ K</kbd></label></div>
       <div class="inbox-list-filters filter-selects"><select id="fromFilter" class="mini-select" aria-label="按设备筛选"><option value="">所有设备</option></select><select id="timeFilter" class="mini-select" aria-label="按时间筛选"><option value="0">全部时间</option><option value="86400000">今天</option><option value="604800000">最近 7 天</option><option value="2592000000">最近 30 天</option></select></div>
       <div class="inbox-results">
@@ -157,13 +159,19 @@
 </dialog>
 
 <!-- 设置（仅本机仪表盘） -->
-<dialog id="settingsDlg" class="sheet">
+<dialog id="settingsDlg" class="sheet settings-sheet">
   <div class="sheet-head"><h2>设置</h2><button class="icon-btn close" data-close aria-label="关闭"></button></div>
-  <div class="sheet-section">
+  <div class="settings-layout">
+  <nav id="settingsNav" class="settings-nav" aria-label="设置分类"></nav>
+  <div class="settings-panes">
+  <div class="sheet-section" data-cat="general">
     <label class="field"><span>本机名称</span><input id="nodeName" maxlength="40"></label>
     <label class="field"><span>语言</span>
       <select id="optLang"><option value="">跟随系统</option><option value="zh" data-raw>中文</option><option value="en" data-raw>English</option></select>
     </label>
+    <label class="switch"><input type="checkbox" id="optNotify"><span><b>收到内容时弹出通知</b><small>仅桌面版；有 Lanvia 窗口在前台时不弹</small></span></label>
+  </div>
+  <div class="sheet-section" data-cat="sync">
     <label class="switch"><input type="checkbox" id="optWatch"><span><b>主动复制</b><small>在这台电脑上复制文字，自动发送到所有设备。关闭后需要手动点“发送剪贴板”</small></span></label>
     <label class="switch"><input type="checkbox" id="optApply"><span><b>主动粘贴</b><small>其他设备发来的文字自动放进本机剪贴板，直接 ⌘V / Ctrl+V 粘贴</small></span></label>
     <p id="clipWarn" class="warn small" hidden>未找到系统剪贴板工具，只能通过网页手动复制。</p>
@@ -176,7 +184,6 @@
       <form id="blockForm" class="row"><input id="blockInput" placeholder="应用名或 ID，例如 1Password、com.apple.keychainaccess、chrome.exe" spellcheck="false" autocapitalize="off"><button class="btn">添加</button></form>
       <div id="recentApps" class="chips recent"></div>
     </div>
-    <label class="switch"><input type="checkbox" id="optNotify"><span><b>收到内容时弹出通知</b><small>仅桌面版；有 Lanvia 窗口在前台时不弹</small></span></label>
     <label class="field"><span>历史保留时间</span>
       <select id="optKeep">
         <option value="1">1 天</option>
@@ -186,6 +193,8 @@
       </select>
     </label>
     <p class="muted small">到期的内容、文件和历史版本会从这台电脑上删除，也不会再从其他设备同步回来。只对这台电脑生效。</p>
+  </div>
+  <div class="sheet-section" data-cat="storage">
     <label class="field"><span>自动下载其他设备发来的文件</span>
       <select id="optFetch">
         <option value="0">关闭（需要时再从对方获取）</option>
@@ -212,7 +221,7 @@
     </div>
     <p class="muted small">超出上限时只清理其他设备文件的副本（从最旧的开始），本机发出的原件不会删除；条目都会保留，需要时再从其他设备获取。</p>
   </div>
-  <div class="sheet-section">
+  <div class="sheet-section" data-cat="devices">
     <h3>加入另一台电脑</h3>
     <div id="nearby"></div>
     <form id="joinForm" class="row">
@@ -221,12 +230,12 @@
     </form>
     <p class="muted small">两台电脑使用同一个配对码后会自动同步。加入后，本机原来的配对码失效。</p>
   </div>
-  <div class="sheet-section">
+  <div class="sheet-section" data-cat="security">
     <h3>加密</h3>
     <p class="muted small">电脑之间、手机浏览器与电脑之间的内容、历史和文件都用由配对码派生的密钥加密（AES-256-GCM），每个请求只能使用一次，截获后无法重放。超过 256 MB 的文件在手机上明文传输，以免占用同样大的内存。</p>
     <label class="switch"><input type="checkbox" id="optStrict"><span><b>只允许加密连接</b><small>拒绝不支持加密的旧版本设备（v0.4 及更早），也防止同一网络里有人截获并去掉加密；手机上的大文件也加密传输</small></span></label>
   </div>
-  <div class="sheet-section">
+  <div class="sheet-section" data-cat="devices">
     <h3>手动添加设备</h3>
     <p class="muted small">配对码相同却一直找不到对方时使用，例如路由器屏蔽了广播、两台电脑不在同一网段。只需在一台电脑上添加，对方的地址可以在它的主窗口里看到。</p>
     <ul id="manualList" class="manual-list"></ul>
@@ -236,7 +245,7 @@
     </form>
     <p id="manualMsg" class="small" role="status"></p>
   </div>
-  <div class="sheet-section">
+  <div class="sheet-section" data-cat="automation">
     <h3>自动化</h3>
     <label class="switch"><input type="checkbox" id="optToken"><span><b>允许用 token 访问</b><small>给 iOS 快捷指令、安卓 HTTP Shortcuts、脚本使用。token 和通过它收发的内容都是明文传输，不用时建议关闭</small></span></label>
     <div id="tokenBox">
@@ -246,7 +255,7 @@
       <p class="muted small">怀疑 token 泄露时使用，旧 token 立即失效，需要更新快捷指令和脚本。</p>
     </div>
   </div>
-  <div class="sheet-section" id="updSection">
+  <div class="sheet-section" id="updSection" data-cat="about">
     <h3>关于与更新</h3>
     <div class="upd-row">
       <div class="upd-info"><b>Lanvia <span id="updCur" data-raw></span></b><small id="updStatus" class="muted" role="status"></small></div>
@@ -256,13 +265,15 @@
     <details id="updNotes" class="upd-notes" hidden><summary>更新内容</summary><div id="updNotesText" data-raw></div></details>
     <label class="switch" id="updAuto"><input type="checkbox" id="optAutoUpdate"><span><b>自动更新</b><small>有新版本时在后台下载，等你没在用 Lanvia 窗口时自动安装并重新打开</small></span></label>
   </div>
-  <div class="sheet-section">
+  <div class="sheet-section" data-cat="security">
     <h3>危险操作</h3>
     <div class="row wrap">
       <button id="resetCode" class="btn danger-ghost">重新生成配对码</button>
       <button id="clearAll" class="btn danger-ghost">清空所有设备的历史</button>
     </div>
     <p class="muted small" id="dataDir"></p>
+  </div>
+  </div>
   </div>
 </dialog>
 
@@ -288,6 +299,7 @@
       <button class="icon-btn close" data-close aria-label="关闭"></button>
     </div>
   </div>
+  <div id="pvTabs" class="pv-tabs" role="tablist" aria-label="阅读内容" hidden></div>
   <h2 id="readerTitle" class="reader-title" data-raw hidden></h2>
   <div id="pvWarn" class="pv-warn" role="alert" hidden></div>
   <div class="pv-main">
@@ -314,6 +326,7 @@
 <dialog id="askDlg" class="sheet ask">
   <p id="askMsg"></p>
   <input id="askInput" class="ask-input" hidden>
+  <label id="askCheckRow" class="ask-check" hidden><input type="checkbox" id="askCheck"><span id="askCheckText"></span></label>
   <div class="ask-bar"><button id="askCancel" class="btn ghost"></button><button id="askOk" class="btn primary"></button></div>
 </dialog>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>

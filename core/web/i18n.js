@@ -36,6 +36,19 @@ const I18N = (() => {
     '选择一条内容，在这里阅读、编辑或复制。': 'Select an item to read, edit or copy it here.',
     '局域网直连 · 内容留在你的设备上': 'Local connection · Your content stays on your devices',
     // ---- Bulk delete and clear ----
+    '选择多条': 'Select items', '清空历史': 'Clear history', '批量操作': 'Bulk actions',
+    '已选 {0} 条': '{0} selected', '全选': 'Select all', '取消全选': 'Deselect all', '完成': 'Done',
+    '删除选中的 {0} 条内容？会从所有设备上删除，无法撤销。': 'Delete {0} selected items? They will be removed from all devices. This cannot be undone.',
+    '删除 {0} 条': 'Delete {0}', '已在所有设备上删除 {0} 条': 'Deleted {0} items on all devices',
+    '将从所有设备上删除 {0} 条内容和对应的文件，无法撤销。': 'This removes {0} items and their files from all devices. This cannot be undone.',
+    '清空 {0} 条': 'Clear {0}', '保留收藏和清单': 'Keep favorites and lists',
+    '没有可清空的内容': 'Nothing to clear', '已在所有设备上清空 {0} 条': 'Cleared {0} items on all devices',
+    '清空失败：{0}': 'Clear failed: {0}',
+    // ---- Sidebar devices, reader tabs, settings sections ----
+    '设备': 'Devices', '在线': 'Online', '在线 · 浏览器': 'Online · Browser', '离线': 'Offline',
+    '内容': 'Content', '评论 {0}': 'Comments {0}', '历史版本 {0}': 'History {0}', '阅读内容': 'Reader sections',
+    '设置分类': 'Settings sections', '通用': 'General', '同步': 'Sync', '存储': 'Storage', '设备与配对': 'Devices & pairing', '安全': 'Security',
+    // ---- Pairing page ----
     '让设备，': 'Your devices, ', '默契相连。': 'in sync.',
     '输入电脑上显示的配对码，': 'Enter the pairing code shown on your computer ',
     '让文字与文件在你的设备间自由流转。': 'to move text and files freely between your devices.',

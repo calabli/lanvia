@@ -483,32 +483,48 @@ func (p *Peers) relay(env Envelope, except string, sender ...string) {
 
 // relayRaw sends one sync message (JSON) as is to every device except the one named by except.
 func (p *Peers) relayRaw(body []byte, except string) {
+	p.relaySeq([][]byte{body}, except)
+}
+
+// relaySeq sends several sync messages in order to every device except the one named by except: one goroutine per device sends them one by one,
+// and a device that cannot be reached is not sent anything else (it pulls the history when it comes back, so the tombstones travel with it).
+func (p *Peers) relaySeq(bodies [][]byte, except string) {
 	strict := p.a.cfgSnapshot().StrictEnc
 	for _, x := range p.List() {
 		if x.ID == except || (strict && !x.Enc) {
 			continue
 		}
 		go func(x *Peer) {
-			b := body
-			if x.Enc { // 对方支持时，请求体也加密
-				b = sealAll(body, p.a.creds().enc)
+			for _, body := range bodies {
+				if !p.postRelay(x, body) {
+					return
+				}
 			}
-			req := p.newReq(context.Background(), "POST", x.Addr, "/api/relay", b)
-			if x.Enc {
-				req.Header.Set("X-Lanvia-Body-Enc", "1")
-				req.Header.Set("Content-Type", "application/octet-stream")
-			}
-			resp, err := p.do(p.hc, req)
-			if err != nil {
-				return
-			}
-			io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
 		}(x)
 	}
 }
 
 // postRelay sends one sync message to one device and reports whether it was delivered.
+func (p *Peers) postRelay(x *Peer, body []byte) bool {
+	b := body
+	if x.Enc { // encrypt the request body too when the peer supports it
+		b = sealAll(body, p.a.creds().enc)
+	}
+	req := p.newReq(context.Background(), "POST", x.Addr, "/api/relay", b)
+	if x.Enc {
+		req.Header.Set("X-Lanvia-Body-Enc", "1")
+		req.Header.Set("Content-Type", "application/octet-stream")
+	}
+	resp, err := p.do(p.hc, req)
+	if err != nil {
+		return false
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	return resp.StatusCode < 500
+}
+
+// normalizeAddr turns the address entered by the user into host:port. It may carry http:// and may omit the port (default 8686).
 func normalizeAddr(s string) (string, error) {
 	s = strings.TrimSpace(s)
 	s = strings.TrimPrefix(strings.TrimPrefix(s, "http://"), "https://")

@@ -130,6 +130,38 @@ func (a *App) remove(id, fromPeer string) {
 	}
 }
 
+// maxBatchDelete is the maximum number of items deleted in one batch (after "select all" on the web page).
+const maxBatchDelete = 5000
+
+// removeMany deletes in bulk and returns the number of items actually deleted. This machine writes one tombstone per item; the web page only receives a single deletes event and refreshes once;
+// other devices still receive one delete per item (older versions understand them too), but each device sends them in order, so it does not open hundreds or thousands of connections at once.
+func (a *App) removeMany(ids []string) int {
+	var gone []string
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if a.store.Delete(id) {
+			gone = append(gone, id)
+		}
+	}
+	if len(gone) == 0 {
+		return 0
+	}
+	a.hub.Broadcast("deletes", map[string][]string{"ids": gone})
+	bodies := make([][]byte, len(gone))
+	for i, id := range gone {
+		env := Envelope{Op: "delete", ID: id, EID: randHex(8)}
+		a.eids.first(env.EID) // do not forward a message of our own that came back around
+		bodies[i], _ = json.Marshal(env)
+	}
+	a.peers.relaySeq(bodies, "")
+	a.changed()
+	return len(gone)
+}
+
 func (a *App) clear(ts int64, fromPeer string) {
 	if a.store.Clear(ts) {
 		a.hub.Broadcast("clear", map[string]int64{"ts": ts})

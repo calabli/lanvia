@@ -12,14 +12,14 @@ import (
 	"time"
 )
 
-// 回显查询参数和请求体，用来检查鉴权中间件解密后交给处理函数的内容
+// Echoes back the query parameters and request body, to inspect what the auth middleware hands to the handler after decrypting
 func echo(w http.ResponseWriter, r *http.Request) {
 	b, _ := io.ReadAll(r.Body)
 	io.WriteString(w, r.URL.RawQuery+"|"+string(b))
 }
 
 type signOpt struct {
-	nonce, query, plainQuery string // plainQuery 非空时加密成 _q
+	nonce, query, plainQuery string // plainQuery is encrypted into _q when non-empty
 	body                     []byte
 	encBody                  bool
 }
@@ -58,7 +58,7 @@ func serve(h http.HandlerFunc, r *http.Request) *httptest.ResponseRecorder {
 	return w
 }
 
-// 解开（可能）加密的响应
+// Decrypts the (possibly) encrypted response
 func respBody(t *testing.T, w *httptest.ResponseRecorder, c creds) (string, bool) {
 	t.Helper()
 	if w.Header().Get("X-Lanvia-Enc") != "1" {
@@ -76,18 +76,18 @@ func TestAuthV2(t *testing.T) {
 	c := a.creds()
 	h := a.requireAuth(echo)
 
-	// 正常请求：响应加密，查询参数原样交给处理函数
+	// Normal request: the response is encrypted and the query parameters are passed to the handler as-is
 	w := serve(h, v2req(c, "GET", "/api/x", signOpt{query: "a=1&b=2"}))
 	if body, enc := respBody(t, w, c); w.Code != 200 || !enc || body != "a=1&b=2|" {
 		t.Fatalf("v2 GET: %d enc=%v %q", w.Code, enc, body)
 	}
-	// 篡改查询参数
+	// Tampered query parameters
 	r := v2req(c, "GET", "/api/x", signOpt{query: "a=1"})
 	r.URL.RawQuery = "a=2"
 	if w := serve(h, r); w.Code != 401 {
 		t.Fatalf("tampered query accepted: %d", w.Code)
 	}
-	// 去掉签名里写明的 _plain=1 也不行；签名里写了才明文
+	// Removing the _plain=1 stated in the signature does not work either; it stays plaintext only when the signature says so
 	w = serve(h, v2req(c, "GET", "/api/x", signOpt{query: "_plain=1"}))
 	if _, enc := respBody(t, w, c); w.Code != 200 || enc {
 		t.Fatalf("_plain: %d enc=%v", w.Code, enc)
@@ -97,12 +97,12 @@ func TestAuthV2(t *testing.T) {
 	if w := serve(h, r); w.Code != 401 {
 		t.Fatalf("added _plain accepted: %d", w.Code)
 	}
-	// 加密的查询参数和请求体
+	// Encrypted query parameters and request body
 	w = serve(h, v2req(c, "POST", "/api/x", signOpt{plainQuery: "q=秘密", body: []byte("正文"), encBody: true}))
 	if body, _ := respBody(t, w, c); w.Code != 200 || body != "q=秘密|正文" {
 		t.Fatalf("encrypted query/body: %d %q", w.Code, body)
 	}
-	// 重放：同一个写请求第二次被拒；GET 可以重复（网页里的图片地址会复用）
+	// Replay: the same write request is rejected the second time; GET may repeat (image URLs in web pages are reused)
 	r1 := v2req(c, "POST", "/api/x", signOpt{nonce: "aaaaaaaaaaaaaaaa"})
 	r2 := v2req(c, "POST", "/api/x", signOpt{nonce: "aaaaaaaaaaaaaaaa"})
 	if w := serve(h, r1); w.Code != 200 {
@@ -118,11 +118,11 @@ func TestAuthV2(t *testing.T) {
 			t.Fatalf("repeated GET %d: %d", i, w.Code)
 		}
 	}
-	// 配对码不同
+	// Different pairing code
 	if w := serve(h, v2req(deriveCreds("ABCDEFGHJK"), "GET", "/api/x", signOpt{})); w.Code != 401 {
 		t.Fatalf("wrong code: %d", w.Code)
 	}
-	// 只允许加密连接时，_plain 被忽略
+	// When only encrypted connections are allowed, _plain is ignored
 	a.updateCfg(func(c *Config) { c.StrictEnc = true })
 	w = serve(h, v2req(c, "GET", "/api/x", signOpt{query: "_plain=1"}))
 	if _, enc := respBody(t, w, c); !enc {
@@ -142,20 +142,20 @@ func TestAuthV1AndToken(t *testing.T) {
 		}
 		return r
 	}
-	// 旧版本设备：照常可用，按对方要求决定是否加密
+	// Older-version devices: work as usual, whether to encrypt depends on what the other side asks for
 	if w := serve(h, v1(false)); w.Code != 200 || w.Header().Get("X-Lanvia-Enc") == "1" {
 		t.Fatalf("v1 plain: %d", w.Code)
 	}
 	if w := serve(h, v1(true)); w.Code != 200 || w.Header().Get("X-Lanvia-Enc") != "1" {
 		t.Fatalf("v1 enc: %d", w.Code)
 	}
-	// v1 不能带加密的查询参数
+	// v1 cannot carry encrypted query parameters
 	r := v1(true)
 	r.URL.RawQuery = "_q=xyz"
 	if w := serve(h, r); w.Code != 401 {
 		t.Fatalf("v1 with _q: %d", w.Code)
 	}
-	// 用 Go 这边签 v2，确认和测试里手写的一致
+	// Sign v2 on the Go side, to confirm it matches the hand-written signature in the test
 	r = httptest.NewRequest("GET", "/api/x?since=5", nil)
 	signRequest(r, c, "n1", true)
 	if w := serve(h, r); w.Code != 200 || w.Header().Get("X-Lanvia-Enc") != "1" {
@@ -170,7 +170,7 @@ func TestAuthV1AndToken(t *testing.T) {
 	if w := serve(h, tok(c.token)); w.Code != 200 {
 		t.Fatalf("token: %d", w.Code)
 	}
-	// 重新生成后旧 token 失效
+	// Old tokens stop working after regeneration
 	old := c.token
 	a.updateCfg(func(c *Config) { c.Token = randHex(16) })
 	if w := serve(h, tok(old)); w.Code != 401 {
@@ -179,12 +179,12 @@ func TestAuthV1AndToken(t *testing.T) {
 	if w := serve(h, tok(a.creds().token)); w.Code != 200 {
 		t.Fatalf("new token: %d", w.Code)
 	}
-	// 关闭 token 访问
+	// Token access turned off
 	a.updateCfg(func(c *Config) { c.TokenOff = true })
 	if w := serve(h, tok(a.creds().token)); w.Code != 403 {
 		t.Fatalf("token off: %d", w.Code)
 	}
-	// 只允许加密连接：不加密的旧版本请求被拒
+	// When only encrypted connections are allowed: unencrypted old-version requests are rejected
 	a.updateCfg(func(c *Config) { c.StrictEnc = true })
 	if w := serve(h, v1(false)); w.Code != 403 {
 		t.Fatalf("strict v1 plain: %d", w.Code)

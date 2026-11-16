@@ -33,10 +33,10 @@ type Info struct {
 	Port    int          `json:"port"`
 	Now     int64        `json:"now"`
 	Clients []ClientInfo `json:"clients"`
-	Enc     bool         `json:"enc"`            // 支持节点间加密
-	Auth    int          `json:"auth,omitempty"` // 支持的签名版本（2：防重放，v0.8 起）
+	Enc     bool         `json:"enc"`            // supports encryption between nodes
+	Auth    int          `json:"auth,omitempty"` // supported signature version (2: replay protection, since v0.8)
 
-	// 以下字段只返回给本机仪表盘
+	// the following fields are only returned to the local dashboard
 	Local      bool          `json:"local,omitempty"`
 	Code       string        `json:"code,omitempty"`
 	Token      string        `json:"token,omitempty"`
@@ -66,7 +66,7 @@ func (a *App) routes(web fs.FS) http.Handler {
 	local := a.requireLocal
 	m.HandleFunc("GET /api/info", auth(a.handleInfo))
 	m.HandleFunc("GET /api/events", a.authStream(a.handleEvents))
-	// 历史同步：since 是上次同步时响应方的时间（本机时钟），只返回之后有变化的部分；不带则返回全部
+	// History sync: since is the responder's time (local clock) at the last sync; only the part changed after it is returned, and without it everything is returned
 	m.HandleFunc("GET /api/history", auth(func(w http.ResponseWriter, r *http.Request) {
 		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
 		writeJSON(w, 200, a.store.Snapshot(since))
@@ -92,11 +92,11 @@ func (a *App) routes(web fs.FS) http.Handler {
 		writeJSON(w, 200, ok)
 	}))
 	m.HandleFunc("POST /api/items/{id}/edit", auth(a.handleEdit))
-	// 在被截断的长正文里全文搜索（短内容网页自己搜）
+	// full-text search inside truncated long bodies (the web page searches short items itself)
 	m.HandleFunc("GET /api/search", auth(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, a.SearchFull(trimRunes(r.URL.Query().Get("q"), 200)))
 	}))
-	// 单条内容的全文（列表里的长正文是截断的）
+	// Full text of a single item (long bodies in the list are truncated)
 	m.HandleFunc("GET /api/items/{id}", auth(func(w http.ResponseWriter, r *http.Request) {
 		it := a.store.Get(r.PathValue("id"))
 		if it == nil {
@@ -114,7 +114,7 @@ func (a *App) routes(web fs.FS) http.Handler {
 		}
 		writeJSON(w, 200, map[string]any{"item": it, "versions": a.store.Versions(id)})
 	}))
-	// 清单：新建，以及勾选、添加、修改、删除其中的项
+	// Checklists: create one, and tick, add, edit or delete its entries
 	m.HandleFunc("POST /api/todo", auth(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Title string   `json:"title"`
@@ -151,7 +151,7 @@ func (a *App) routes(web fs.FS) http.Handler {
 		}
 		writeJSON(w, 200, it)
 	}))
-	// 标签：给一条内容添加、移除标签；列出所有在用的标签
+	// Tags: add and remove tags on an item; list all tags in use
 	m.HandleFunc("POST /api/items/{id}/tags", auth(func(w http.ResponseWriter, r *http.Request) {
 		var req struct{ Add, Remove []string }
 		if json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&req) != nil || len(req.Add)+len(req.Remove) > 100 {
@@ -216,7 +216,7 @@ func (a *App) routes(web fs.FS) http.Handler {
 	}))
 	m.HandleFunc("POST /api/items/{id}/expiry", auth(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			TTL  int64 `json:"ttl"` // 秒；0 表示跟随全局设置
+			TTL  int64 `json:"ttl"` // seconds; 0 means follow the global setting
 			Keep bool  `json:"keep"`
 		}
 		if json.NewDecoder(r.Body).Decode(&req) != nil || req.TTL < 0 || req.TTL > 10*365*86400 {
@@ -255,7 +255,7 @@ func (a *App) routes(web fs.FS) http.Handler {
 		n, freed := a.ClearReplicas()
 		writeJSON(w, 200, map[string]any{"count": n, "freed": freed, "info": a.info(true)})
 	}))
-	// 暂停同步：minutes > 0 暂停若干分钟，-1 直到手动恢复，0 恢复
+	// Pause syncing: minutes > 0 pauses for that many minutes, -1 pauses until it is resumed manually, 0 resumes
 	m.HandleFunc("POST /api/pause", local(func(w http.ResponseWriter, r *http.Request) {
 		var req struct{ Minutes int }
 		if json.NewDecoder(r.Body).Decode(&req) != nil || req.Minutes < -1 || req.Minutes > 7*24*60 {
@@ -283,7 +283,7 @@ func (a *App) routes(web fs.FS) http.Handler {
 	m.HandleFunc("POST /api/relay", auth(a.handleRelay))
 	m.HandleFunc("POST /api/settings", local(a.handleSettings))
 	m.HandleFunc("POST /api/join", local(a.handleJoin))
-	// 检查更新、立即更新（桌面版）
+	// Check for updates and install them right away (desktop version)
 	m.HandleFunc("GET /api/update", local(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, a.GetUpdateState())
 	}))
@@ -298,7 +298,7 @@ func (a *App) routes(web fs.FS) http.Handler {
 		}
 		writeJSON(w, 200, a.GetUpdateState())
 	}))
-	// 重新生成自动化 token：旧 token 立即失效（token 是明文传输的，怀疑泄露时用）
+	// Regenerate the automation token: the old token stops working immediately (tokens are sent in plaintext, use this when one may have leaked)
 	m.HandleFunc("POST /api/token/reset", local(func(w http.ResponseWriter, r *http.Request) {
 		if err := a.updateCfg(func(c *Config) { c.Token = randHex(16) }); err != nil {
 			errJSON(w, 500, err.Error())
@@ -314,7 +314,7 @@ func (a *App) routes(web fs.FS) http.Handler {
 		}
 		writeJSON(w, 200, ok)
 	}))
-	// 电脑端保存文件：then=open 用默认程序打开，then=reveal 在文件夹中显示
+	// Save a file on the computer: then=open opens it with the default program, then=reveal shows it in the folder
 	m.HandleFunc("POST /api/save/{id}", local(func(w http.ResponseWriter, r *http.Request) {
 		p, err := a.SaveFile(r.PathValue("id"))
 		if err != nil {
@@ -377,14 +377,14 @@ func errJSON(w http.ResponseWriter, code int, msg string) {
 
 func (a *App) requireAuth(h http.HandlerFunc) http.HandlerFunc { return a.authed(h, false) }
 
-// authStream 用于 SSE：响应不能整体加密成一个流（EventSource 读不了），由处理函数逐条加密事件。
+// authStream is used for SSE: the response cannot be encrypted as one whole stream (EventSource cannot read that), so the handler encrypts the events one by one.
 func (a *App) authStream(h http.HandlerFunc) http.HandlerFunc { return a.authed(h, true) }
 
 type ctxKey int
 
 const ctxEventKey ctxKey = 0
 
-// eventKey 返回 SSE 事件要用的加密密钥；nil 表示明文。
+// eventKey returns the encryption key for SSE events; nil means plaintext.
 func eventKey(r *http.Request) []byte {
 	k, _ := r.Context().Value(ctxEventKey).([]byte)
 	return k
@@ -403,14 +403,14 @@ func (a *App) authed(h http.HandlerFunc, stream bool) http.HandlerFunc {
 		case authFail:
 			errJSON(w, 401, "unauthorized")
 			return
-		case authToken: // 快捷指令、curl：明文
+		case authToken: // shortcuts and curl: plaintext
 			if cfg.TokenOff {
 				errJSON(w, 403, "这台电脑已关闭 token 访问")
 				return
 			}
 			h(w, r)
 			return
-		case authV1: // 旧版本设备：按对方要求决定是否加密
+		case authV1: // older devices: encrypt only if the peer asks for it
 			if r.Header.Get("X-Lanvia-Enc") != "1" && cfg.StrictEnc {
 				errJSON(w, 403, "这台电脑只允许加密连接，请把对方升级到最新版本")
 				return
@@ -421,7 +421,7 @@ func (a *App) authed(h http.HandlerFunc, stream bool) http.HandlerFunc {
 				errJSON(w, 409, "重复的请求（可能被截获后重放），已拒绝")
 				return
 			}
-			// 很大的文件，网页可以选择明文下载（在手机上整个解密要占用同样大的内存）；只允许加密连接时不行
+			// For very large files the web page may choose a plaintext download (decrypting the whole thing on a phone takes just as much memory); not possible when only encrypted connections are allowed
 			encResp = r.URL.Query().Get("_plain") != "1" || cfg.StrictEnc
 		}
 		if r.Header.Get("X-Lanvia-Body-Enc") == "1" {
@@ -437,7 +437,7 @@ func (a *App) authed(h http.HandlerFunc, stream bool) http.HandlerFunc {
 				w = ew
 			}
 		}
-		// 配对码相同的节点发来签名请求：如果还不认识它，就连回去（只在一边手动添加也能双向同步）
+		// A node with the same pairing code sends a signed request: if it is not known yet, connect back to it (adding a peer manually on only one side still syncs both ways)
 		if port := r.Header.Get("X-Lanvia-Port"); port != "" {
 			if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 				a.peers.noticeCaller(r.Header.Get("X-Lanvia-Node"), net.JoinHostPort(host, port))
@@ -525,17 +525,17 @@ func (a *App) handleEvents(w http.ResponseWriter, r *http.Request) {
 		"node":       map[string]string{"id": self.ID, "name": self.Name, "os": runtime.GOOS},
 		"items":      clientItems(a.store.List()),
 		"deliveries": a.deliverySnapshot(),
-		// 设备列表只在变化时推送；本机窗口连上时列表不变，所以首次连接必须带上当前列表
+		// the device list is only pushed when it changes; it does not change when the local window connects, so the first connection must carry the current list
 		"devices": a.devices(),
 		"local":   c.Local,
 		"now":     nowMs(),
-		"strict":  self.StrictEnc, // 只允许加密连接时，网页连大文件也要加密传输
+		"strict":  self.StrictEnc, // when only encrypted connections are allowed, the web page must encrypt large file transfers too
 	}))
 	fl.Flush()
 	a.hub.Add(c)
 	defer a.hub.Remove(c)
 
-	t := time.NewTicker(20 * time.Second) // 保活：iOS 和部分路由器会断开空闲连接
+	t := time.NewTicker(20 * time.Second) // keep-alive: iOS and some routers drop idle connections
 	defer t.Stop()
 	for {
 		select {
@@ -551,7 +551,7 @@ func (a *App) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// sealEvent 把一条 SSE 事件的数据加密成 base64url（事件名不加密）。
+// sealEvent encrypts the data of an SSE event into base64url (the event name is not encrypted).
 func sealEvent(msg, key []byte) []byte {
 	head, data, ok := bytes.Cut(msg, []byte("\ndata: "))
 	if !ok {
@@ -571,7 +571,7 @@ func (a *App) handleLatest(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, it.Text)
 }
 
-// handleClip 同时支持 JSON（网页端）和纯文本（iOS 快捷指令 / curl）。
+// handleClip supports both JSON (web) and plain text (iOS shortcuts / curl).
 func (a *App) handleClip(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxTextLen+1024))
 	if err != nil {
@@ -617,7 +617,7 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	os.Rename(part, final)
 	ct := r.Header.Get("Content-Type")
-	if t := q.Get("type"); t != "" { // 网页加密上传：类型放在加密的查询参数里
+	if t := q.Get("type"); t != "" { // encrypted upload from the web page: the type is put in an encrypted query parameter
 		ct = trimRunes(t, 100)
 	}
 	if ct == "" || ct == "application/octet-stream" {
@@ -631,9 +631,9 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		from = "快捷指令"
 	}
 	it := &Item{ID: id, Kind: "file", Name: name, Mime: ct, Size: n, From: from, Origin: a.cfgSnapshot().ID, TS: nowMs()}
-	// 手机等其他设备传来的图片：开着“主动粘贴”时也放进这台电脑的剪贴板（本机窗口拖进来的不放）
+	// images sent by a phone or another device: with "auto paste" on they are also put into this computer's clipboard (those dragged in from the local window are not)
 	a.ingest(it, "", !isLocalAdmin(r), r.Header.Get("X-Lanvia-Client"))
-	go a.enforceQuota() // 原件不删，必要时给它腾出副本占的空间
+	go a.enforceQuota() // the original is not deleted; make room for the space its replica takes when needed
 	writeJSON(w, 200, it)
 }
 
@@ -652,7 +652,7 @@ func (a *App) handleBlob(w http.ResponseWriter, r *http.Request) {
 		http.ServeContent(w, r, it.Name, st.ModTime(), f)
 		return
 	}
-	// 本机没有文件内容：从发送方或其他有这个文件的电脑取，同时缓存一份
+	// this machine has no file content: get it from the sender or another computer that has the file, and cache a copy at the same time
 	if r.Header.Get("X-Lanvia-Hop") != "" {
 		errJSON(w, 404, "not found")
 		return
@@ -676,7 +676,7 @@ func (a *App) handleBlob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	release, ok := a.reserve(it.Size)
-	if !ok { // 超出文件占用上限：只转发，不缓存
+	if !ok { // over the file storage limit: forward only, do not cache
 		io.Copy(w, resp.Body)
 		return
 	}
@@ -710,7 +710,7 @@ func blobHeaders(w http.ResponseWriter, it *Item, dl bool) {
 	h := w.Header()
 	h.Set("Content-Type", ct)
 	h.Set("Content-Disposition", disp+"; filename*=UTF-8''"+url.PathEscape(it.Name))
-	h.Set("Content-Security-Policy", "sandbox") // 上传的 HTML/SVG 不能在本站执行脚本
+	h.Set("Content-Security-Policy", "sandbox") // uploaded HTML/SVG must not run scripts on this site
 	h.Set("Cache-Control", "private, max-age=86400")
 }
 
@@ -740,10 +740,10 @@ func (a *App) handleRelay(w http.ResponseWriter, r *http.Request) {
 	}
 	from := r.Header.Get("X-Lanvia-Node")
 	if env.EID != "" && !a.eids.first(env.EID) {
-		writeJSON(w, 200, ok) // 已经处理过（绕了一圈回来）
+		writeJSON(w, 200, ok) // already handled (it came back around)
 		return
 	}
-	// 以后版本的新操作：这个版本不会处理，但原样转发出去，让更新的设备能收到
+	// an operation from a later version: this version does not handle it, but forwards it as-is so that newer devices receive it
 	if !knownOps[env.Op] {
 		if idRe.MatchString(env.EID) {
 			log.Printf(L("收到不认识的同步操作 %q（来自更新的版本），已原样转发", "Forwarded unknown sync operation %q (from a newer version)"), env.Op)
@@ -842,7 +842,7 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Watch != nil && *req.Watch {
-		a.clip.resync() // 切回主动模式时不补发被动期间复制的内容
+		a.clip.resync() // when switching back to active mode, do not re-send what was copied while passive
 	}
 	a.updateCfg(func(c *Config) {
 		if req.HistoryDays != nil {
@@ -894,12 +894,12 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.AutoFetchMB != nil || req.StorageMB != nil {
 		a.enforceQuota()
-		go a.fetchMissing() // 上限调大了，补下之前跳过的
+		go a.fetchMissing() // the limit was raised, so fetch the items that were skipped before
 	}
 	writeJSON(w, 200, a.info(true))
 }
 
-// handleJoin 换成另一台设备的配对码（加入它的空间），或重新生成配对码（踢掉所有已配对设备）。
+// handleJoin switches to another device's pairing code (join its space), or regenerates the pairing code (kick out all paired devices).
 func (a *App) handleJoin(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Code  string `json:"code"`
@@ -941,7 +941,7 @@ func handleQR(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"size": c.Size, "bits": sb.String()})
 }
 
-// manualErrText 把试连失败的原因翻译成用户看得懂的话。
+// manualErrText turns the reason a test connection failed into a message users can understand.
 func manualErrText(err error) string {
 	switch {
 	case err == errBadCode:

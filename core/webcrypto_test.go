@@ -12,8 +12,8 @@ import (
 	"testing"
 )
 
-// 网页里的 AES-GCM（web/crypto.js）必须和 Go 这边的帧格式互通：Go 加密的 JS 能解开，反过来也一样。
-// 需要本机装有 node，否则跳过。
+// The AES-GCM in the web page (web/crypto.js) must interoperate with the frame format used by Go: JS can open what Go sealed, and vice versa.
+// Requires node to be installed locally, otherwise the test is skipped.
 func TestWebCryptoInterop(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
@@ -39,12 +39,12 @@ const k = LC.newKey(h(key));
 const out = cases.map(c => {
   const got = Buffer.from(LC.open(k, h(c.Sealed))).toString('hex');
   if (got !== c.Plain) throw new Error('open mismatch, len ' + c.Plain.length / 2);
-  // 分段喂入（模拟边下载边解密）
+  // feed it in chunks (as if downloading and decrypting at the same time)
   const o = new LC.Opener(k), parts = [], s = h(c.Sealed);
   for (let i = 0; i < s.length; i += 1000) parts.push(...o.push(s.subarray(i, i + 1000)));
   o.end();
   if (Buffer.concat(parts).toString('hex') !== c.Plain) throw new Error('chunked open mismatch');
-  // 改一个字节必须报错
+  // flipping one byte must raise an error
   if (s.length > 20) { const bad = s.slice(); bad[bad.length - 3] ^= 1; let ok = false; try { LC.open(k, bad); } catch { ok = true; } if (!ok) throw new Error('tamper not detected'); }
   return Buffer.from(LC.seal(k, h(c.Plain))).toString('hex');
 });

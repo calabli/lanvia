@@ -6,7 +6,7 @@ import (
 	"unicode/utf8"
 )
 
-// 长正文转小写的结果缓存起来，不用每次搜索都转一遍（按内容 ID 和版本号失效）。
+// The lower-cased version of a long text is cached, so that it is not computed again for every search (invalidated by content ID and revision).
 type lowerCache struct {
 	mu sync.Mutex
 	m  map[string]lowerEntry
@@ -31,7 +31,7 @@ func (c *lowerCache) get(it *Item) string {
 	return l
 }
 
-// prune 去掉已经不在列表里的内容的缓存。
+// prune drops the cache entries of content that is no longer in the list.
 func (c *lowerCache) prune(alive map[string]bool) {
 	c.mu.Lock()
 	for id := range c.m {
@@ -42,15 +42,15 @@ func (c *lowerCache) prune(alive map[string]bool) {
 	c.mu.Unlock()
 }
 
-// 网页列表里的长正文只有前 16 KB，超出部分的搜索由节点在全文里完成。
+// Long texts in the web list only contain the first 16 KB; searching the rest is done by the node on the full text.
 
 type SearchHit struct {
 	ID      string `json:"id"`
-	Line    int    `json:"line"`    // 命中位置所在的行（从 1 开始）
-	Snippet string `json:"snippet"` // 命中位置前后的一小段文字
+	Line    int    `json:"line"`    // line the match is on (starting at 1)
+	Snippet string `json:"snippet"` // a short piece of text around the match
 }
 
-// SearchFull 在被截断的长正文里查找同时包含所有关键词（不区分大小写）的内容。
+// SearchFull finds the content in truncated long texts that contains all the keywords (case-insensitive).
 func (a *App) SearchFull(query string) []SearchHit {
 	terms := strings.Fields(strings.ToLower(query))
 	if len(terms) == 0 {
@@ -61,11 +61,11 @@ func (a *App) SearchFull(query string) []SearchHit {
 	defer func() { a.lower.prune(alive) }()
 	for _, it := range a.store.List() {
 		if it.Kind != "text" || len(it.Text) <= previewBytes {
-			continue // 短内容网页自己就能搜到
+			continue // the web page can search short content on its own
 		}
 		alive[it.ID] = true
 		lower := a.lower.get(it)
-		// 定位到“最晚才出现”的那个关键词：它往往就是在摘要之外、需要全文搜索才能找到的那个
+		// locate the keyword that appears latest: it is usually the one outside the snippet that only a full text search can find
 		pos := -1
 		for _, t := range terms {
 			i := strings.Index(lower, t)
@@ -80,7 +80,7 @@ func (a *App) SearchFull(query string) []SearchHit {
 		if pos < 0 {
 			continue
 		}
-		// 大小写转换可能改变字节长度（少数字符），这时从转换后的文本里截取片段
+		// the case conversion may change the byte length (for a few characters), so the snippet is taken from the converted text in that case
 		src := it.Text
 		if len(lower) != len(src) {
 			src = lower
@@ -94,7 +94,7 @@ func (a *App) SearchFull(query string) []SearchHit {
 	return out
 }
 
-// snippet 取 pos 前后约 width 字节的文字，不切断多字节字符，换行显示为 ⏎。
+// snippet returns about width bytes of text around pos, without cutting multi-byte characters; a line break is shown as ⏎.
 func snippet(s string, pos, width int) string {
 	start, end := pos-width, pos+width*2
 	if start < 0 {

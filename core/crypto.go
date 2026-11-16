@@ -11,14 +11,14 @@ import (
 	"net/http"
 )
 
-// 节点之间的内容加密（AES-256-GCM，密钥由配对码派生，与签名用的密钥不同）。
+// Content encryption between the nodes (AES-256-GCM, the key is derived from the pairing code and differs from the signing key).
 //
-// 流格式：开头 12 字节随机 nonce 前缀，之后是若干帧：
+// Stream format: a 12 byte random nonce prefix, followed by frames:
 //
-//	[4 字节：密文长度，最高位表示是否最后一帧][密文]
+//	[4 bytes: ciphertext length, the top bit marks the last frame][ciphertext]
 //
-// 第 i 帧的 nonce = 前缀的后 8 字节 XOR i；附加数据 = 8 字节帧序号 + 1 字节“最后一帧”标志。
-// 所以帧被篡改、调换顺序、截断（缺最后一帧）都会被发现。按帧加密，大文件和 Range 请求不必整个读进内存。
+// The nonce of frame i = the last 8 bytes of the prefix XOR i; the additional data = 8 bytes of frame number + 1 byte "last frame" flag.
+// So tampering with a frame, reordering the frames or truncating the stream (missing the last frame) is always detected. Encrypting per frame keeps large files and Range requests from being read into memory entirely.
 
 const (
 	encFrame  = 64 << 10
@@ -30,7 +30,7 @@ var errEncTruncated = errors.New("加密数据不完整")
 func newAEAD(key []byte) cipher.AEAD {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		panic(err) // 密钥固定 32 字节，不会出错
+		panic(err) // the key is a fixed 32 bytes, this cannot fail
 	}
 	aead, err := cipher.NewGCM(block)
 	if err != nil {
@@ -54,14 +54,14 @@ func frameAAD(i uint64, final bool) []byte {
 	return a
 }
 
-// sealWriter 把写入的明文加密后写到 w；Close 时写出最后一帧（必须调用）。
+// sealWriter encrypts the plaintext written to it and writes it to w; Close writes the last frame (it must be called).
 type sealWriter struct {
 	w       io.Writer
 	aead    cipher.AEAD
 	base    [12]byte
 	i       uint64
-	buf     []byte // 待加密的明文，最多一帧，复用
-	ct      []byte // 密文缓冲，复用
+	buf     []byte // plaintext waiting to be encrypted, at most one frame, reused
+	ct      []byte // ciphertext buffer, reused
 	started bool
 	closed  bool
 }
@@ -100,7 +100,7 @@ func (s *sealWriter) frame(plain []byte, final bool) error {
 func (s *sealWriter) Write(p []byte) (int, error) {
 	n := len(p)
 	for len(p) > 0 {
-		if len(s.buf) == encFrame { // 缓冲满了，并且后面还有数据：这一帧不是最后一帧
+		if len(s.buf) == encFrame { // the buffer is full and more data follows: this frame is not the last one
 			if err := s.frame(s.buf, false); err != nil {
 				return 0, err
 			}
@@ -129,15 +129,15 @@ func sealAll(plain, key []byte) []byte {
 	return b.Bytes()
 }
 
-// openReader 读取并校验加密流，返回明文。数据被篡改或截断时返回错误。
+// openReader reads and verifies an encrypted stream and returns the plaintext. It returns an error when the data was tampered with or truncated.
 type openReader struct {
 	r    io.Reader
 	aead cipher.AEAD
 	base [12]byte
 	i    uint64
-	buf  []byte // 尚未读走的明文
-	ct   []byte // 密文缓冲，复用
-	pt   []byte // 明文缓冲，复用（buf 读完后才会解下一帧）
+	buf  []byte // plaintext not read yet
+	ct   []byte // ciphertext buffer, reused
+	pt   []byte // plaintext buffer, reused (the next frame is only decrypted once buf is read)
 	head bool
 	done bool
 }
@@ -192,7 +192,7 @@ type openReadCloser struct {
 
 func (o openReadCloser) Close() error { return o.c.Close() }
 
-// encResponseWriter 加密写给其他节点的响应。正文长度会变，所以去掉 Content-Length。
+// encResponseWriter encrypts the response written to the other nodes. The body length changes, so Content-Length is removed.
 type encResponseWriter struct {
 	http.ResponseWriter
 	seal        *sealWriter
@@ -209,7 +209,7 @@ func (e *encResponseWriter) WriteHeader(code int) {
 	}
 	e.wroteHeader = true
 	e.Header().Del("Content-Length")
-	e.Header().Del("Content-Disposition") // 文件名是明文的，对方已经知道
+	e.Header().Del("Content-Disposition") // the file name is plaintext and the peer already knows it
 	e.Header().Set("X-Lanvia-Enc", "1")
 	e.Header().Set("Content-Type", "application/octet-stream")
 	e.ResponseWriter.WriteHeader(code)

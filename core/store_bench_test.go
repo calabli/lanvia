@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 内容很多时（收藏、清单、永久保留的不受 300 条上限限制）按 ID 查找、修改的耗时
+// How long lookups and updates by ID take when there are many items (favorites, lists and "keep forever" ones are not subject to the 300 item limit)
 func benchStore(b *testing.B, n int) (*Store, []string) {
 	s := openStore(b.TempDir())
 	ids := make([]string, n)

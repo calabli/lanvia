@@ -9,7 +9,7 @@ import (
 	"unsafe"
 )
 
-// 直接调用 Win32 API，避免每次轮询都启动 PowerShell。
+// Calls the Win32 API directly, so polling does not have to start PowerShell every time.
 var (
 	user32                   = syscall.NewLazyDLL("user32.dll")
 	kernel32                 = syscall.NewLazyDLL("kernel32.dll")
@@ -36,14 +36,14 @@ const (
 	gmemMoveable  = 0x0002
 )
 
-// 浏览器、截图工具等会另外放一份 PNG（支持透明）
+// Browsers, screenshot tools and the like also put a PNG there (with transparency support)
 var cfPNG = func() uintptr {
 	p, _ := syscall.UTF16PtrFromString("PNG")
 	f, _, _ := pRegisterClipboardFormat.Call(uintptr(unsafe.Pointer(p)))
 	return f
 }()
 
-// 密码管理器（1Password、KeePass、Bitwarden 等）会用这些格式标记敏感内容。
+// Password managers (1Password, KeePass, Bitwarden and so on) mark sensitive content with these formats.
 var excludeFormats = func() []uintptr {
 	var out []uintptr
 	for _, n := range []string{"ExcludeClipboardContentFromMonitorProcessing", "Clipboard Viewer Ignore"} {
@@ -58,7 +58,7 @@ var excludeFormats = func() []uintptr {
 func clipboardSupported() bool { return pOpenClipboard.Find() == nil }
 
 func openClipboard() error {
-	for i := 0; i < 10; i++ { // 其他程序可能短暂占用剪贴板
+	for i := 0; i < 10; i++ { // other programs may hold the clipboard briefly
 		if r, _, _ := pOpenClipboard.Call(0); r != 0 {
 			return nil
 		}
@@ -71,7 +71,7 @@ var lastSeq uintptr
 var lastText string
 
 func readClipboard() (string, error) {
-	// 序列号没变说明内容没变，省去一次打开剪贴板
+	// An unchanged sequence number means the content is unchanged, saving one clipboard open
 	seq, _, _ := pGetSequenceNumber.Call()
 	if seq != 0 && seq == lastSeq {
 		return lastText, nil
@@ -139,7 +139,7 @@ func writeClipboard(s string) error {
 	return nil
 }
 
-// Windows 复制文件时剪贴板里没有文字，敏感内容在 readClipboard 里已经跳过。
+// On Windows, copying files leaves no text in the clipboard; sensitive content is already skipped in readClipboard.
 func skipClipboardChange() bool { return false }
 
 func clipSeq() int64 {
@@ -150,7 +150,7 @@ func clipSeq() int64 {
 	return int64(seq)
 }
 
-// globalBytes 复制出剪贴板里某个格式的数据（调用方已打开剪贴板）。
+// globalBytes copies out the data of a given clipboard format (the caller has already opened the clipboard).
 func globalBytes(format uintptr) []byte {
 	if format == 0 {
 		return nil
@@ -181,7 +181,7 @@ func readClipboardImage() ([]byte, error) {
 		return nil, err
 	}
 	defer pCloseClipboard.Call()
-	// 资源管理器里复制的文件、密码管理器标记的内容都不算
+	// Files copied in Explorer and content marked by password managers do not count
 	if r, _, _ := pIsFormatAvailable.Call(cfHDrop); r != 0 {
 		return nil, errNoImage
 	}
@@ -201,7 +201,7 @@ func readClipboardImage() ([]byte, error) {
 	return nil, errNoImage
 }
 
-// setGlobal 把数据放进剪贴板的某个格式（调用方已打开并清空剪贴板）。
+// setGlobal puts data into a given clipboard format (the caller has already opened and cleared the clipboard).
 func setGlobal(format uintptr, data []byte) error {
 	h, _, _ := pGlobalAlloc.Call(gmemMoveable, uintptr(len(data)))
 	if h == 0 {
@@ -237,7 +237,7 @@ func writeClipboardImage(data []byte) error {
 		return err
 	}
 	if cfPNG != 0 {
-		setGlobal(cfPNG, pngData) // 支持透明的程序会优先用它；失败也不影响位图
+		setGlobal(cfPNG, pngData) // programs supporting transparency prefer it; a failure does not affect the bitmap
 	}
 	return nil
 }
@@ -250,7 +250,7 @@ var (
 	pQueryFullProcessImageNameW = kernel32.NewProc("QueryFullProcessImageNameW")
 )
 
-// frontApp 返回前台窗口所属进程的文件名（例如 chrome.exe）。
+// frontApp returns the file name of the process owning the foreground window (for example chrome.exe).
 func frontApp() (id, name string) {
 	hwnd, _, _ := pGetForegroundWindow.Call()
 	if hwnd == 0 {

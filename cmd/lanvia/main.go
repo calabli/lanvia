@@ -1,5 +1,5 @@
-// Lanvia 命令行版：在终端里运行一个节点，适合服务器、Linux 或不需要界面的场景。
-// 桌面客户端见 cmd/lanvia-desktop。
+// Lanvia command line version: runs a node in a terminal, suited to servers, Linux or
+// anything without a desktop. The desktop client is in cmd/lanvia-desktop.
 package main
 
 import (
@@ -18,7 +18,7 @@ type listFlag []string
 func (l *listFlag) String() string     { return strings.Join(*l, ",") }
 func (l *listFlag) Set(v string) error { *l = append(*l, v); return nil }
 
-// langFromArgs 在解析参数之前先找出 --lang，这样连 --help 的说明也能用对应的语言。
+// langFromArgs picks out --lang before the flags are parsed, so even --help uses the right language.
 func langFromArgs(args []string) string {
 	for i, a := range args {
 		a = strings.TrimLeft(a, "-")

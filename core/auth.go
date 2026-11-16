@@ -19,11 +19,11 @@ import (
 	"time"
 )
 
-// 配对码字母表：去掉了容易混淆的 0/O、1/I/L。
+// Pairing code alphabet: the confusable 0/O and 1/I/L are removed.
 const codeAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 const codeLen = 10
 
-// 签名允许的时钟偏差。客户端会先用 /api/time 校准，所以这里只需兜底。
+// Clock skew allowed for signatures. Clients calibrate with /api/time first, so this is only a fallback.
 const maxSkew = 5 * time.Minute
 
 func newCode() string {
@@ -52,12 +52,12 @@ func formatCode(c string) string {
 	return c[:5] + "-" + c[5:]
 }
 
-// creds 由配对码派生；配对码本身永远不会在网络上传输。
+// creds are derived from the pairing code; the pairing code itself is never sent over the network.
 type creds struct {
-	key   []byte // HMAC 密钥
-	space string // 公开的空间 ID，写在广播信标里用于识别同组设备
-	token string // 给快捷指令等自动化用的 Bearer token（派生值，无法反推配对码）
-	enc   []byte // 节点之间内容加密的密钥（与签名密钥分开）
+	key   []byte // HMAC key
+	space string // public space ID, put in the broadcast beacon to recognize the devices of the same group
+	token string // Bearer token for automations such as shortcuts (a derived value, the pairing code cannot be recovered from it)
+	enc   []byte // key for encrypting content between nodes (separate from the signing key)
 }
 
 func deriveCreds(code string) creds {
@@ -81,14 +81,14 @@ func signature(key []byte, ts, method, path string) string {
 	return hex.EncodeToString(mac(key, ts+"\n"+method+"\n"+path))
 }
 
-// 签名 v2（v0.8 起）：多了随机 nonce，并且覆盖查询参数。写操作的 nonce 只能用一次，
-// 所以截获的请求不能再发一遍；带 v2 签名的请求，响应一律加密（签名里明确写了 _plain=1 的除外）。
-// 旧版本（v1）只签时间、方法和路径，仍然接受，以便和旧版本设备互通。
+// Signature v2 (since v0.8): it adds a random nonce and covers the query parameters. The nonce of
+// a write request may only be used once, so an intercepted request cannot be replayed; responses to
+// v2 signed requests are always encrypted (unless the signature says _plain=1). The old version (v1) only signs the time, method and path and is still accepted.
 func signature2(key []byte, ts, nonce, method, path, query string) string {
 	return hex.EncodeToString(mac(key, "lanvia2\n"+ts+"\n"+nonce+"\n"+method+"\n"+path+"\n"+query))
 }
 
-// 签名用的参数不参与签名本身；_q 是加密后的查询参数，解密后替换掉
+// the parameters used for signing are not part of the signature itself; _q holds the encrypted query parameters and is replaced after decryption
 var sigParams = map[string]bool{"_t": true, "_s": true, "_n": true, "_v": true, "_q": true}
 
 func canonicalQuery(raw string) string {
@@ -128,8 +128,8 @@ const (
 	authV2
 )
 
-// checkSigned 校验请求的签名或 token。v2 请求的查询参数可能是加密的（_q），校验时会解密并替换 r.URL.RawQuery。
-// 返回 v2 请求的 nonce 和时间，用于防重放。
+// checkSigned verifies the signature or the token of a request. The query parameters of a v2 request may be encrypted (_q), they are decrypted and replace r.URL.RawQuery while verifying.
+// It returns the nonce and the time of a v2 request, which are used to prevent replay.
 func checkSigned(r *http.Request, c creds) (kind authKind, nonce string, ts int64) {
 	if b, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
 		if subtle.ConstantTimeCompare([]byte(strings.TrimSpace(b)), []byte(c.token)) == 1 {
@@ -139,7 +139,7 @@ func checkSigned(r *http.Request, c creds) (kind authKind, nonce string, ts int6
 	}
 	h, q := r.Header, r.URL.Query()
 	tss, sig, nonce, ver := h.Get("X-Lanvia-TS"), h.Get("X-Lanvia-Sig"), h.Get("X-Lanvia-Nonce"), h.Get("X-Lanvia-Auth")
-	if tss == "" { // EventSource / 下载链接无法加请求头，走 query
+	if tss == "" { // EventSource and download links cannot set request headers, so use the query
 		tss, sig, nonce, ver = q.Get("_t"), q.Get("_s"), q.Get("_n"), q.Get("_v")
 	}
 	n, err := strconv.ParseInt(tss, 10, 64)
@@ -178,7 +178,7 @@ func checkSigned(r *http.Request, c creds) (kind authKind, nonce string, ts int6
 	return authFail, "", 0
 }
 
-// openString 解开网页加密的短字符串（base64url 编码的加密流）。
+// openString decrypts a short string encrypted by the web page (a base64url encoded encrypted stream).
 func openString(s string, key []byte) (string, error) {
 	if len(s) > 64<<10 {
 		return "", errors.New("too long")
@@ -191,11 +191,11 @@ func openString(s string, key []byte) (string, error) {
 	return string(plain), err
 }
 
-// nonceCache 记住 v2 写请求用过的 nonce（签名有效期内），同一个请求第二次到达时拒绝。
+// nonceCache remembers the nonces used by v2 write requests (within the signature lifetime) and rejects a request that arrives a second time.
 type nonceCache struct {
 	mu   sync.Mutex
-	seen map[string]int64 // nonce -> 过期时间
-	next int64            // 下次清理过期项的时间
+	seen map[string]int64 // nonce -> expiry time
+	next int64            // time of the next cleanup of the expired entries
 }
 
 func (n *nonceCache) use(nonce string, ts int64) bool {
@@ -220,9 +220,9 @@ func (n *nonceCache) use(nonce string, ts int64) bool {
 	return true
 }
 
-// isLocalAdmin 判断请求是否来自本机浏览器（仪表盘）。
-// 仅凭来源 IP 不够：恶意网页可以通过 DNS rebinding 或跨站表单打到 localhost，
-// 所以还要求 Host 是 localhost，且写操作的 Origin 与 Host 一致。
+// isLocalAdmin reports whether a request comes from the local browser (the dashboard).
+// The source IP alone is not enough: a malicious page can reach localhost through DNS rebinding or a
+// cross-site form, so the Host must be localhost too and the Origin of a write request must match the Host.
 func isLocalAdmin(r *http.Request) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

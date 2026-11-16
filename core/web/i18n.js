@@ -1,8 +1,8 @@
 'use strict';
 
-/* 界面中英文。中文是源文本；切换到英文时，按词典翻译页面上的文字节点和 placeholder / title / aria-label，
-   新插入的内容由 MutationObserver 自动翻译。带变量的文本用 {0} {1} 占位，捕获的部分会再翻译一次。
-   用户内容（剪贴板文本、收藏名称、文件名、设备名等）所在元素带 data-raw，不会被翻译。 */
+/* Chinese and English UI. Chinese is the source text; when switching to English, text nodes and placeholder / title / aria-label on the page are translated through the dictionary,
+   newly inserted content is translated automatically by MutationObserver. Text with variables uses {0} {1} placeholders, and the captured parts are translated once more.
+   Elements holding user content (clipboard text, favorite names, file names, device names, etc.) carry data-raw and are not translated. */
 
 const I18N = (() => {
   const EN = {
@@ -35,14 +35,14 @@ const I18N = (() => {
     '留一点空间，接着思考。': 'A little room for your next thought.',
     '选择一条内容，在这里阅读、编辑或复制。': 'Select an item to read, edit or copy it here.',
     '局域网直连 · 内容留在你的设备上': 'Local connection · Your content stays on your devices',
-    // ---- 配对页 ----
+    // ---- Bulk delete and clear ----
     '让设备，': 'Your devices, ', '默契相连。': 'in sync.',
     '输入电脑上显示的配对码，': 'Enter the pairing code shown on your computer ',
     '让文字与文件在你的设备间自由流转。': 'to move text and files freely between your devices.',
     '连接空间': 'Connect', '同一网络，即刻连接 · 无需注册': 'Same network, instant connection · No sign-up',
     '配对码不正确，或无法连接到这台电脑': "Wrong pairing code, or this computer can't be reached",
     '配对已失效，请重新输入配对码': 'Pairing expired. Please enter the pairing code again.',
-    // ---- 顶栏与首页 ----
+    // ---- Top bar and home ----
     '你的设备，流畅相连': 'Your devices, seamlessly connected', '连接中': 'Connecting',
     '随手复制，': 'Copy here, ', '随处接续。': 'continue anywhere.',
     '文字、链接与文件，在你的设备之间轻盈流转。': 'Text, links and files, flowing lightly between your devices.',
@@ -54,7 +54,7 @@ const I18N = (() => {
     '让工作流动起来。': 'Keep your work flowing.', '从一次简单的复制开始。': 'It starts with a simple copy.',
     '让设备之间，少一点距离。': 'Bringing your devices a little closer.',
     '{0} 台设备': '{0} devices', '仅本机': 'Only this device', '重新连接中': 'Reconnecting',
-    // ---- 输入区 ----
+    // ---- Input area ----
     '分享一点灵感': 'Share something', '随时，随手。': 'Anytime, anywhere.',
     '粘贴': 'Paste', '添加文件': 'Add files', '添加文件夹': 'Add folder', '发送': 'Send',
     '粘贴文字、链接，或拖入文件…': 'Paste text or links, or drop files…', '要分享的内容': 'Content to share',
@@ -65,7 +65,7 @@ const I18N = (() => {
     '{0}/ · {1} 个文件': '{0}/ · {1} files', '文件夹': 'Folder',
     '上传失败，请检查网络': 'Upload failed. Check your network.', '上传失败：HTTP {0}': 'Upload failed: HTTP {0}',
     '发送失败：{0}': 'Send failed: {0}',
-    // ---- 列表 ----
+    // ---- List ----
     '最近分享': 'Recent', '全部': 'All', '文本与链接': 'Text & links', '文件': 'Files', '收藏': 'Favorites',
     '所有设备': 'All devices', '全部时间': 'Any time', '今天': 'Today', '最近 7 天': 'Last 7 days', '最近 30 天': 'Last 30 days',
     '每一份灵感，都有迹可循。': 'Every idea leaves a trace.', '没有完全匹配的内容，以下是相近的结果': 'No exact matches. Showing similar results.',
@@ -83,16 +83,16 @@ const I18N = (() => {
     '已保存到 下载/Lanvia': 'Saved to Downloads/Lanvia', '显示': 'Show', '保存失败：{0}': 'Save failed: {0}', '删除失败：{0}': 'Delete failed: {0}',
     '来自 {0}：已写入剪贴板': 'From {0}: copied to your clipboard', '{0} 发来文件 {1}': '{0} sent a file: {1}',
     '已发送': 'Sent', '已发送到所有设备': 'Sent to all devices',
-    // ---- 设备 ----
+    // ---- Devices ----
     '在线设备': 'Online devices', '本机': 'This device', '暂无': 'None', '这台设备的名称': 'Name of this device', '退出配对': 'Unpair',
     '运行 Lanvia': 'Runs Lanvia', '运行 Lanvia · 已加密': 'Runs Lanvia · Encrypted', '运行 Lanvia · 未加密（旧版本）': 'Runs Lanvia · Not encrypted (older version)',
     '你正通过它连接 · 运行 Lanvia': "You're connected through it · Runs Lanvia", '浏览器 · 经由 {0}': 'Browser · via {0}',
     '安卓手机': 'Android phone', 'Windows 电脑': 'Windows PC', 'Linux 电脑': 'Linux PC', '浏览器': 'Browser',
     '退出后需要重新输入配对码。确定吗？': "You'll need to enter the pairing code again. Continue?",
-    // ---- 外观 ----
+    // ---- Appearance ----
     '跟随系统': 'System', '浅色': 'Light', '深色': 'Dark', '切换外观': 'Switch appearance',
     '外观：{0}，切换为{1}': 'Appearance: {0}. Switch to {1}', '外观：{0}，点击切换': 'Appearance: {0}. Click to switch',
-    // ---- 发送模式 ----
+    // ---- Send mode ----
     '切换发送模式': 'Switch send mode', '主动': 'Active', '被动': 'Passive', '复制即发送': 'Copy to send', '手动发送': 'Send manually',
     '发送模式': 'Send mode', '发送剪贴板': 'Send clipboard',
     '在这台电脑上复制文字，会自动发送到所有设备。': 'Text you copy on this computer is sent to all devices automatically.',
@@ -102,7 +102,7 @@ const I18N = (() => {
     
     '这台电脑不支持读取剪贴板': "This computer can't read the clipboard", '剪贴板里是文件或敏感内容，不会发送': "The clipboard holds a file or sensitive content and won't be sent",
     '读取剪贴板失败': "Couldn't read the clipboard", '剪贴板里没有文字': 'No text on the clipboard', '内容太长': 'Too long',
-    // ---- 设置 ----
+    // ---- Settings ----
     '设置': 'Settings', '本机名称': 'Computer name', '语言': 'Language',
     '自动写入本机剪贴板': 'Write to this clipboard automatically', '其他设备发来的文字直接可以 ⌘V / Ctrl+V 粘贴': 'Text from other devices is ready to paste with ⌘V / Ctrl+V',
     '未找到系统剪贴板工具，只能通过网页手动复制。': 'No system clipboard tool found. Copy manually from the page.',
@@ -185,17 +185,17 @@ const I18N = (() => {
     '数据目录：{0}': 'Data folder: {0}', '未检测到局域网地址': 'No LAN address found',
     '连接与配对': 'Connection & pairing', '收起配对信息': 'Collapse pairing info', '配对二维码': 'Pairing QR code', '局域网地址': 'LAN address',
     '查看所有在线设备': 'See all online devices',
-    // ---- 收藏 ----
+    // ---- Favorites ----
     '给这条收藏起个名字，方便搜索（例如“家里 WiFi”）': 'Name this favorite to find it easily (e.g. “Home Wi-Fi”)',
     '名称（可留空）': 'Name (optional)', '已收藏：不会过期，在所有设备上都能找到': 'Favorited: never expires and is on all your devices',
     '命名': 'Name', '命名…': 'Name…', '重命名…': 'Rename…', '取消收藏': 'Unfavorite', '已取消收藏': 'Removed from favorites', '收藏 · {0}': 'Favorite · {0}',
-    // ---- 保留时长 ----
+    // ---- Retention ----
     '1 小时后删除': 'Delete in 1 hour', '1 天后删除': 'Delete in 1 day', '7 天后删除': 'Delete in 7 days', '30 天后删除': 'Delete in 30 days',
     '永久保留': 'Keep forever', '跟随全局设置': 'Follow global setting', '· 同步到所有设备': '· synced to all devices', '当前：{0}': 'Current: {0}',
     '{0} 分钟后删除': '{0} min left', '{0} 小时后删除': '{0} h left', '{0} 天后删除': '{0} d left', '{0} 删除': 'Deletes {0}',
     '不受全局保留时间影响': 'Not affected by global retention',
     '已设为永久保留': 'Set to keep forever', '已设置：{0}': 'Set: {0}', '已恢复跟随全局设置': 'Now follows the global setting', '设置失败：{0}': 'Failed: {0}',
-    // ---- 预览、编辑、历史 ----
+    // ---- Preview, edit, history ----
     '自动换行': 'Wrap lines', '等宽字体与行号': 'Monospace & line numbers', '历史版本': 'Version history', '悬浮在最上层': 'Keep on top',
     '格式化': 'Format', '原文': 'Original', '看全文': 'Full text', '看改动': 'Changes', '恢复此版本': 'Restore this version',
     '复制全部': 'Copy all', '复制此版本': 'Copy this version', '保存': 'Save', '取消': 'Cancel', '关闭': 'Close', '返回': 'Back',
@@ -211,11 +211,11 @@ const I18N = (() => {
     '{0} 刚刚修改了这条内容。保存后你的版本会成为最新版本，对方的修改会保留在历史版本中。':
       '{0} just changed this item. If you save, your version becomes the latest and theirs stays in version history.',
     '其他设备': 'Another device',
-    // ---- 快捷面板 ----
+    // ---- Quick panel ----
     '选择': 'select', '空格': 'Space',
-    // ---- 对话框 ----
+    // ---- Dialogs ----
     '确定': 'OK',
-    // ---- 服务端返回的提示 ----
+    // ---- Messages returned by the server ----
     '这台电脑只允许加密连接，请把对方升级到最新版本': 'This computer only allows encrypted connections. Update the other device to the latest version.',
     '评论不能为空': "A comment can't be empty", '评论过长': 'The comment is too long', '评论不存在': "The comment doesn't exist",
     '重复的请求（可能被截获后重放），已拒绝': 'Duplicate request rejected (it may have been captured and replayed)',
@@ -234,7 +234,7 @@ const I18N = (() => {
     '快捷指令': 'Shortcuts',
     '正在加载全文…': 'Loading the full text…', '全文已加载（{0} 字），点此复制': 'Full text loaded ({0} chars). Tap to copy',
     '加载失败：{0}': 'Loading failed: {0}', '显示更多（还有 {0} 条）': 'Show more ({0} left)', '在全文第 {0} 行找到：': 'Found on line {0} of the full text:', '{0}+ 行 · {1} 字': '{0}+ lines · {1} chars',
-    // ---- 暂停、黑名单、通知 ----
+    // ---- Pause, blocklist, notifications ----
     '暂停同步': 'Pause syncing', '15 分钟': '15 minutes', '1 小时': '1 hour', '直到手动恢复': 'Until I resume',
     '暂停期间本机复制的不发送，收到的不写入剪贴板（仍会出现在列表里）。': "While paused, copies here aren't sent and incoming items aren't written to the clipboard (they still appear in the list).",
     '已暂停到 {0}': 'Paused until {0}', '已暂停，直到手动恢复': 'Paused until you resume', '恢复同步': 'Resume syncing',
@@ -246,11 +246,11 @@ const I18N = (() => {
     '收到内容时弹出通知': 'Show a notification for new items', '仅桌面版；有 Lanvia 窗口在前台时不弹': 'Desktop app only; not shown while a Lanvia window is in front',
   };
 
-  // 带占位符的条目编译成正则
+  // Entries with placeholders are compiled into regular expressions
   const PATS = Object.entries(EN).filter(([k]) => /\{\d\}/.test(k)).map(([k, v]) => {
     const re = new RegExp('^' + k.replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace(/\{(\d)\}/g, '(.+?)') + '$', 's');
     return [re, v, k.replace(/\{\d\}/g, '').length];
-  }).sort((a, b) => b[2] - a[2]); // 固定文字越多越具体，先匹配
+  }).sort((a, b) => b[2] - a[2]); // more literal text means a more specific pattern, match those first
   const CJK = /[㐀-鿿＀-￯]/;
 
   let lang = 'zh';
@@ -266,7 +266,7 @@ const I18N = (() => {
       }
     }
     if (out === undefined) return s;
-    // 保留原文前后的空白
+    // keep the whitespace around the original text
     const lead = s.match(/^\s*/)[0], tail = s.match(/\s*$/)[0];
     return lead + out + tail;
   }
@@ -279,14 +279,14 @@ const I18N = (() => {
   function doText(n) {
     if (skip(n.parentElement)) return;
     const cur = n.nodeValue;
-    if (wroteText.get(n) !== cur) origText.set(n, cur); // 应用自己写入的新文本
+    if (wroteText.get(n) !== cur) origText.set(n, cur); // text the app wrote itself
     const next = tr(origText.get(n));
     wroteText.set(n, next);
     if (next !== cur) n.nodeValue = next;
   }
 
   function doAttrs(el) {
-    if (el?.closest?.('[data-raw]')) return; // textarea 的内容不译，但它的 placeholder 要译
+    if (el?.closest?.('[data-raw]')) return; // a textarea's content is not translated, but its placeholder is
     let o = origAttr.get(el), w = wroteAttr.get(el);
     if (!o) { o = {}; w = {}; origAttr.set(el, o); wroteAttr.set(el, w); }
     for (const a of ATTRS) {
@@ -330,7 +330,7 @@ const I18N = (() => {
     setLang(l);
   }
 
-  // 首选语言：手动设置 > 系统语言
+  // Preferred language: manual setting > system language
   const auto = () => ((navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en');
 
   return { start, setLang, t: tr, auto, lang: () => lang };

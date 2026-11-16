@@ -13,26 +13,26 @@ import (
 	"time"
 )
 
-// 文件内容最初只在发送方。为了发送方关机后还能拿到：
-//   - 下载时依次向发送方和其他电脑请求，谁有就从谁那里取（fetchFromPeers）；
-//   - 每台电脑在后台把其他设备发来的文件下载一份（不超过“自动下载”的大小上限），
-//     当时没取到的会定期重试（fetcher）。
+// File content initially lives only on the sender. So that it is still available after the sender shuts down:
+//   - When downloading, ask the sender and then the other computers in turn, taking it from whoever has it (fetchFromPeers);
+//   - Each computer downloads a copy of the files sent by other devices in the background (up to the "auto fetch" size limit),
+//     and whatever could not be fetched at the time is retried periodically (fetcher).
 
 var errNoSource = errors.New("发送方和其他设备都不在线，或都没有这个文件")
 
-// 节点间传文件用的客户端：连不上的设备尽快放弃，但传输本身不限时（大文件）。
+// Client used to transfer files between nodes: give up quickly on devices that cannot be reached, but the transfer itself is not time limited (large files).
 var blobClient = &http.Client{Transport: &http.Transport{
 	DialContext:           (&net.Dialer{Timeout: 3 * time.Second}).DialContext,
 	ResponseHeaderTimeout: 15 * time.Second,
 }}
 
-// fetchFromPeers 先问发送方，再问其他电脑，返回第一个有这个文件的响应。
+// fetchFromPeers asks the sender first, then the other computers, and returns the first response that has the file.
 func (a *App) fetchFromPeers(ctx context.Context, it *Item, rangeHdr string) (*http.Response, error) {
 	peers := a.peers.List()
 	sort.SliceStable(peers, func(i, j int) bool { return peers[i].ID == it.Origin && peers[j].ID != it.Origin })
 	for _, p := range peers {
 		req := a.peers.newReq(ctx, "GET", p.Addr, "/api/blob/"+it.ID, nil)
-		req.Header.Set("X-Lanvia-Hop", "1") // 对方只返回自己本地有的，不再转问别人
+		req.Header.Set("X-Lanvia-Hop", "1") // the peer only returns what it has locally, without asking anyone else
 		if rangeHdr != "" {
 			req.Header.Set("Range", rangeHdr)
 		}
@@ -48,7 +48,7 @@ func (a *App) fetchFromPeers(ctx context.Context, it *Item, rangeHdr string) (*h
 	return nil, errNoSource
 }
 
-// ---- 后台自动下载 ----
+// ---- background auto fetch ----
 
 type fetcher struct {
 	mu      sync.Mutex
@@ -61,10 +61,10 @@ func newFetcher() *fetcher {
 	return &fetcher{queued: map[string]bool{}, lastTry: map[string]time.Time{}, q: make(chan string, 512)}
 }
 
-// 后台只补最近几天的文件；更早的需要时再从其他设备取（也避免清理掉的副本重启后又被下载回来）。
+// The background only fetches the most recent files; older ones are taken from other devices on demand (this also avoids re-downloading copies that were cleaned up after a restart).
 const autoFetchWindow = 3 * 24 * time.Hour
 
-// wantFetch 判断这个文件是否需要在后台下载到本机。
+// wantFetch reports whether this file needs to be downloaded in the background.
 func (a *App) wantFetch(it *Item) bool {
 	if it == nil || it.Kind != "file" || a.store.hasBlob(it.ID) || it.TS < nowMs()-autoFetchWindow.Milliseconds() {
 		return false
@@ -88,11 +88,11 @@ func (a *App) enqueueFetch(id string) {
 	select {
 	case f.q <- id:
 		f.queued[id] = true
-	default: // 队列满了，下一轮再试
+	default: // the queue is full, try again in the next round
 	}
 }
 
-// fetchMissing 把所有该下载但还没下载的文件放进队列（新设备上线、定期检查时调用）。
+// fetchMissing queues every file that should be fetched but has not been yet (called when a new device comes online and on periodic checks).
 func (a *App) fetchMissing() {
 	for _, it := range a.store.List() {
 		if a.wantFetch(it) {
@@ -107,7 +107,7 @@ func (a *App) fetchLoop() {
 		a.fetch.mu.Lock()
 		delete(a.fetch.queued, id)
 		a.fetch.lastTry[id] = time.Now()
-		for k, t := range a.fetch.lastTry { // 别让记录无限增长
+		for k, t := range a.fetch.lastTry { // do not let the records grow without bound
 			if time.Since(t) > time.Hour {
 				delete(a.fetch.lastTry, k)
 			}
@@ -121,7 +121,7 @@ func (a *App) fetchOne(id string) {
 	if !a.wantFetch(it) {
 		return
 	}
-	release, ok := a.reserve(it.Size) // 放不下就不备份，需要时再去取
+	release, ok := a.reserve(it.Size) // if it does not fit, do not back it up; fetch it again when needed
 	if !ok {
 		return
 	}
@@ -140,7 +140,7 @@ func (a *App) fetchOne(id string) {
 	}
 	n, err := io.Copy(f, resp.Body)
 	f.Close()
-	if err != nil || n != it.Size || a.store.Get(id) == nil { // 下载期间被删除了就不留
+	if err != nil || n != it.Size || a.store.Get(id) == nil { // it was deleted while downloading, so do not keep it
 		os.Remove(part)
 		return
 	}

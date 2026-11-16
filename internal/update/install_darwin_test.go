@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// 自己的 App：可以直接替换，安装包下载到 App 旁边；替换走普通路径，不弹密码框
+// Own App: it can be replaced directly, the installer is downloaded next to the App, and the replacement takes the normal path without a password dialog
 func TestCanReplaceOwnApp(t *testing.T) {
 	dir := t.TempDir()
 	app := filepath.Join(dir, "Lanvia.app")
@@ -18,7 +18,7 @@ func TestCanReplaceOwnApp(t *testing.T) {
 	if !CanReplace(app) || DownloadDir(app) != dir {
 		t.Fatalf("CanReplace=%v DownloadDir=%s", CanReplace(app), DownloadDir(app))
 	}
-	// 新版本的 zip
+	// The zip of the new version
 	src := filepath.Join(t.TempDir(), "Lanvia.app")
 	os.MkdirAll(filepath.Join(src, "Contents", "MacOS"), 0o755)
 	os.WriteFile(filepath.Join(src, "Contents", "MacOS", "Lanvia"), []byte("new"), 0o755)
@@ -37,7 +37,7 @@ func TestCanReplaceOwnApp(t *testing.T) {
 	}
 }
 
-// 放在不可写的目录里（例如标准账户下的“应用程序”）：不能直接替换，安装包改为下载到用户缓存目录
+// In a non-writable directory (for example "Applications" under a standard account): it cannot be replaced directly, so the installer is downloaded to the user cache directory instead
 func TestCannotReplaceInReadOnlyDir(t *testing.T) {
 	dir := t.TempDir()
 	app := filepath.Join(dir, "Lanvia.app")
@@ -51,7 +51,7 @@ func TestCannotReplaceInReadOnlyDir(t *testing.T) {
 	if d := DownloadDir(app); d == dir || filepath.Base(d) != "update" {
 		t.Fatalf("DownloadDir = %s", d)
 	}
-	// /Applications 里系统自带、归 root 所有的程序同样不能直接替换
+	// Programs that ship with the system in /Applications and belong to root cannot be replaced directly either
 	if CanReplace("/Applications/Safari.app") {
 		t.Fatal("root-owned app should not be replaceable")
 	}

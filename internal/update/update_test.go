@@ -35,7 +35,7 @@ func TestAssetName(t *testing.T) {
 	}
 }
 
-// 模拟 GitHub：发布信息、安装包、校验文件
+// Fake GitHub: release info, installer, checksum file
 func fakeRelease(t *testing.T, name string, body []byte, sum string) (*httptest.Server, string) {
 	mux := http.NewServeMux()
 	var srv *httptest.Server
@@ -68,7 +68,7 @@ func TestDownloadVerifies(t *testing.T) {
 		t.Fatal("content mismatch")
 	}
 
-	// 校验和不对：放弃，且不留下文件
+	// Wrong checksum: give up and leave no file behind
 	_, api2 := fakeRelease(t, "Lanvia-windows-amd64.exe", body, hex.EncodeToString(make([]byte, 32)))
 	rel2, _ := Latest(context.Background(), api2)
 	dir2 := t.TempDir()
@@ -126,7 +126,7 @@ func TestInstallMac(t *testing.T) {
 	if out, err := exec.Command("ditto", "-c", "-k", "--keepParent", src, zip).CombinedOutput(); err != nil {
 		t.Fatalf("zip: %v %s", err, out)
 	}
-	real, _ := filepath.EvalSymlinks(installed) // 临时目录 /var 是 /private/var 的符号链接
+	real, _ := filepath.EvalSymlinks(installed) // /var in temp directories is a symlink to /private/var
 	if AppBundle(filepath.Join(installed, "Contents", "MacOS", "Lanvia")) != real {
 		t.Fatal("AppBundle failed")
 	}
@@ -142,7 +142,7 @@ func TestInstallMac(t *testing.T) {
 			t.Fatalf("leftover: %s", e.Name())
 		}
 	}
-	// 安装包里没有 Lanvia.app：失败，旧版保持原样
+	// The package has no Lanvia.app: it fails and the old version stays as it was
 	bad := filepath.Join(dir, "Applications", ".bad.zip")
 	os.WriteFile(filepath.Join(dir, "x.txt"), []byte("x"), 0o644)
 	exec.Command("ditto", "-c", "-k", filepath.Join(dir, "x.txt"), bad).Run()
@@ -154,7 +154,7 @@ func TestInstallMac(t *testing.T) {
 	}
 }
 
-// 下载时报告进度；发布里没有本平台的安装包时 Has 返回 false
+// Reports progress while downloading; Has returns false when the release has no installer for this platform
 func TestDownloadProgressAndHas(t *testing.T) {
 	body := make([]byte, 3<<20)
 	for i := range body {
@@ -181,7 +181,7 @@ func TestDownloadProgressAndHas(t *testing.T) {
 	}
 }
 
-// 不用接口也能查到最新版本：跟随 /releases/latest 的跳转拿到版本号，从校验文件里得知有哪些安装包，再正常下载校验
+// The latest version can also be found without the API: follow the /releases/latest redirect to get the version, learn which installers exist from the checksum file, then download and verify as usual
 func TestLatestWeb(t *testing.T) {
 	body := []byte("mac zip bytes")
 	h := sha256.Sum256(body)
@@ -211,13 +211,13 @@ func TestLatestWeb(t *testing.T) {
 	if b, _ := os.ReadFile(p); string(b) != string(body) {
 		t.Fatal("downloaded content differs")
 	}
-	// 没有发布过：404
+	// Nothing was ever released: 404
 	if _, err := latestWeb(context.Background(), srv.URL, "x/none"); err != ErrNotFound {
 		t.Fatalf("missing repo: %v", err)
 	}
 }
 
-// 连真实的 GitHub 查一次（需要联网，默认跳过）：LANVIA_LIVE=1 go test -run TestLiveFind ./internal/update
+// Query the real GitHub once (requires network access, skipped by default): LANVIA_LIVE=1 go test -run TestLiveFind ./internal/update
 func TestLiveFind(t *testing.T) {
 	if os.Getenv("LANVIA_LIVE") == "" {
 		t.Skip("set LANVIA_LIVE=1 to query github.com")

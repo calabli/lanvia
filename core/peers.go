@@ -30,23 +30,23 @@ type Beacon struct {
 	Space string `json:"space"`
 }
 
-// Peer 是同一空间内的另一个 Lanvia 节点。
+// Peer is another Lanvia node in the same space.
 type Peer struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
 	OS     string `json:"os"`
 	Addr   string `json:"addr"`
 	Manual bool   `json:"manual"`
-	Enc    bool   `json:"enc"` // 对方支持加密（v0.5 起）
-	// 通过“手动添加”的哪个地址找到的（可能是主机名，和 Addr 不同）
+	Enc    bool   `json:"enc"` // the peer supports encryption (since v0.5)
+	// the "manually added" address it was found through (may be a host name, different from Addr)
 	ManualAddr string       `json:"manualAddr,omitempty"`
 	Clients    []ClientInfo `json:"clients"`
 	seen       time.Time
 	fails      int
-	beacon     bool // 也能通过广播发现
+	beacon     bool // also discoverable via broadcast
 }
 
-// Nearby 是广播里看到、但配对码不同的节点，展示在仪表盘上方便用户加入。
+// Nearby is a node seen in a broadcast but with a different pairing code; it is shown on the dashboard so the user can join it.
 type Nearby struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -62,8 +62,8 @@ type Peers struct {
 	nearby   map[string]*Nearby
 	manual   []string
 	probing  map[string]bool
-	lastSync map[string]int64 // 每个对端上次同步时对方的时间（对方的时钟）
-	auth     map[string]int   // 对某个地址使用的签名版本（见 authVer）
+	lastSync map[string]int64 // the peer's clock at the time of the last sync with that peer
+	auth     map[string]int   // the signature version used for an address (see authVer)
 	hc       *http.Client
 
 	noDiscovery bool
@@ -123,7 +123,7 @@ func (p *Peers) Get(id string) *Peer {
 	return nil
 }
 
-// ---- 发现 ----
+// ---- discovery ----
 
 func (p *Peers) listen() {
 	lc := net.ListenConfig{Control: reuseControl}
@@ -196,7 +196,7 @@ var (
 	errSelf    = errors.New("这是本机的地址")
 )
 
-// probe 用签名请求访问对方的 /api/info：只有配对码相同才会成功。
+// probe fetches the peer's /api/info with a signed request: it only succeeds when the pairing codes match.
 func (p *Peers) probe(addr string, manual bool) (*Info, error) {
 	defer func() { p.mu.Lock(); delete(p.probing, addr); p.mu.Unlock() }()
 	info, err := p.fetchInfo(addr)
@@ -226,8 +226,8 @@ func (p *Peers) probe(addr string, manual bool) (*Info, error) {
 	return info, nil
 }
 
-// noticeCaller 处理一个配对码相同、但本机还不认识的节点发来的请求：主动连回去。
-// 这样手动添加地址只需要在一边做，另一边的新内容也能发过去。
+// noticeCaller handles a request from a node with the same pairing code that this machine does
+// not know yet: it connects back on its own, so an address added manually on one side still gets the other's new content.
 func (p *Peers) noticeCaller(id, addr string) {
 	if id == "" || id == p.a.cfgSnapshot().ID {
 		return
@@ -241,7 +241,7 @@ func (p *Peers) noticeCaller(id, addr string) {
 	go p.probe(addr, false)
 }
 
-// ---- 手动添加的地址 ----
+// ---- manually added addresses ----
 
 type ManualPeer struct {
 	Addr      string `json:"addr"`
@@ -271,7 +271,7 @@ func (p *Peers) setManual(list []string) {
 	p.mu.Unlock()
 }
 
-// forget 移除手动地址后，断开只靠这个地址连上、广播里也看不到的设备。
+// forget drops the devices that were only reachable through that manual address and are not visible in broadcasts.
 func (p *Peers) forget(addr string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -341,7 +341,7 @@ func (p *Peers) refresh(id, addr string) {
 	x.Enc = info.Enc
 }
 
-// ---- 节点间请求 ----
+// ---- node to node requests ----
 
 func (p *Peers) newReq(ctx context.Context, method, addr, path string, body []byte) *http.Request {
 	req, _ := http.NewRequestWithContext(ctx, method, "http://"+addr+path, bytes.NewReader(body))
@@ -350,14 +350,14 @@ func (p *Peers) newReq(ctx context.Context, method, addr, path string, body []by
 	}
 	c := p.a.cfgSnapshot()
 	signRequest(req, p.a.creds(), c.ID, p.authVer(addr) >= 2)
-	req.Header.Set("X-Lanvia-Port", strconv.Itoa(c.Port)) // 让对方知道怎么连回来
-	req.Header.Set("X-Lanvia-Enc", "1")                   // 请对方加密响应；旧版本会忽略，照常返回明文
+	req.Header.Set("X-Lanvia-Port", strconv.Itoa(c.Port)) // let the peer know how to connect back
+	req.Header.Set("X-Lanvia-Enc", "1")                   // ask the peer to encrypt the response; old versions ignore it and return plaintext as usual
 	return req
 }
 
 var errPlaintext = errors.New("对方未加密（旧版本），而本机设置为只允许加密连接")
 
-// do 发出节点间请求，并透明地解密响应。
+// do sends a node to node request and transparently decrypts the response.
 func (p *Peers) do(client *http.Client, req *http.Request) (*http.Response, error) {
 	resp, err := client.Do(req)
 	if err != nil {
@@ -391,7 +391,7 @@ func (p *Peers) getJSON(addr, path string, v any) error {
 	return json.NewDecoder(resp.Body).Decode(v)
 }
 
-// authVer 是对某个地址使用的签名版本：默认先用 v2，对方是旧版本（不认 v2 签名）时退回 v1。
+// authVer is the signature version used for an address: v2 by default, falling back to v1 when the peer is an old version that does not understand v2 signatures.
 func (p *Peers) authVer(addr string) int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -411,7 +411,7 @@ func (p *Peers) fetchInfo(addr string) (*Info, error) {
 	var info Info
 	err := p.getJSON(addr, "/api/info", &info)
 	if err == errBadCode && p.authVer(addr) >= 2 {
-		// 可能是旧版本（只认 v1 签名），也可能配对码不同：用 v1 再试一次
+		// it may be an old version (only accepts v1 signatures) or the pairing codes may differ: retry once with v1
 		p.setAuth(addr, 1)
 		info = Info{}
 		if err = p.getJSON(addr, "/api/info", &info); err != nil {
@@ -428,8 +428,8 @@ func (p *Peers) fetchInfo(addr string) (*Info, error) {
 	return &info, nil
 }
 
-// syncHistory 拉取对方的历史：第一次全量，之后只要上次同步以来的变化（笔记本合盖再打开、Wi-Fi 抖动重连时
-// 不用每次都传整份历史）。旧版本节点不认识 since，会照常返回全部。
+// syncHistory pulls the peer's history: full the first time, then only the changes since the last
+// sync (so a laptop reopening its lid or reconnecting after Wi-Fi flapping does not resend everything). Old versions do not know the since parameter and return everything as usual.
 func (p *Peers) syncHistory(id, addr string) {
 	p.mu.Lock()
 	since := p.lastSync[id]
@@ -446,29 +446,29 @@ func (p *Peers) syncHistory(id, addr string) {
 	p.a.merge(snap, id)
 	if snap.Now > 0 {
 		p.mu.Lock()
-		p.lastSync[id] = snap.Now - 30_000 // 留 30 秒重叠：同步进行中发生的变化下次也能拿到（合并时去重）
+		p.lastSync[id] = snap.Now - 30_000 // keep a 30 second overlap: changes made during a sync are picked up next time (deduplicated on merge)
 		p.mu.Unlock()
 	}
 }
 
 type Envelope struct {
 	Op      string       `json:"op"`            // add | delete | clear | edit | meta | fav | tags | todo | comment | sync
-	EID     string       `json:"eid,omitempty"` // 消息编号：不认识的操作按它去重后原样转发，见 compat.go
+	EID     string       `json:"eid,omitempty"` // message number: unknown operations are deduplicated by it and forwarded as is, see compat.go
 	Item    *Item        `json:"item,omitempty"`
 	ID      string       `json:"id,omitempty"`
 	TS      int64        `json:"ts,omitempty"`
-	Version *TextVersion `json:"version,omitempty"` // edit：新版本
-	Comment *Comment     `json:"comment,omitempty"` // comment：新增或删除的评论
-	Snap    *storeFile   `json:"snap,omitempty"`    // sync：从其他设备同步来、需要继续转发的内容
+	Version *TextVersion `json:"version,omitempty"` // edit: the new version
+	Comment *Comment     `json:"comment,omitempty"` // comment: a comment that was added or deleted
+	Snap    *storeFile   `json:"snap,omitempty"`    // sync: content synced from another device that still has to be forwarded
 }
 
-// relay 把变更转发给除 except 以外的所有节点。
-// 每个节点只转发“自己第一次见到”的变更，所以即使不是全连通也能覆盖整个网络，且不会形成环路。
+// relay forwards a change to every node except the one named by except.
+// Each node only forwards the changes it sees for the first time, so the whole network is covered even when it is not fully connected, and no loops form.
 func (p *Peers) relay(env Envelope, except string, sender ...string) {
 	if env.EID == "" {
 		env.EID = randHex(8)
 	}
-	p.a.eids.first(env.EID) // 自己发出的消息绕回来时不再转发
+	p.a.eids.first(env.EID) // messages we sent ourselves are not forwarded when they come back
 	body, _ := json.Marshal(env)
 	if env.Op == "add" && env.Item != nil && except == "" {
 		skip := ""
@@ -481,7 +481,7 @@ func (p *Peers) relay(env Envelope, except string, sender ...string) {
 	p.relayRaw(body, except)
 }
 
-// relayRaw 把一条同步消息（JSON）原样发给除 except 以外的所有设备。
+// relayRaw sends one sync message (JSON) as is to every device except the one named by except.
 func (p *Peers) relayRaw(body []byte, except string) {
 	strict := p.a.cfgSnapshot().StrictEnc
 	for _, x := range p.List() {
@@ -508,7 +508,7 @@ func (p *Peers) relayRaw(body []byte, except string) {
 	}
 }
 
-// normalizeAddr 把用户填的地址整理成 host:port。可以带 http://、不带端口（默认 8686）。
+// postRelay sends one sync message to one device and reports whether it was delivered.
 func normalizeAddr(s string) (string, error) {
 	s = strings.TrimSpace(s)
 	s = strings.TrimPrefix(strings.TrimPrefix(s, "http://"), "https://")
@@ -538,7 +538,7 @@ func contains(list []string, s string) bool {
 	return false
 }
 
-// AddManualPeer 保存一个手动地址并立即试连；连不上也会保存，之后自动重试。
+// AddManualPeer saves a manual address and tries to connect right away; it is saved even when the connection fails and is retried automatically later.
 func (a *App) AddManualPeer(raw string) (ManualPeer, error) {
 	addr, err := normalizeAddr(raw)
 	if err != nil {
@@ -552,7 +552,7 @@ func (a *App) AddManualPeer(raw string) (ManualPeer, error) {
 	if !busy {
 		info, err = a.peers.probe(addr, true)
 	}
-	if err == errSelf || err == errBadCode { // 这两种重试也没用，不保存
+	if err == errSelf || err == errBadCode { // retrying does not help for these two, so do not save the address
 		return ManualPeer{Addr: addr}, err
 	}
 	a.updateCfg(func(c *Config) {

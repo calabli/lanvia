@@ -27,10 +27,10 @@ func TestIncrementalSnapshot(t *testing.T) {
 	if got := s.Snapshot(since); len(got.Items) != 0 || len(got.Tomb) != 0 {
 		t.Fatalf("nothing changed, but got %d items", len(got.Items))
 	}
-	// 收藏、编辑、新增、删除都算变化
+	// Favoriting, editing, adding and deleting all count as changes
 	s.applyFav("a000000000000001", true, "名字", nowMs())
 	s.applyVersions("b000000000000002", []*TextVersion{{ID: "c000000000000003", Text: "b2", By: "y", TS: nowMs()}}, true)
-	// 一条“很旧”的内容（创建时间在两天前）刚从别的设备同步过来：对本机来说是新的，下次增量同步要带上
+	// A "very old" item (created two days ago) just synced in from another device: it is new to this machine, so the next incremental sync must carry it
 	s.Add(&Item{ID: "d000000000000004", Kind: "text", Text: "old but new here", From: "z", Origin: "o", TS: nowMs() - 2*86400_000})
 	s.Delete("e000000000000005")
 
@@ -47,7 +47,7 @@ func TestIncrementalSnapshot(t *testing.T) {
 	}
 }
 
-// 最后变化时间要保存下来，重启后增量同步仍然正确
+// The last change time must be persisted, so incremental sync stays correct after a restart
 func TestSeenPersisted(t *testing.T) {
 	dir := t.TempDir()
 	s := openStore(dir)

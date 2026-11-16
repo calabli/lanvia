@@ -1,8 +1,8 @@
 'use strict';
 
-// 列表与收发：渲染、搜索、实时连接、发送文字 / 文件 / 文件夹。
+// List and messaging: rendering, search, live connection, sending text / files / folders.
 
-/* ================= 渲染 ================= */
+/* ================= Rendering ================= */
 
 function relTime(ts) {
   const d = Date.now() + S.offset - ts;
@@ -25,7 +25,7 @@ const URL_RE = /\bhttps?:\/\/[^\s<>"'，。！？）】]+/gi;
 function linkify(text) {
   return esc(text).replace(URL_RE, u => `<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`);
 }
-// 智能识别：短文本里的验证码
+// Smart detection: verification codes in short text
 function findCode(text) {
   if (text.length > 160) return null;
   if (!/验证码|校验码|动态码|code|otp|码/i.test(text)) return null;
@@ -40,12 +40,12 @@ function itemHTML(it, latest) {
   if (it.kind === 'file') {
     const mime = it.mime || '';
     const isVid = /^video\//.test(mime);
-    // 列表里只加载缩略图；没法生成缩略图的格式，小于 2 MB 才直接显示原图，否则只显示文件图标
+    // The list only loads thumbnails; formats that cannot be thumbnailed show the original only below 2 MB, otherwise just the file icon
     const src = /^image\/(png|jpe?g|gif)$/i.test(mime) ? '/api/thumb/' + it.id
       : /^image\/(webp|avif|bmp)$/i.test(mime) && it.size < 2 << 20 ? '/api/blob/' + it.id : '';
     const media = src
       ? `<img class="thumb" alt="${esc(it.name)}" data-src="${src}" data-act="view" onerror="this.remove()">`
-      // 手机上的视频要先整个下载、解密才能播放，列表里只放一个按钮，点开预览再加载
+      // Videos on phones must be downloaded and decrypted in full before they can play, so the list only holds a button and the preview loads them on demand
       : isVid ? (S.key && !plainOK(it) ? `<button class="thumb video-ph" data-act="view" aria-label="播放">${ICON.play}</button>`
         : `<video class="thumb" controls preload="metadata" data-src="/api/blob/${it.id}"></video>`) : '';
     return `${meta}${media}
@@ -68,7 +68,7 @@ function itemHTML(it, latest) {
     code ? `<button class="btn sm" data-act="code" data-v="${esc(code)}">${ICON.key}复制验证码 ${esc(code)}</button>` : '',
     url && url.length < it.text.length + 1 ? `<a class="btn sm" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${ICON.link}打开链接</a>` : '',
   ].join('');
-  // 只在全文（摘要之外）里搜到时，显示命中位置的前后文
+  // Show the context around the hit only when it was found in the full text (beyond the excerpt)
   const dh = deepHit(it);
   const terms = S.terms || [];
   const deep = dh && !terms.every(t => haystack(it).includes(t))
@@ -90,11 +90,11 @@ function itemHTML(it, latest) {
     </div>`;
 }
 
-/* ---- 清单：直接在卡片上勾选、添加、修改、删除 ---- */
+/* ---- Checklist: check, add, edit and delete right on the card ---- */
 
-const TODO_FOLD = 10; // 超过这么多项时先折叠
+const TODO_FOLD = 10; // fold first once there are more items than this
 const todoLive = it => (it.todo || []).filter(e => !e.del);
-// 纯文本形式（复制用），与 Go 端 Item.PlainText 相同
+// Plain text form (for copying), same as Item.PlainText on the Go side
 const todoText = it => [it.text, ...todoLive(it).map(e => (e.done ? '- [x] ' : '- [ ] ') + e.text)].filter(Boolean).join('\n');
 
 function todoHTML(it, meta) {
@@ -131,7 +131,7 @@ async function newTodo() {
   const ta = $('#input'), lines = ta.value.split('\n').map(s => s.trim()).filter(Boolean);
   let title = '';
   if (lines.length) {
-    // 多行时，第一行不像清单项（没有 - [ ] 1. 之类的标记）就当标题
+    // With several lines, the first line becomes the title when it does not look like a checklist item (no - [ ] 1. style marker)
     if (lines.length > 1 && !/^([-*•+]\s|\d{1,3}\.\s|\[.?\]|[☐☑✅])/.test(lines[0])) title = lines.shift();
   } else {
     title = await uiPrompt('清单名称', { placeholder: '例如：周末购物', ok: '创建' });
@@ -146,11 +146,11 @@ async function newTodo() {
   } catch (e) { toast('创建失败：' + e.message); }
 }
 
-/* ---- 标签 ---- */
+/* ---- Tags ---- */
 
-// 当前的标签（tags 里正数是添加时间，负数是删除的墓碑）
+// The current tags (in tags a positive value is the add time, a negative one is a deletion tombstone)
 const liveTags = it => Object.keys(it.tags || {}).filter(k => it.tags[k] > 0).sort((a, b) => a.localeCompare(b));
-// 所有在用的标签和次数，次数多的在前
+// All tags in use with their counts, the most used ones first
 function allTags() {
   const cnt = new Map();
   for (const it of S.items) for (const t of liveTags(it)) cnt.set(t, (cnt.get(t) || 0) + 1);
@@ -160,7 +160,7 @@ function tagsHTML(it) {
   const ts = liveTags(it);
   return ts.length ? `<div class="tags">${ts.map(t => `<button class="tag${S.tag === t ? ' on' : ''}" data-act="tag-filter" data-tag="${esc(t)}" title="只看这个标签"><span data-raw>#${esc(t)}</span></button>`).join('')}</div>` : '';
 }
-// 列表上方的标签栏：点一下只看这个标签，再点一下取消
+// Tag bar above the list: click to show only that tag, click again to clear
 function renderTagBar() {
   const bar = $('#tagBar'), tags = allTags();
   if (S.tag && !tags.some(([t]) => t === S.tag)) S.tag = '';
@@ -176,14 +176,14 @@ function setTagFilter(t) {
 
 const isLong = it => it.kind === 'text' && (it.text.length > 280 || it.text.split('\n').length > 4);
 const textStats = t => { const n = t.split('\n').length; return (n > 1 ? n + ' 行 · ' : '') + t.length + ' 字'; };
-// 列表里的长正文是截断的：字数用全文的，行数只能说“以上”
+// Long text in the list is truncated: the character count comes from the full text, the line count can only say "or more"
 const itemStats = it => it.textLen ? `${it.text.split('\n').length}+ 行 · ${it.textLen} 字` : textStats(it.text);
 
-/* ---- 搜索：多个关键词（空格分隔）同时匹配；找不到时退回模糊匹配；按类型、设备、时间筛选 ---- */
+/* ---- Search: several keywords (space separated) must all match; falls back to fuzzy matching; filter by kind, device and time ---- */
 
 const haystack = it => ((it.title || '') + '\n' + (it.text || it.name || '') + '\n' + it.from + (it.todo ? '\n' + todoLive(it).map(e => e.text).join('\n') : '') + '\n' + liveTags(it).map(t => '#' + t).join(' ')).toLowerCase();
 
-// 模糊匹配：关键词的字符按顺序出现即可，间隔越小越相关；间隔太大（长文本里碰巧凑齐）不算
+// Fuzzy match: the keyword characters only need to appear in order, the smaller the gaps the more relevant; gaps that are too large (coincidentally matched in long text) do not count
 function fuzzyScore(h, q) {
   let from = 0, last = -1, gaps = 0;
   for (const c of q) {
@@ -195,7 +195,7 @@ function fuzzyScore(h, q) {
   return gaps <= q.length * 6 ? gaps : -1;
 }
 
-// 长正文的列表里只有前 16 KB，超出部分请节点在全文里搜：{ q, hits: Map(id -> { line, snippet }) }
+// The list only holds the first 16 KB of long text, ask the node to search the full text for the rest: { q, hits: Map(id -> { line, snippet }) }
 S.deep = { q: '', hits: new Map() };
 let deepTimer;
 
@@ -207,7 +207,7 @@ function deepSearch() {
   deepTimer = setTimeout(async () => {
     try {
       const hits = await api('GET', '/api/search?q=' + encodeURIComponent(q));
-      if (S.filter.trim() !== q) return; // 已经改了关键词
+      if (S.filter.trim() !== q) return; // the keyword has changed already
       S.deep = { q, hits: new Map(hits.map(h => [h.id, h])) };
       renderList();
     } catch {}
@@ -224,7 +224,7 @@ function searchItems() {
     (!S.since || it.ts >= now - S.since) &&
     (!S.tag || liveTags(it).includes(S.tag)));
   const words = S.filter.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  // 搜索框里的 #xx 按标签筛选（标签以 xx 开头即可），其余是普通关键词
+  // #xx in the search box filters by tag (any tag starting with xx), the rest are plain keywords
   const tagTerms = words.filter(w => /^[#＃]./.test(w)).map(w => w.slice(1));
   const terms = words.filter(w => !/^[#＃]./.test(w));
   S.terms = terms; S.fuzzy = false;
@@ -242,7 +242,7 @@ function searchTerms(base, terms) {
   return scored.map(x => x[1]);
 }
 
-// 在已渲染的文字里标出关键词（只处理文本节点，不影响链接等结构）
+// Mark the keywords in the rendered text (only text nodes, links and other structures stay intact)
 function markTerms(root, terms) {
   if (!terms.length) return;
   const re = new RegExp(terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi');
@@ -281,13 +281,13 @@ function renderFromFilter() {
   sel.value = S.from;
 }
 
-/* ---- 列表渲染：增量更新 + 分页 ----
-   每张卡片按“渲染结果”做缓存，只有内容真正变化的卡片才重建，其余原样保留（不重新解析、不重播动画）。
-   先显示 PAGE 条，滚动到底部再加载更多。 */
+/* ---- List rendering: incremental updates + paging ----
+   Each card is cached by its rendered result, only cards whose content really changed are rebuilt, the rest are kept as they are (no re-parsing, no animation replay).
+   Show PAGE items first, load more when scrolled to the bottom. */
 
 const PAGE = 50;
 
-// 图片滚动到附近才加载（手机上要下载并解密）
+// Images load only once they scroll near (on phones they have to be downloaded and decrypted)
 function loadMedia(m) {
   const it = S.items.find(x => x.id === m.closest('[data-id]')?.dataset.id);
   if (!it) return;
@@ -300,7 +300,7 @@ const ROWS = new Map(); // id -> { key, el }
 S.limit = PAGE;
 
 function renderList() {
-  // 页面不可见（桌面版隐藏的窗口、切到后台的标签页）时先不渲染，回到前台再补
+  // Do not render while the page is hidden (a hidden desktop window, a backgrounded tab), catch up when it comes back to the foreground
   if (document.hidden) { S.renderPending = true; return; }
   S.renderPending = false;
   renderFromFilter();
@@ -308,14 +308,14 @@ function renderList() {
   const items = searchItems();
   const f = S.filter.trim() || S.from || S.since || S.tag;
   const fkey = [S.filter, S.kind, S.from, S.since, S.tag].join('\u0001');
-  if (fkey !== S.lastFilter) { S.lastFilter = fkey; S.limit = PAGE; } // 换了筛选条件就回到第一页
+  if (fkey !== S.lastFilter) { S.lastFilter = fkey; S.limit = PAGE; } // a new filter means back to the first page
   S.view = items;
   S.sel = Math.max(0, Math.min(S.sel, items.length - 1));
   if (PANEL && S.sel >= S.limit) S.limit = S.sel + PAGE;
   const list = $('#list');
   const terms = S.fuzzy ? '' : (S.terms || []).join('\u0002');
   const wanted = [];
-  // 正在清单卡片里输入时卡片被重建（例如刚添加的一项同步回来）：重建后把焦点和输入的文字还回去
+  // The card is rebuilt while typing in a checklist card (e.g. a just-added item synced back): restore the focus and the typed text after the rebuild
   const ae = document.activeElement;
   let refocus = ae?.matches?.('.todo-add input') ? { id: ae.closest('.item')?.dataset.id, value: ae.value } : null;
   items.slice(0, S.limit).forEach((it, i) => {
@@ -332,12 +332,12 @@ function renderList() {
       el.innerHTML = html;
       if (terms) markTerms(el, S.terms);
       el.querySelectorAll('[data-src]').forEach(m => (mediaIO ? mediaIO.observe(m) : loadMedia(m)));
-      if (prev) el.style.animation = 'none'; // 只是内容更新，不重播出现动画
+      if (prev) el.style.animation = 'none'; // content update only, do not replay the appear animation
       ROWS.set(it.id, { key, el });
     }
     wanted.push(el);
   });
-  // 删掉不再显示的，再按顺序就位（已在正确位置的不动）
+  // Remove the ones that are no longer shown, then put the rest in order (items already in place stay)
   const keep = new Set(wanted);
   for (const [id, r] of ROWS) if (!keep.has(r.el)) { r.el.remove(); ROWS.delete(id); }
   for (const c of [...list.children]) if (!keep.has(c)) c.remove();
@@ -350,7 +350,7 @@ function renderList() {
     const inp = $(`.item[data-id="${refocus.id}"] .todo-add input`);
     if (inp) { inp.value = refocus.value; inp.focus(); }
   }
-  // 标签菜单开着时（例如别的设备刚改了这条的标签），跟着刷新、重新定位
+  // While the tag menu is open (e.g. another device just changed the tags of this item), refresh and reposition it
   if (!$('#tagMenu').hidden) { renderTagMenu(); placeTagMenu(); }
   const rest = items.length - Math.min(items.length, S.limit);
   $('#listMore').hidden = rest <= 0;
@@ -385,7 +385,7 @@ function renderDevices() {
   }).join('') || '<li class="muted">暂无</li>';
   if (S.local) {
     const card = $('#pairCard');
-    if (!card.dataset.init) { // 首次：还没有别的设备时展开配对卡片
+    if (!card.dataset.init) { // first time: expand the pairing card while no other device has joined yet
       card.dataset.init = 1;
       const pref = store.get('pairCollapsed');
       card.classList.toggle('collapsed', pref ? pref === '1' : n > 1);
@@ -395,7 +395,7 @@ function renderDevices() {
 }
 
 let toastTimer;
-// 一直显示的进度提示（下载大文件时），带“取消”；结束后调用 toast() 换成普通提示
+// Progress toast that stays visible (while downloading a large file) with a "Cancel" button; call toast() afterwards to switch to a normal toast
 function toastProgress(msg, onCancel) {
   const t = $('#toast');
   t.innerHTML = `<span class="t-msg">${esc(msg)}</span>` + (onCancel ? '<button>取消</button>' : '');
@@ -413,7 +413,7 @@ function toast(msg, action) {
   toastTimer = setTimeout(() => t.classList.remove('show'), action ? 5000 : 2200);
 }
 
-/* ================= 实时连接 ================= */
+/* ================= Live connection ================= */
 
 function connect() {
   if (S.es) S.es.close();
@@ -443,7 +443,7 @@ function connect() {
     if (PREVIEW) {
       const it = S.items.find(x => x.id === PREVIEW_ID);
       if (!it) showPreviewMissing();
-      else if (PV?.id !== it.id) showPreview(it, QS.get('mode') || 'view'); // 重连时不打断正在进行的编辑
+      else if (PV?.id !== it.id) showPreview(it, QS.get('mode') || 'view'); // do not interrupt an edit in progress when reconnecting
     }
   });
   es.addEventListener('item', e => {
@@ -496,7 +496,7 @@ function onIncoming(it) {
   if (document.hidden) { S.unseen++; document.title = `(${S.unseen}) Lanvia`; }
   if (it.kind === 'text') {
     const preview = it.text.replace(/\s+/g, ' ').slice(0, 36);
-    // 电脑端已自动写入系统剪贴板，就不必再点
+    // The desktop already wrote it to the system clipboard, no need to click again
     if (S.local && S.info?.settings?.autoApply && S.info?.clipboard) toast(`来自 ${it.from}：已写入剪贴板`);
     else toast(`${it.from}：${preview}`, { label: '复制', run: () => copyItem(it) });
   } else {
@@ -504,9 +504,9 @@ function onIncoming(it) {
   }
 }
 
-/* ---- 长内容：列表里只有前 16 KB，全文按需加载 ---- */
+/* ---- Long content: the list holds only the first 16 KB, the full text is loaded on demand ---- */
 
-const FULL = new Map(); // id -> 完整内容
+const FULL = new Map(); // id -> full content
 
 async function loadFull(it) {
   if (!it.textLen) return it;
@@ -517,8 +517,8 @@ async function loadFull(it) {
   return full;
 }
 
-// 复制一条文本。电脑上由 Lanvia 按 ID 写入系统剪贴板（总是全文）；
-// 手机上写剪贴板必须在点击的同一时刻完成，长内容第一次要先加载全文，再点一次“复制”。
+// Copy one text. On the computer Lanvia writes the system clipboard by ID (always the full text);
+// on the phone the clipboard write must happen in the very same moment as the click, so for long content the first click loads the full text and you click "Copy" again.
 function copyItem(it, btn) {
   if (it.kind === 'todo') return doCopy(todoText(it), btn, it.id);
   if (!it.textLen || S.local) return doCopy(it.text, btn, it.id);
@@ -532,7 +532,7 @@ function copyItem(it, btn) {
 
 async function doCopy(text, btn, id) {
   let ok = false;
-  // 本机：由 Lanvia 直接写入系统剪贴板，不受浏览器/WebView 剪贴板权限限制
+  // Local machine: Lanvia writes the system clipboard directly, without browser/WebView clipboard permission limits
   if (S.local && id) ok = await api('POST', '/api/copy/' + id).then(() => true, () => false);
   if (!ok) ok = await copyText(text);
   if (ok && PANEL) { desktop('hide'); return; }
@@ -553,7 +553,7 @@ async function download(it) {
   a.download = it.name;
   if (!S.key || plainOK(it)) {
     a.href = signedURL('/api/blob/' + it.id, S.key ? { dl: '1', _plain: 1 } : { dl: '1' });
-  } else { // 加密传输：在后台线程里下载、解密，再交给浏览器保存（页面不会卡住）
+  } else { // encrypted transfer: download and decrypt in a background thread, then hand it to the browser to save (the page does not freeze)
     const size = it.size || 0, ac = new AbortController();
     if (size > 1 << 20) toastProgress('正在下载 0%', () => ac.abort());
     try {
@@ -568,7 +568,7 @@ async function download(it) {
   document.body.appendChild(a); a.click(); a.remove();
 }
 
-/* ================= 发送 ================= */
+/* ================= Sending ================= */
 
 async function sendText() {
   if (sendBusy) return;
@@ -597,7 +597,7 @@ function uploadFile(file) {
   $('#uploads').appendChild(row);
   const pct = $('.muted', row), bar = $('i', row);
   const xhr = new XMLHttpRequest();
-  // 文件名、类型放在（加密的）查询参数里；内容加密，很大的文件除外（见 PLAIN_MAX）
+  // File name and type go into the (encrypted) query parameters; the content is encrypted, except for very large files (see PLAIN_MAX)
   xhr.open('POST', signedURL('/api/upload', { name: file.name || 'file', from: myName(), type: file.type || '' }, 'POST'));
   xhr.setRequestHeader('Content-Type', 'application/octet-stream');
   if (S.you) xhr.setRequestHeader('X-Lanvia-Client', S.you);
@@ -631,7 +631,7 @@ function uploadFile(file) {
     .then(b => xhr.send(b), () => fail('读取文件失败'));
 }
 
-/* ---- 发送文件夹：先在本机打包成 zip，再按普通文件上传 ---- */
+/* ---- Send a folder: pack it into a zip locally first, then upload it as a regular file ---- */
 
 async function sendFolderEntry(entry) {
   const out = [];

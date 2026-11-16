@@ -21,9 +21,9 @@ func TestBlockedApps(t *testing.T) {
 		id, name string
 		want     bool
 	}{
-		{"com.1password.1password", "1Password", true},        // 按名称
-		{"com.apple.keychainaccess", "Keychain Access", true}, // 按 ID
-		{"chrome.exe", "chrome", true},                        // 不区分大小写
+		{"com.1password.1password", "1Password", true},        // by name
+		{"com.apple.keychainaccess", "Keychain Access", true}, // by ID
+		{"chrome.exe", "chrome", true},                        // case-insensitive
 		{"com.google.Chrome", "Google Chrome", false},
 		{"", "", false},
 	}
@@ -32,7 +32,7 @@ func TestBlockedApps(t *testing.T) {
 			t.Errorf("noteApp(%q, %q) = %v", c.id, c.name, got)
 		}
 	}
-	if len(a.RecentApps()) != 4 { // 空的不记
+	if len(a.RecentApps()) != 4 { // empty ones are not recorded
 		t.Errorf("recent apps: %v", a.RecentApps())
 	}
 }
@@ -54,14 +54,14 @@ func TestIncomingHook(t *testing.T) {
 	a := testApp(t, nil)
 	var n atomic.Int32
 	a.OnIncoming(func(Item) { n.Add(1) })
-	// 本机剪贴板 / 本机仪表盘发出的：不通知
+	// From the local clipboard / the local dashboard: no notification
 	a.newText("from this mac", "MyMac", false)
-	// 手机经由本机、或其他电脑转发来的：通知
+	// From a phone via this machine, or forwarded by another computer: notify
 	a.newText("from phone", "iPhone", true)
 	a.ingest(&Item{ID: "b2b2b2b2b2b2b2b2", Kind: "text", Text: "from peer", From: "Windows PC", Origin: "x", TS: nowMs()}, "peer1", false)
-	// 历史同步合并来的：不通知
+	// Merged in from history sync: no notification
 	a.merge(storeFile{Items: []*Item{{ID: "c3c3c3c3c3c3c3c3", Kind: "text", Text: "old", From: "iPad", Origin: "x", TS: nowMs() - 1000}}}, "peer1")
-	time.Sleep(100 * time.Millisecond) // 回调在 goroutine 里
+	time.Sleep(100 * time.Millisecond) // the callback runs in a goroutine
 	if got := n.Load(); got != 2 {
 		t.Fatalf("incoming notifications = %d, want 2", got)
 	}

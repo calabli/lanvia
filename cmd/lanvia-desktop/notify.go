@@ -12,8 +12,8 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 )
 
-// 系统通知：其他设备发来内容时提醒。窗口在前台时不弹（页面里已有提示），
-// 短时间内连续收到的合并成一条，避免刷屏。
+// System notifications: they warn when another device sends content. Nothing pops up while a window is in the foreground (the page already shows a hint),
+// and items received in a short time are merged into one, to avoid flooding the screen.
 
 const (
 	catText = "lanvia-text"
@@ -36,7 +36,7 @@ func newNotifier(d *desktop) *notifier {
 	return n
 }
 
-// setup 在第一次发通知时请求权限并注册按钮（服务启动后才能调用）。
+// setup requests the permission and registers the buttons on the first notification (it can only be called after the service has started).
 func (n *notifier) setup() {
 	n.once.Do(func() {
 		ok, err := n.ns.CheckNotificationAuthorization()
@@ -57,7 +57,7 @@ func (n *notifier) setup() {
 	})
 }
 
-// incoming 由 core 在其他设备发来新内容时调用。
+// incoming is called by core when another device sends new content.
 func (n *notifier) incoming(it core.Item) {
 	if !n.d.node.Settings().Notify || n.d.anyWindowFocused() {
 		return
@@ -113,7 +113,7 @@ func (n *notifier) flush() {
 	}
 }
 
-// simple 发一条不带按钮的通知（例如有新版本）。
+// simple sends a notification without buttons (for example when a new version is available).
 func (n *notifier) simple(title, body string) {
 	n.setup()
 	if !n.ready {
@@ -138,7 +138,7 @@ func (n *notifier) onResponse(r notifications.NotificationResult) {
 		if p, err := n.d.node.SaveFile(id); err == nil {
 			core.RevealFile(p)
 		}
-	default: // 点了通知本身：打开预览
+	default: // the notification itself was clicked: open the preview
 		n.d.openPreview(id)
 	}
 }

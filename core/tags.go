@@ -8,20 +8,20 @@ import (
 	"unicode/utf8"
 )
 
-// 标签：每条内容可以有若干标签，同步到所有设备，可以按标签筛选和搜索。
+// Tags: each entry can carry a number of tags, which are synced to all devices and can be used to filter and search.
 //
-// Item.Tags 记录每个标签最近一次被添加或移除的时间：正数表示添加于该时间，负数表示移除于该时间（墓碑）。
-// 同步时按标签各自取时间较新的一方（时间相同时“添加”优先），所以两台设备同时给同一条内容
-// 一边加 A、一边删 B，两个修改都会保留；删掉的标签也不会被同步回来。
-// 旧版本不认识这个字段，会忽略它（经过旧版本转发的内容会丢掉标签，直接相连的新版本之间照常同步）。
+// Item.Tags records the time when each tag was last added or removed: a positive value means it was added at that time, a negative value means it was removed at that time (tombstone).
+// During sync each tag keeps whichever side has the newer timestamp (on a tie "added" wins), so when two devices change the same entry at the same time,
+// one adding A and the other removing B, both changes are kept; a removed tag is not synced back either.
+// Older versions do not know this field and ignore it (content relayed through an old version loses its tags, while directly connected new versions still sync them as usual).
 
 const (
-	maxTags       = 20 // 每条内容最多的标签数
-	maxTagEntries = 60 // 含墓碑最多保留这么多
-	maxTagLen     = 30 // 每个标签最多的字数
+	maxTags       = 20 // maximum number of tags per entry
+	maxTagEntries = 60 // at most this many entries are kept, tombstones included
+	maxTagLen     = 30 // maximum number of characters per tag
 )
 
-// normalizeTag 整理用户输入的标签：去掉开头的 #、首尾空白，连续空白合并成一个，过长截断。不合法时返回空。
+// normalizeTag cleans up a tag entered by the user: drops a leading #, trims the surrounding whitespace, collapses runs of whitespace into one and truncates it when too long. Returns an empty string when it is not valid.
 func normalizeTag(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.TrimLeft(s, "#＃")
@@ -42,7 +42,7 @@ func absTS(v int64) int64 {
 	return v
 }
 
-// LiveTags 返回当前的标签（按名称排序）。
+// LiveTags returns the current tags, sorted by name.
 func (it *Item) LiveTags() []string {
 	var out []string
 	for k, v := range it.Tags {
@@ -54,7 +54,7 @@ func (it *Item) LiveTags() []string {
 	return out
 }
 
-// mergeTags 把 in 并入 cur，返回新的表和是否有变化。cur 不会被修改。
+// mergeTags merges in into cur and returns the new map together with whether anything changed. cur is not modified.
 func mergeTags(cur, in map[string]int64) (map[string]int64, bool) {
 	var out map[string]int64
 	for k, v := range in {
@@ -63,7 +63,7 @@ func mergeTags(cur, in map[string]int64) (map[string]int64, bool) {
 		}
 		old, ok := cur[k]
 		if ok && (absTS(v) < absTS(old) || (absTS(v) == absTS(old) && (v == old || old > 0))) {
-			continue // 本机的更新，或者一样
+			continue // the local update, or the same
 		}
 		if out == nil {
 			out = make(map[string]int64, len(cur)+len(in))
@@ -76,7 +76,7 @@ func mergeTags(cur, in map[string]int64) (map[string]int64, bool) {
 	if out == nil {
 		return cur, false
 	}
-	// 太多时先丢最旧的墓碑
+	// when there are too many, drop the oldest tombstones first
 	for len(out) > maxTagEntries {
 		oldest, ts := "", int64(0)
 		for k, v := range out {
@@ -92,7 +92,7 @@ func mergeTags(cur, in map[string]int64) (map[string]int64, bool) {
 	return out, true
 }
 
-// applyTags 把标签的变化并入一条内容。返回更新后的内容副本，没有变化时返回 nil。
+// applyTags merges the tag changes into an entry. It returns a copy of the updated entry, or nil when nothing changed.
 func (s *Store) applyTags(id string, in map[string]int64) *Item {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -104,7 +104,7 @@ func (s *Store) applyTags(id string, in map[string]int64) *Item {
 	if !changed {
 		return nil
 	}
-	n := *s.items[i] // 写时复制
+	n := *s.items[i] // copy on write
 	n.Tags = tags
 	s.setAt(i, &n)
 	s.touch(id)
@@ -112,14 +112,14 @@ func (s *Store) applyTags(id string, in map[string]int64) *Item {
 	return &n
 }
 
-// SetTags 在本机给一条内容添加、移除标签，并同步给所有设备。
+// SetTags adds and removes tags of an entry on this machine and syncs the result to all devices.
 func (a *App) SetTags(id string, add, remove []string) (*Item, error) {
 	cur := a.store.Get(id)
 	if cur == nil {
 		return nil, errors.New("内容不存在")
 	}
 	live := cur.LiveTags()
-	// 和已有标签只差大小写的，沿用已有的写法（例如已经有 Work，再加 work 时还是 Work）
+	// tags that differ from an existing one only in case reuse the existing spelling (for example, with Work already present, adding work still yields Work)
 	known := map[string]string{}
 	for _, t := range a.AllTags() {
 		known[strings.ToLower(t.Name)] = t.Name
@@ -165,13 +165,13 @@ func (a *App) afterTags(it *Item, ch map[string]int64, fromPeer string) {
 	a.changed()
 }
 
-// TagCount 是一个标签和用到它的内容数。
+// TagCount is a tag together with the number of entries using it.
 type TagCount struct {
 	Name  string `json:"name"`
 	Count int    `json:"count"`
 }
 
-// AllTags 返回所有在用的标签，按使用次数从多到少。
+// AllTags returns all tags in use, sorted by usage count from most to least used.
 func (a *App) AllTags() []TagCount {
 	cnt := map[string]int{}
 	for _, it := range a.store.List() {

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# 打包所有发布产物到 dist/。需要在 macOS 上运行（Mac 桌面版依赖 cgo 和 Xcode 工具链）。
+# Build every release artifact into dist/. Must run on macOS (the Mac desktop app needs cgo and the Xcode toolchain).
 #
-#   scripts/build.sh            # 全部
-#   scripts/build.sh desktop    # 只打桌面客户端
-#   scripts/build.sh cli        # 只打命令行版
+#   scripts/build.sh            # everything
+#   scripts/build.sh desktop    # desktop client only
+#   scripts/build.sh cli        # command line version only
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -19,7 +19,7 @@ build_cli() {
     if [ "$os" = windows ]; then
       GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "$LDFLAGS" -o "$DIST/$name.exe" ./cmd/lanvia
     elif [ "$os" = darwin ]; then
-      # Mac 用 cgo 编译，剪贴板走原生 NSPasteboard（不必每次轮询都启动 pbpaste）
+      # Build the Mac version with cgo so the clipboard uses the native NSPasteboard (no pbpaste process per poll)
       tmp=$(mktemp -d)
       clang_arch=$([ $arch = amd64 ] && echo x86_64 || echo arm64)
       MACOSX_DEPLOYMENT_TARGET=13.0 GOOS=$os GOARCH=$arch CGO_ENABLED=1 CC="clang -arch $clang_arch" \
@@ -36,9 +36,9 @@ build_cli() {
   done
 }
 
-# 临时签名并严格校验。没有 Developer ID 证书时，Apple 芯片也要求二进制至少有一个完整的签名；
-# 签名不完整时 macOS 会直接报“已损坏”，签名完整时只提示“无法验证开发者”，可以放行。
-# 先清掉附加属性（Finder 信息、资源分支），否则签名会失败或被判为无效。
+# Sign ad hoc and verify strictly. Strip the extended attributes first (Finder info, resource
+# forks), otherwise signing fails or the result is judged invalid. Without a Developer ID
+# certificate, Apple silicon still requires a complete signature.
 sign_app() {
   xattr -cr "$1"
   codesign --force --deep -s - --identifier app.lanvia.desktop "$1" >/dev/null
@@ -49,7 +49,7 @@ build_mac_app() {
   local tmp app
   tmp=$(mktemp -d)
   app="$tmp/Lanvia.app"
-  # 与 Go 1.26 的最低要求（macOS 13）一致；不设置时会按本机 SDK 的最新系统版本链接
+  # Matches the Go 1.26 minimum (macOS 13); without it the binary links against the newest system version of the local SDK
   export MACOSX_DEPLOYMENT_TARGET=13.0
   for arch in arm64 amd64; do
     clang_arch=$([ $arch = amd64 ] && echo x86_64 || echo arm64)
@@ -60,7 +60,7 @@ build_mac_app() {
   mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
   lipo -create -output "$app/Contents/MacOS/Lanvia" "$tmp/lanvia-arm64" "$tmp/lanvia-amd64"
 
-  # 图标：从 1024 的 PNG 生成 .icns
+  # Icon: build the .icns from the 1024 px PNG
   local iconset="$tmp/AppIcon.iconset"
   mkdir -p "$iconset"
   for s in 16 32 128 256 512; do
@@ -70,14 +70,14 @@ build_mac_app() {
   iconutil -c icns "$iconset" -o "$app/Contents/Resources/AppIcon.icns"
   sed "s/{{VERSION}}/$VERSION/g" cmd/lanvia-desktop/build/Info.plist > "$app/Contents/Info.plist"
 
-  # 通用版（Apple 芯片和 Intel 都能用）：打成 zip 给自动更新用（旧版本按这个文件名找 Mac 安装包）
+  # Universal build (works on Apple silicon and Intel): zipped for the auto updater (older versions look for the Mac installer under this name)
   sign_app "$app"
   rm -f "$DIST/Lanvia-macos.zip" "$DIST/Lanvia-macos.dmg" "$DIST"/Lanvia-macos-*.dmg
   ditto -c -k --keepParent "$app" "$DIST/Lanvia-macos.zip"
-  # 不在 dist 里留未打包的 Lanvia.app：Spotlight 和启动台会把它当成已安装的应用收录
+  # Do not leave an unpacked Lanvia.app in dist/: Spotlight and Launchpad would index it as an installed app
   rm -rf "$DIST/Lanvia.app"
 
-  # 给用户下载安装的：每种芯片一个安装包，只带对应芯片的程序，体积小一半
+  # What users download and install: one package per chip, carrying only that chip's binary, half the size
   for arch in arm64 amd64; do
     local thin="$tmp/$arch/Lanvia.app"
     mkdir -p "$tmp/$arch" && cp -R "$app" "$thin"
@@ -89,9 +89,9 @@ build_mac_app() {
   echo "  ✓ Lanvia.app → Lanvia-macos.zip（通用，自动更新用）、Lanvia-macos-apple-silicon.dmg、Lanvia-macos-intel.dmg"
 }
 
-# DMG：里面是 macOS 安装器（“安装 Lanvia.pkg”）和安装说明。用安装器而不是拖拽：
-# 有欢迎页和进度条，固定装到“应用程序”（装好后出现在启动台和 Spotlight），装完自动打开；
-# 安装器装上的程序不带隔离标记，所以放行一次安装器之后，打开 Lanvia 不会再被拦。
+# DMG: contains the macOS installer (the "安装 Lanvia.pkg" package) and the install guide. An
+# installer rather than drag and drop: it has a welcome page and a progress bar, always installs
+# into /Applications and opens itself when done. The apps it installs carry no quarantine flag.
 build_mac_dmg() {
   local app=$1 arch=$2 file name name_en host
   case $arch in
@@ -102,7 +102,7 @@ build_mac_dmg() {
   tmp=$(mktemp -d); root="$tmp/root"; res="$tmp/res"; stage="$tmp/stage"
   mkdir -p "$root/Applications" "$res" "$stage"
   cp -R "$app" "$root/Applications/Lanvia.app"
-  # 不允许“搬家”：否则电脑上别处已有 Lanvia.app 时，安装器会把新版本装到那里，而不是“应用程序”
+  # Do not allow relocating: otherwise an existing Lanvia.app elsewhere would take the new version instead of /Applications
   pkgbuild --analyze --root "$root" "$tmp/component.plist" >/dev/null
   plutil -replace 0.BundleIsRelocatable -bool NO "$tmp/component.plist"
   pkgbuild --quiet --root "$root" --component-plist "$tmp/component.plist" --identifier app.lanvia.desktop \
@@ -118,7 +118,7 @@ build_mac_dmg() {
 }
 
 build_windows_desktop() {
-  # 生成带图标和高 DPI 清单的资源文件（.syso 会被 go build 自动链接）
+  # Build the resource file with the icon and the high-DPI manifest (.syso is linked in by go build)
   (cd cmd/lanvia-desktop && go run github.com/tc-hib/go-winres@v0.3.3 simply \
     --arch amd64,arm64 --manifest gui --icon build/appicon-windows.png \
     --product-name Lanvia --file-description "Lanvia" --original-filename Lanvia.exe \

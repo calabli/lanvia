@@ -7,22 +7,22 @@ import (
 	"unicode/utf8"
 )
 
-// Comment 是对一条内容的评论。
+// Comment is a comment on an item.
 //
-// 同步规则与编辑历史相同（多台设备同时评论、删除也能收敛到同一结果）：
-//   - 评论集合按 ID 去重，各节点之间求并集；
-//   - 删除不真的删掉，而是记下删除时间（墓碑），这样删除也能传播，不会被别的设备同步回来；
-//   - 同一条评论两边的删除时间取较早的非零值，所以哪边先合并结果都一样。
+// The sync rules are the same as for the edit history (several devices commenting and deleting at the same time still converge on the same result):
+//   - the comment set is deduplicated by ID and unioned across nodes;
+//   - a delete does not really remove the comment, it records the deletion time (a tombstone), so the deletion can spread and is not synced back by another device;
+//   - both sides take the earlier non-zero deletion time for the same comment, so the result of merging is the same.
 type Comment struct {
 	ID   string `json:"id"`
 	Text string `json:"text"`
 	By   string `json:"by"`
 	TS   int64  `json:"ts"`
-	Del  int64  `json:"del,omitempty"` // 删除时间，0 表示未删除
+	Del  int64  `json:"del,omitempty"` // deletion time, 0 means not deleted
 }
 
 const (
-	maxComments   = 200 // 每条内容最多保留的评论数（含已删除的墓碑）
+	maxComments   = 200 // maximum number of comments kept per item (including the tombstones of deleted ones)
 	maxCommentLen = 4000
 )
 
@@ -41,7 +41,7 @@ func liveComments(cs []*Comment) int {
 	return n
 }
 
-// applyComments 把一组评论（新增或删除）并入某条内容。返回更新后的内容副本，没有变化时返回 nil。
+// applyComments merges a set of comments (additions or deletions) into an item. It returns the updated copy of the item, or nil when nothing changed.
 func (s *Store) applyComments(id string, in []*Comment) *Item {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -67,9 +67,9 @@ func (s *Store) applyComments(id string, in []*Comment) *Item {
 			changed = true
 			continue
 		}
-		// 已有的评论：只可能多出一个删除标记
+		// an existing comment: it can only gain a deletion marker
 		if c.Del > 0 && (old.Del == 0 || c.Del < old.Del) {
-			n := *old // 写时复制
+			n := *old // copy on write
 			n.Del, n.Text = c.Del, ""
 			for i := range cs {
 				if cs[i] == old {
@@ -83,13 +83,13 @@ func (s *Store) applyComments(id string, in []*Comment) *Item {
 	if !changed {
 		return nil
 	}
-	sort.Slice(cs, func(i, j int) bool { // 旧的在前
+	sort.Slice(cs, func(i, j int) bool { // oldest first
 		if cs[i].TS != cs[j].TS {
 			return cs[i].TS < cs[j].TS
 		}
 		return cs[i].ID < cs[j].ID
 	})
-	// 太多时先丢最旧的墓碑，再丢最旧的评论
+	// when there are too many, drop the oldest tombstones first, then the oldest comments
 	for len(cs) > maxComments {
 		drop := 0
 		for i, c := range cs {
@@ -110,7 +110,7 @@ func (s *Store) applyComments(id string, in []*Comment) *Item {
 	return &n
 }
 
-// Comments 返回某条内容未删除的评论，旧的在前。
+// Comments returns the comments of an item that are not deleted, oldest first.
 func (s *Store) Comments(id string) []*Comment {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -123,14 +123,14 @@ func (s *Store) Comments(id string) []*Comment {
 	return out
 }
 
-// allComments 返回某条内容的全部评论（含墓碑），用于同步。
+// allComments returns all comments of an item (including the tombstones), for syncing.
 func (s *Store) allComments(id string) []*Comment {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]*Comment(nil), s.comments[id]...)
 }
 
-// AddComment 在本机给一条内容添加评论，并同步给所有设备。
+// AddComment adds a comment to an item on this machine and syncs it to every device.
 func (a *App) AddComment(id, text, by string) (*Comment, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -148,7 +148,7 @@ func (a *App) AddComment(id, text, by string) (*Comment, error) {
 	return c, nil
 }
 
-// DeleteComment 删除一条评论（所有设备上都删除）。
+// DeleteComment deletes a comment (on every device).
 func (a *App) DeleteComment(id, cid string) error {
 	var cur *Comment
 	for _, c := range a.store.Comments(id) {
@@ -174,7 +174,7 @@ func (a *App) applyRemoteComment(id string, c *Comment, fromPeer string) {
 }
 
 func (a *App) afterComment(it *Item, c *Comment, fromPeer string) {
-	a.bcastItem("update", it) // 网页据此更新评论数；正在看这条的预览会重新取评论
+	a.bcastItem("update", it) // the web page updates the comment count from this; the preview of this item reloads the comments
 	a.peers.relay(Envelope{Op: "comment", ID: it.ID, Comment: c}, fromPeer)
 	a.changed()
 }

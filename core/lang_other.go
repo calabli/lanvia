@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// 终端里通常有 LANG；没有时（例如从图形界面启动）在 macOS 上读取首选语言。
+// The terminal usually has LANG; without it (for example when started from a GUI) macOS reports the preferred language.
 func platformLanguage() string {
 	if out, err := exec.Command("defaults", "read", "-g", "AppleLanguages").Output(); err == nil {
 		for _, f := range strings.FieldsFunc(string(out), func(r rune) bool { return strings.ContainsRune("()\",\n ", r) }) {

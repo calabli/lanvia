@@ -10,20 +10,20 @@ import (
 	"unicode/utf8"
 )
 
-// errSkip 表示剪贴板内容被标记为敏感（如密码管理器），不应同步。
+// errSkip means the clipboard content is marked as sensitive (by a password manager, for example) and must not be synced.
 var errSkip = errors.New("clipboard content excluded")
 
-// ClipWatcher 轮询系统剪贴板。各平台的 readClipboard / writeClipboard 见 clipboard_*.go。
+// ClipWatcher polls the system clipboard. The per-platform readClipboard / writeClipboard are in clipboard_*.go.
 type ClipWatcher struct {
 	a       *App
 	mu      sync.Mutex
 	last    string
-	seq     int64    // 上次看到的剪贴板变化计数（不支持的平台为 -1）
-	lastImg [32]byte // 上次发送或写入的图片的哈希
+	seq     int64    // the clipboard change counter seen last time (-1 on platforms without support)
+	lastImg [32]byte // hash of the image last sent or written
 	ok      bool
-	idle    bool // 上一轮处于被动模式或暂停中
+	idle    bool // the previous round was in passive mode or paused
 
-	// 手动发送页面每 2 秒查一次剪贴板：图片按变化计数缓存，内容没变就不重新读取、转换
+	// the manual send page polls the clipboard every 2 seconds: images are cached by change counter, and unchanged content is not read or converted again
 	peekSeq  int64
 	peekSize int
 	peekHash [32]byte
@@ -32,7 +32,7 @@ type ClipWatcher struct {
 func newClipWatcher(a *App) *ClipWatcher {
 	c := &ClipWatcher{a: a, ok: clipboardSupported(), seq: -1}
 	if c.ok {
-		c.last, _ = readClipboard() // 启动时已有的内容不分享
+		c.last, _ = readClipboard() // content already in the clipboard at startup is not shared
 		c.seq = clipSeq()
 	}
 	return c
@@ -48,9 +48,9 @@ func (c *ClipWatcher) run() {
 	}
 }
 
-// poll 检查一次剪贴板，有新复制的文字或图片就发送。
+// poll checks the clipboard once and sends newly copied text or images.
 func (c *ClipWatcher) poll() {
-	// 被动模式或暂停中不发送；恢复时把当前剪贴板记为已处理，不补发这段时间复制的内容
+	// nothing is sent in passive mode or while paused; on resume the current clipboard is marked as handled, so the content copied in between is not sent later
 	if !c.a.cfgSnapshot().Watch || c.a.Paused() {
 		c.idle = true
 		return
@@ -65,7 +65,7 @@ func (c *ClipWatcher) poll() {
 	changed := seq < 0 || seq != c.seq
 	c.seq = seq
 	txt, err := readClipboard()
-	// 剪贴板变了、里面没有文字：可能是图片（截图、在浏览器或看图软件里复制的图片）
+	// the clipboard changed but holds no text: it may be an image (a screenshot, or an image copied in a browser or image viewer)
 	if changed && seq >= 0 && err == nil && txt == "" {
 		img, _ := readClipboardImage()
 		h := sha256.Sum256(img)
@@ -75,7 +75,7 @@ func (c *ClipWatcher) poll() {
 		}
 		c.lastImg = h
 		c.mu.Unlock()
-		// 访达里复制的文件也带着图标图片；被标记为敏感的、黑名单应用里复制的都不发送
+		// files copied in Finder also carry an icon image; content marked as sensitive or copied in a blacklisted app is not sent
 		if skipClipboardChange() {
 			return
 		}
@@ -97,18 +97,18 @@ func (c *ClipWatcher) poll() {
 	if len(txt) > maxTextLen || !utf8.ValidString(txt) {
 		return
 	}
-	// 只在内容变化时检查一次：复制的是文件（只共享拖拽进来的文件）或被标记为敏感的内容就不发送
+	// check only once when the content changed: if what was copied is a file (only files dragged in are shared) or the content is marked as sensitive, nothing is sent
 	if skipClipboardChange() {
 		return
 	}
-	// 在黑名单里的应用中复制的不发送
+	// content copied in a blacklisted app is not sent
 	if id, name := frontApp(); c.a.noteApp(id, name) {
 		return
 	}
 	c.a.newText(txt, c.a.cfgSnapshot().Name, false)
 }
 
-// Apply 把远端内容写入本机剪贴板，同时记住它，避免被当作新内容再次广播。
+// Apply writes remote content to the local clipboard and remembers it, so it is not broadcast again as new content.
 func (c *ClipWatcher) Apply(text string) error {
 	if !c.ok {
 		return errors.New("clipboard unsupported")
@@ -121,7 +121,7 @@ func (c *ClipWatcher) Apply(text string) error {
 	return err
 }
 
-// ApplyImage 把远端发来的图片写入本机剪贴板，不会被当作新复制的图片再发出去。
+// ApplyImage writes an image received from a remote peer to the local clipboard, so it is not sent out again as a newly copied image.
 func (c *ClipWatcher) ApplyImage(data []byte) error {
 	if !c.ok {
 		return errors.New("clipboard unsupported")
@@ -132,12 +132,12 @@ func (c *ClipWatcher) ApplyImage(data []byte) error {
 	c.seq = clipSeq()
 	c.last = ""
 	if img, e := readClipboardImage(); e == nil {
-		c.lastImg = sha256.Sum256(img) // 万一计数没变也能认出来
+		c.lastImg = sha256.Sum256(img) // recognized even if the counter did not change
 	}
 	return err
 }
 
-// resync 把当前剪贴板记为已处理。从被动切回主动时调用，避免补发被动期间复制的内容。
+// resync marks the current clipboard as handled. It is called when switching from passive back to active mode, to avoid sending the content copied while passive.
 func (c *ClipWatcher) resync() {
 	if !c.ok {
 		return
@@ -148,16 +148,16 @@ func (c *ClipWatcher) resync() {
 	c.mu.Unlock()
 }
 
-// ClipboardState 是本机剪贴板的当前状态，给被动模式的“发送当前剪贴板”用。
+// ClipboardState is the current state of the local clipboard, used by the passive mode "send current clipboard" action.
 type ClipboardState struct {
-	Text   string `json:"text"`             // 预览（截断）
-	Length int    `json:"length"`           // 完整长度（字符数）
-	Image  int    `json:"image,omitempty"`  // 剪贴板里是图片时：图片大小（字节）
-	Reason string `json:"reason,omitempty"` // 不能发送的原因
-	Sent   bool   `json:"sent"`             // 和最新一条内容相同
+	Text   string `json:"text"`             // preview (truncated)
+	Length int    `json:"length"`           // full length (in characters)
+	Image  int    `json:"image,omitempty"`  // when the clipboard holds an image: the image size in bytes
+	Reason string `json:"reason,omitempty"` // why it cannot be sent
+	Sent   bool   `json:"sent"`             // same as the newest item
 }
 
-// peekImage 看看剪贴板里有没有图片（没有文字时调用，调用方持有 c.mu）。返回大小和哈希，图片太大时 size 为 -1。
+// peekImage looks for an image in the clipboard (called when there is no text, the caller holds c.mu). It returns the size and the hash, size is -1 for an image that is too large.
 func (c *ClipWatcher) peekImage() (size int, hash [32]byte) {
 	seq := clipSeq()
 	if seq < 0 {
@@ -167,7 +167,7 @@ func (c *ClipWatcher) peekImage() (size int, hash [32]byte) {
 		return c.peekSize, c.peekHash
 	}
 	c.peekSeq, c.peekSize, c.peekHash = seq, 0, [32]byte{}
-	if skipClipboardChange() { // 访达里复制的文件
+	if skipClipboardChange() { // files copied in Finder
 		return 0, hash
 	}
 	img, err := readClipboardImage()
@@ -199,7 +199,7 @@ func (c *ClipWatcher) read() (txt, reason string) {
 	return txt, ""
 }
 
-// ClipboardState 读取当前剪贴板（不发送）。
+// ClipboardState reads the current clipboard (without sending it).
 func (a *App) ClipboardState() ClipboardState {
 	a.clip.mu.Lock()
 	txt, reason := a.clip.read()
@@ -223,14 +223,14 @@ func (a *App) ClipboardState() ClipboardState {
 	return st
 }
 
-// SendClipboard 手动发送当前剪贴板里的文字（被动模式下使用，主动模式下也可以用）。
+// SendClipboard manually sends the text in the current clipboard (used in passive mode, also available in active mode).
 func (a *App) SendClipboard() (*Item, error) {
 	a.clip.mu.Lock()
 	txt, reason := a.clip.read()
 	if reason == "" {
-		a.clip.last = txt // 主动模式下不会再自动发一遍
+		a.clip.last = txt // in active mode it is not sent automatically again
 	}
-	// 没有文字时看看是不是图片
+	// when there is no text, check whether it is an image
 	if txt == "" && reason == "剪贴板里没有文字或图片" && clipSeq() >= 0 && !skipClipboardChange() {
 		if img, err := readClipboardImage(); err == nil && len(img) > 0 {
 			h := sha256.Sum256(img)
@@ -252,20 +252,20 @@ func (a *App) SendClipboard() (*Item, error) {
 		return nil, errors.New(reason)
 	}
 	if l := a.store.LatestText(); l != nil && l.Text == txt {
-		return l, nil // 已经是最新一条，不重复发送
+		return l, nil // already the newest item, do not send it again
 	}
 	return a.newText(txt, a.cfgSnapshot().Name, false), nil
 }
 
-// ---- 暂停同步 ----
+// ---- paused sync ----
 
-// Paused 表示暂停中：本机复制的不发送，收到的不写入剪贴板（仍会出现在列表里）。
+// Paused reports whether syncing is paused: content copied here is not sent and received content is not written to the clipboard (it still shows up in the list).
 func (a *App) Paused() bool {
 	pu := a.cfgSnapshot().PausedUntil
 	return pu == -1 || pu > nowMs()
 }
 
-// Pause 暂停一段时间；d < 0 表示直到手动恢复，d == 0 表示恢复。
+// Pause pauses for a while; d < 0 means until it is resumed manually, d == 0 means resume.
 func (a *App) Pause(d time.Duration) {
 	var until int64
 	switch {
@@ -280,19 +280,19 @@ func (a *App) Pause(d time.Duration) {
 	a.updateCfg(func(c *Config) { c.PausedUntil = until })
 }
 
-// autoResume 到点后清掉暂停状态（让界面和托盘及时更新）。
+// autoResume clears the paused state once the time is up (so the UI and the tray update in time).
 func (a *App) autoResume() {
 	if pu := a.cfgSnapshot().PausedUntil; pu > 0 && pu <= nowMs() {
 		a.updateCfg(func(c *Config) { c.PausedUntil = 0 })
 	}
 }
 
-// ---- 应用黑名单 ----
+// ---- app blacklist ----
 
-// SourceApp 是复制内容时位于最前面的应用。
+// SourceApp is the app in the foreground when the content was copied.
 type SourceApp struct {
-	ID   string `json:"id"`   // macOS 为 bundle id，Windows 为进程名（如 chrome.exe）
-	Name string `json:"name"` // 显示名
+	ID   string `json:"id"`   // bundle id on macOS, process name on Windows (chrome.exe for example)
+	Name string `json:"name"` // display name
 	Seen int64  `json:"seen"`
 }
 
@@ -301,7 +301,7 @@ var (
 	recentApps = map[string]*SourceApp{}
 )
 
-// noteApp 记下最近复制来源，返回这个应用是否在黑名单里。
+// noteApp records the most recent copy source and reports whether that app is on the blacklist.
 func (a *App) noteApp(id, name string) bool {
 	if id == "" && name == "" {
 		return false
@@ -332,7 +332,7 @@ func (a *App) blocked(id, name string) bool {
 	return false
 }
 
-// RecentApps 返回最近复制过内容的应用，新的在前。
+// RecentApps returns the apps that copied content most recently, newest first.
 func (a *App) RecentApps() []SourceApp {
 	recentMu.Lock()
 	defer recentMu.Unlock()

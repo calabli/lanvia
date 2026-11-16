@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 )
 
-// DownloadDir 是下载安装包的目录：程序所在目录（替换时只需改名）。
+// DownloadDir is the directory the installer is downloaded to: the directory of the program (replacing only needs a rename).
 func DownloadDir(path string) string { return filepath.Dir(path) }
 
-// InstallMacAuto 只在 macOS 上有意义。
+// InstallMacAuto only makes sense on macOS.
 func InstallMacAuto(zipPath, appPath string) error { return os.ErrInvalid }

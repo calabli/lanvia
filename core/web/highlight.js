@@ -1,8 +1,8 @@
 'use strict';
 
-/* 轻量代码高亮（预览窗口用）：识别常见语言，按 token 着色，再按行拆分以配合行号。
-   不依赖外部库，局域网离线也能用。token 类型：k 关键字、s 字符串、c 注释、n 数字、
-   f 函数名、p 属性 / 键名、t 标签、v 变量。 */
+/* Lightweight syntax highlighting (for the preview window): detect common languages, colorize by token, then split by line to match the line numbers.
+   No external library, so it also works offline on a LAN. Token types: k keyword, s string, c comment, n number,
+   f function name, p property / key, t tag, v variable. */
 
 const HL = (() => {
   const words = s => new Set(s.split(/\s+/).filter(Boolean));
@@ -59,7 +59,7 @@ const HL = (() => {
     return null;
   }
 
-  // 通用分词：注释、字符串、数字、标识符，其余原样保留
+  // Generic tokenizer: comments, strings, numbers, identifiers; everything else is kept as is
   function tokenize(src, L) {
     if (L.markup) return tokenizeMarkup(src);
     const out = [];
@@ -92,7 +92,7 @@ const HL = (() => {
         while (j < n && src[j] !== c && !(src[j] === '\n' && c !== '`')) j += src[j] === '\\' ? 2 : 1;
         j = Math.min(n, j + 1);
         const text = src.slice(i, j);
-        // JSON / YAML / CSS 里冒号前的字符串是键名
+        // In JSON / YAML / CSS a string in front of a colon is a key name
         const isKey = (L.json || L.yaml) && /^\s*:/.test(src.slice(j, j + 20));
         push(isKey ? 'p' : 's', text); i = j; continue;
       }
@@ -111,7 +111,7 @@ const HL = (() => {
       if (/[A-Za-z_$@-]/.test(c) && (c !== '-' || L.css || L.yaml)) {
         const m = /^[A-Za-z_$@][\w$-]*/.exec(src.slice(i, i + 200)) || ['-'];
         let w = m[0];
-        if (!L.css && !L.yaml) w = w.replace(/-.*$/, '') || w; // 普通语言里 - 是运算符
+        if (!L.css && !L.yaml) w = w.replace(/-.*$/, '') || w; // in ordinary languages - is an operator
         const after = src.slice(i + w.length, i + w.length + 20);
         const key = L.ci ? w.toLowerCase() : w;
         let type = '';
@@ -146,7 +146,7 @@ const HL = (() => {
 
   const escape = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-  // 返回每一行的 HTML（跨行的注释 / 字符串会在每行分别闭合）
+  // Return the HTML of every line (comments / strings spanning several lines are closed per line)
   function lines(src, lang) {
     const L = LANGS[lang];
     const tokens = L && src.length <= 200000 ? tokenize(src, L) : [['', src]];

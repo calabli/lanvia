@@ -23,17 +23,17 @@ func entry(s *Store, id, eid string) TodoEntry {
 	return TodoEntry{}
 }
 
-// 两台设备同时做不同的修改，以不同顺序合并后结果一致，且谁的修改都没丢
+// Two devices make different changes at the same time; merging them in different orders gives the same result and loses nobody's change
 func TestTodoConverge(t *testing.T) {
 	a, id := todoStore(t)
 	b, _ := todoStore(t)
 	changes := [][]*TodoEntry{
-		{{ID: "e000000000000001", Text: "牛奶", TextTS: 10, TS: 10, Done: true, DoneTS: 100}},  // A 勾选牛奶
-		{{ID: "e000000000000001", Text: "全脂牛奶", TextTS: 101, TS: 10}},                        // B 同时改了牛奶的文字
-		{{ID: "e000000000000002", Text: "鸡蛋", TextTS: 11, TS: 11, Del: 102}},                 // B 删了鸡蛋
-		{{ID: "e000000000000002", Text: "一打鸡蛋", TextTS: 103, TS: 11}},                        // A 晚一点改鸡蛋（删除仍然生效）
-		{{ID: "e000000000000003", Text: "面包", TextTS: 104, TS: 104, By: "iPhone"}},           // 新增
-		{{ID: "e000000000000001", Text: "牛奶", TextTS: 10, TS: 10, Done: false, DoneTS: 100}}, // 同一时间取消勾选：勾选优先
+		{{ID: "e000000000000001", Text: "牛奶", TextTS: 10, TS: 10, Done: true, DoneTS: 100}},  // A checks off the milk
+		{{ID: "e000000000000001", Text: "全脂牛奶", TextTS: 101, TS: 10}},                        // B changes the milk text at the same time
+		{{ID: "e000000000000002", Text: "鸡蛋", TextTS: 11, TS: 11, Del: 102}},                 // B deletes the eggs
+		{{ID: "e000000000000002", Text: "一打鸡蛋", TextTS: 103, TS: 11}},                        // A edits the eggs a bit later (the deletion still takes effect)
+		{{ID: "e000000000000003", Text: "面包", TextTS: 104, TS: 104, By: "iPhone"}},           // addition
+		{{ID: "e000000000000001", Text: "牛奶", TextTS: 10, TS: 10, Done: false, DoneTS: 100}}, // unchecking at the same time: the check wins
 	}
 	for _, c := range changes {
 		a.applyTodo(id, c, "", 0)
@@ -59,7 +59,7 @@ func TestTodoConverge(t *testing.T) {
 	if ga[2].ID != "e000000000000003" {
 		t.Fatal("order should follow creation time")
 	}
-	// 标题按时间取新；旧的标题不会覆盖
+	// The title takes the newest timestamp; an older title does not overwrite it
 	a.applyTodo(id, nil, "周末购物", 50)
 	if a.applyTodo(id, nil, "旧标题", 20) != nil || a.Get(id).Text != "周末购物" {
 		t.Fatalf("title = %q", a.Get(id).Text)
@@ -72,7 +72,7 @@ func TestTodoConverge(t *testing.T) {
 func TestTodoPersistPinnedAndText(t *testing.T) {
 	dir := t.TempDir()
 	s := openStore(dir)
-	s.setRetention(1) // 保留 1 天
+	s.setRetention(1) // keep for 1 day
 	const id = "b000000000000001"
 	old := nowMs() - 3*86400_000
 	if !s.Add(&Item{ID: id, Kind: "todo", Text: "出门", From: "x", Origin: "o", TS: old, Todo: []*TodoEntry{

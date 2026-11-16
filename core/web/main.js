@@ -1,8 +1,8 @@
 'use strict';
 
-// 事件绑定、快捷面板、语言与启动。最后加载。
+// Event binding, quick panel, language and startup. Loaded last.
 
-/* ================= 事件绑定 ================= */
+/* ================= Event binding ================= */
 
 function handleItemAction(e) {
     const el = e.target.closest('[data-act]');
@@ -14,7 +14,7 @@ function handleItemAction(e) {
     switch (el.dataset.act) {
       case 'select': selectInboxItem(it); break;
       case 'copy':
-        if (el.classList.contains('text') && getSelection().toString()) return; // 正在选择文字
+        if (el.classList.contains('text') && getSelection().toString()) return; // text is being selected
         copyItem(it, el.classList.contains('btn') ? el : $('[data-act="copy"].btn', li));
         break;
       case 'code': doCopy(el.dataset.v, el); break;
@@ -88,7 +88,7 @@ function bind() {
 
   $('#fileInput').onchange = e => { [...e.target.files].forEach(uploadFile); e.target.value = ''; };
   $('#filePicker').onclick = () => $('#fileInput').click();
-  // 选择文件夹：手机浏览器大多不支持，只在电脑上显示
+  // Folder picking: most mobile browsers do not support it, so show it only on the computer
   $('#folderPicker').hidden = isTouch || !('webkitdirectory' in document.createElement('input'));
   $('#folderPicker').onclick = () => $('#folderInput').click();
   $('#folderInput').onchange = e => {
@@ -99,7 +99,7 @@ function bind() {
     sendFolder(root, files.map(f => ({ path: f.webkitRelativePath || f.name, file: f })));
   };
 
-  // 粘贴截图/文件直接上传；在输入框之外按 ⌘V 直接发送文字
+  // Pasting a screenshot/file uploads it right away; pressing ⌘V outside the input sends the text
   document.addEventListener('paste', e => {
     if ($('#app').hidden) return;
     const files = [...(e.clipboardData?.files || [])];
@@ -115,7 +115,7 @@ function bind() {
   addEventListener('dragover', e => e.preventDefault());
   addEventListener('drop', e => {
     e.preventDefault(); dragDepth = 0; $('#drop').hidden = true;
-    // 目录要在 drop 事件里同步取出 entry，之后就拿不到了
+    // Directory entries have to be read synchronously in the drop event, they are not available afterwards
     const items = [...(e.dataTransfer?.items || [])].filter(i => i.kind === 'file');
     const entries = items.map(i => i.webkitGetAsEntry?.());
     if (!entries.some(en => en?.isDirectory)) { [...(e.dataTransfer?.files || [])].forEach(uploadFile); return; }
@@ -126,7 +126,7 @@ function bind() {
     });
   });
 
-  // 清单卡片里的“添加一项”
+  // The "add an item" input of a checklist card
   $('#list').addEventListener('submit', handleTodoSubmit);
   $('#pvBody').addEventListener('submit', handleTodoSubmit);
   $('#todoBtn').onclick = newTodo;
@@ -136,13 +136,13 @@ function bind() {
   $('#pvBody').addEventListener('click', handleItemAction);
 
   $('#search').addEventListener('input', e => { S.filter = e.target.value; renderList(); deepSearch(); });
-  // 分页：滚动到列表底部自动加载下一页
+  // Paging: load the next page automatically when scrolled to the bottom of the list
   const loadMore = () => { S.limit += PAGE; renderList(); };
   $('#listMoreBtn').onclick = loadMore;
   if ('IntersectionObserver' in window) {
     new IntersectionObserver(es => { if (es.some(e => e.isIntersecting) && !$('#listMore').hidden) loadMore(); }, { rootMargin: '600px' }).observe($('#listMore'));
   }
-  // 回到前台时补上隐藏期间跳过的渲染
+  // Catch up the renders skipped while hidden when returning to the foreground
   document.addEventListener('visibilitychange', () => { if (!document.hidden && S.renderPending) renderList(); });
   $('#fromFilter').onchange = e => { S.from = e.target.value; renderList(); };
   $('#timeFilter').onchange = e => { S.since = +e.target.value; renderList(); };
@@ -210,7 +210,7 @@ function bind() {
     const b = e.target.closest('[data-block]');
     if (b) setBlockList([...(S.info?.settings?.blockApps || []), b.dataset.block]);
   });
-  // 暂停到点后界面自动恢复显示
+  // The UI comes back on its own once the pause expires
   setInterval(() => { if (S.local && S.info && pausedUntil() > 0) renderMode(); }, 30e3);
   $('#clipSend').onclick = sendClipboard;
   bindExpiryMenu();
@@ -294,7 +294,7 @@ function bind() {
     await api('POST', '/api/clear'); $('#settingsDlg').close();
   };
 
-  // 配对表单：输入时自动格式化
+  // Pairing form: formats the input as you type
   const pi = $('#pairInput');
   pi.addEventListener('input', () => { const c = normCode(pi.value).slice(0, 10); pi.value = fmtCode(c); });
   $('#pairForm').onsubmit = async e => {
@@ -308,7 +308,7 @@ function bind() {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     S.unseen = 0; document.title = 'Lanvia';
-    // iOS 切到后台会断开连接，回到前台立即重连
+    // iOS drops the connection in the background, reconnect right away on returning to the foreground
     if (!S.connected && !$('#app').hidden) { syncTime().then(connect); }
   });
   setInterval(() => { if (!document.hidden && S.items.length) renderList(); }, 60e3);
@@ -316,10 +316,10 @@ function bind() {
   bindInbox();
 }
 
-/* 快捷面板：打开即搜索，↑↓ 选择，回车复制并收起 */
+/* Quick panel: open and search right away, ↑↓ to select, Enter copies and collapses */
 function bindPanel() {
   document.body.classList.add('panel');
-  // 面板很小：附件、清单按钮只显示图标，文字放到悬停提示里；输入框从一行开始长高
+  // The panel is tiny: the attachment and checklist buttons show icons only, the text goes into the hover tooltip; the input starts at one line and grows
   for (const b of ['#filePicker', '#todoBtn', '#pasteBtn']) { const el = $(b); if (el && !el.title) el.title = el.textContent.trim(); }
   $('#input').rows = 1;
   $('#input').placeholder = '输入或粘贴，回车发送';
@@ -328,7 +328,7 @@ function bindPanel() {
   const move = d => {
     if (!S.view.length) return;
     S.sel = (S.sel + d + S.view.length) % S.view.length;
-    renderList(); // 增量渲染：只有选中状态变化的两张卡片会更新
+    renderList(); // incremental rendering: only the two cards whose selection state changed are updated
     $('#list .item.sel')?.scrollIntoView({ block: 'nearest' });
   };
   document.addEventListener('keydown', e => {
@@ -349,7 +349,7 @@ function bindPanel() {
       it.kind === 'file' ? saveLocal(it, 'reveal') : copyItem(it);
     } else if (e.key === 'Escape') { desktop('hide'); }
   });
-  // 每次弹出都回到初始状态
+  // Every time it pops up it returns to the initial state
   addEventListener('focus', () => {
     if (document.activeElement === $('#input')) return;
     search.value = ''; S.filter = ''; S.sel = 0; renderList();
@@ -358,7 +358,7 @@ function bindPanel() {
   });
 }
 
-// 语言：手动选择的优先，否则跟随系统。本机的设置保存在电脑上（托盘菜单也跟着变），手机记在本地。
+// Language: a manual choice wins, otherwise follow the system. On this machine the setting is stored on the computer (the tray menu follows), on the phone it is kept locally.
 function applyLang(pref) {
   pref ? store.set('lang', pref) : store.del('lang');
   I18N.setLang(pref || I18N.auto());
@@ -371,7 +371,7 @@ async function boot() {
   bind();
   const m = location.hash.match(/k=([A-Za-z0-9-]+)/);
   if (m) {
-    // 配对码放在 # 后面，不会发送给服务器，也不会留在地址栏里
+    // The pairing code goes after the #, it is never sent to the server and never stays in the address bar
     store.set('code', normCode(m[1]));
     history.replaceState(null, '', location.pathname);
   }

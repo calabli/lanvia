@@ -12,14 +12,14 @@ import (
 	"time"
 )
 
-// 在独立的剪贴板上走一遍：复制图片会发送，自己写进去的图片不会再发，文字照常
+// Runs the whole flow on a separate pasteboard: copying an image sends it, images written in by ourselves are not sent again, text behaves as usual
 func TestClipboardImageMac(t *testing.T) {
-	useTestPasteboard() // 不碰用户的系统剪贴板
+	useTestPasteboard() // does not touch the user's system clipboard
 	a := testApp(t, func(c *Config) { c.Watch = true })
 	c := a.clip
 	count := func() int { return len(a.store.List()) }
 
-	// 1. 复制一张 PNG：发送为图片内容，文件内容就是剪贴板里的 PNG
+	// 1. Copy a PNG: it is sent as image content, and the stored file is the PNG from the clipboard
 	var pb bytes.Buffer
 	png.Encode(&pb, testImage(20, 10))
 	if err := writeClipboardImage(pb.Bytes()); err != nil {
@@ -35,12 +35,12 @@ func TestClipboardImageMac(t *testing.T) {
 	if it.Kind != "file" || it.Mime != "image/png" || err != nil || img.Bounds() != image.Rect(0, 0, 20, 10) {
 		t.Fatalf("sent item: %+v err=%v", it, err)
 	}
-	// 2. 没有变化：不重复发送
+	// 2. No change: not sent again
 	c.poll()
 	if count() != 1 {
 		t.Fatal("same image sent twice")
 	}
-	// 3. 其他设备发来的图片（JPEG）写进剪贴板：能读出来，但不会被当成新复制的再发出去
+	// 3. An image (JPEG) received from another device is written into the clipboard: it can be read back, but is not sent out again as a new copy
 	var jb bytes.Buffer
 	jpeg.Encode(&jb, testImage(8, 8), nil)
 	if err := c.ApplyImage(jb.Bytes()); err != nil {
@@ -53,13 +53,13 @@ func TestClipboardImageMac(t *testing.T) {
 	if count() != 1 {
 		t.Fatal("applied image echoed back")
 	}
-	// 4. 再复制文字：照常发送文字
+	// 4. Copy text afterwards: the text is sent as usual
 	writeClipboard("复制的文字")
 	c.poll()
 	if count() != 2 || a.store.List()[0].Text != "复制的文字" {
 		t.Fatalf("text not sent: %d", count())
 	}
-	// 5. 主动复制关闭时不发送；手动发送剪贴板里的图片
+	// 5. Nothing is sent while auto copy is off; manually send the image in the clipboard
 	a.updateCfg(func(cf *Config) { cf.Watch = false })
 	var pb2 bytes.Buffer
 	png.Encode(&pb2, testImage(5, 5))
@@ -79,7 +79,7 @@ func TestClipboardImageMac(t *testing.T) {
 	}
 }
 
-// 收到其他设备的图片：开着主动粘贴时放进剪贴板，且不会被当成新复制的再发回去；关着时不放
+// An image received from another device is put into the clipboard while auto paste is on, and is not sent back as a new copy; when it is off it is not put in
 func TestReceivedImageAutoPaste(t *testing.T) {
 	useTestPasteboard()
 	a := testApp(t, func(c *Config) { c.Watch = true; c.AutoApply = true })
@@ -89,7 +89,7 @@ func TestReceivedImageAutoPaste(t *testing.T) {
 		var b bytes.Buffer
 		png.Encode(&b, testImage(w, 3))
 		id := randHex(8)
-		os.WriteFile(a.store.blobPath(id), b.Bytes(), 0o600) // 文件已经同步到本机
+		os.WriteFile(a.store.blobPath(id), b.Bytes(), 0o600) // the file has already been synced to this machine
 		it := &Item{ID: id, Kind: "file", Name: "x.png", Mime: "image/png", Size: int64(b.Len()), From: "PC", Origin: "b2b2b2b2b2b2b2b2", TS: nowMs()}
 		a.ingest(it, "b2b2b2b2b2b2b2b2", true)
 		return it
@@ -114,7 +114,7 @@ func TestReceivedImageAutoPaste(t *testing.T) {
 	if len(a.store.List()) != n {
 		t.Fatal("pasted image echoed back")
 	}
-	// 关掉主动粘贴：收到的图片不放进剪贴板
+	// Auto paste off: a received image is not put into the clipboard
 	a.updateCfg(func(c *Config) { c.AutoApply = false })
 	recv(9)
 	time.Sleep(200 * time.Millisecond)

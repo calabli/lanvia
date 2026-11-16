@@ -21,7 +21,7 @@ func TestEncRoundTrip(t *testing.T) {
 		rand.Read(plain)
 		var b bytes.Buffer
 		w := newSealWriter(&b, testKey())
-		// 分成不规则的小块写入，模拟流式响应
+		// Write it in irregular small chunks, simulating a streaming response
 		for p := plain; len(p) > 0; {
 			n := min(len(p), 7777)
 			w.Write(p[:n])
@@ -43,18 +43,18 @@ func TestEncDetectsTampering(t *testing.T) {
 	rand.Read(plain)
 	enc := sealAll(plain, testKey())
 
-	// 改一个字节
+	// Flip one byte
 	bad := append([]byte(nil), enc...)
 	bad[len(bad)/2] ^= 1
 	if _, err := readAll(t, bad, testKey()); err == nil {
 		t.Fatal("tampered byte not detected")
 	}
-	// 截断：去掉最后一帧
+	// Truncation: drop the last frame
 	firstTwo := 12 + 2*(4+encFrame+16)
 	if _, err := readAll(t, enc[:firstTwo], testKey()); err == nil {
 		t.Fatal("truncation not detected")
 	}
-	// 调换前两帧
+	// Swap the first two frames
 	f := 4 + encFrame + 16
 	swapped := append([]byte(nil), enc[:12]...)
 	swapped = append(swapped, enc[12+f:12+2*f]...)
@@ -63,19 +63,19 @@ func TestEncDetectsTampering(t *testing.T) {
 	if _, err := readAll(t, swapped, testKey()); err == nil {
 		t.Fatal("reordering not detected")
 	}
-	// 把中间帧冒充成最后一帧
+	// Pass a middle frame off as the last one
 	fake := append([]byte(nil), enc[:12+f]...)
 	binary.BigEndian.PutUint32(fake[12:], binary.BigEndian.Uint32(fake[12:])|finalFlag)
 	if _, err := readAll(t, fake, testKey()); err == nil {
 		t.Fatal("forged final flag not detected")
 	}
-	// 配对码不同
+	// Different pairing code
 	if _, err := readAll(t, enc, deriveCreds("ABCDEFGHJK").enc); err == nil {
 		t.Fatal("wrong key not detected")
 	}
 }
 
-// 加密传输 16 MB（大文件中转的典型路径），关注每次操作的内存分配
+// Encrypt and transfer 16 MB (a typical path for relaying large files), watching the memory allocations of each operation
 func BenchmarkEncStream(b *testing.B) {
 	plain := make([]byte, 16<<20)
 	key := testKey()
@@ -84,7 +84,7 @@ func BenchmarkEncStream(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var buf bytes.Buffer
 		w := newSealWriter(&buf, key)
-		for p := plain; len(p) > 0; { // 按 32 KB 写入，和 io.Copy 一样
+		for p := plain; len(p) > 0; { // written in 32 KB chunks, like io.Copy
 			n := min(len(p), 32<<10)
 			w.Write(p[:n])
 			p = p[n:]

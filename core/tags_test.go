@@ -21,7 +21,7 @@ func TestNormalizeTag(t *testing.T) {
 	}
 }
 
-// 两台设备同时修改标签，以不同顺序合并后结果一致
+// Two devices change tags at the same time; merging them in different orders gives the same result
 func TestTagsConverge(t *testing.T) {
 	const id = "a000000000000001"
 	mk := func() *Store {
@@ -30,12 +30,12 @@ func TestTagsConverge(t *testing.T) {
 		return s
 	}
 	changes := []map[string]int64{
-		{"家里": 20},          // A 加“家里”
-		{"旧": -21},          // B 同时删“旧”
-		{"工作": -30},         // A 删“工作”
-		{"工作": 30},          // B 同一毫秒又加“工作”：添加优先
-		{"家里": -15},         // 更早的删除，不生效
-		{"#坏的": 40, "": 40}, // 不合法的标签被忽略
+		{"家里": 20},          // A adds "家里"
+		{"旧": -21},          // B deletes "旧" at the same time
+		{"工作": -30},         // A deletes "工作"
+		{"工作": 30},          // B adds "工作" again in the same millisecond: the addition wins
+		{"家里": -15},         // an earlier deletion, does not take effect
+		{"#坏的": 40, "": 40}, // invalid tags are ignored
 	}
 	a, b := mk(), mk()
 	for _, c := range changes {
@@ -63,7 +63,7 @@ func TestSetTags(t *testing.T) {
 	if _, err := a.SetTags(x.ID, []string{"Work", "#家里", "  "}, nil); err != nil {
 		t.Fatal(err)
 	}
-	// 只差大小写时沿用已有的写法
+	// When only the case differs, the existing spelling is kept
 	it, _ := a.SetTags(y.ID, []string{"work"}, nil)
 	if got := it.LiveTags(); !reflect.DeepEqual(got, []string{"Work"}) {
 		t.Fatalf("case reuse: %v", got)
@@ -72,7 +72,7 @@ func TestSetTags(t *testing.T) {
 	if got := it.LiveTags(); !reflect.DeepEqual(got, []string{"Work"}) || it.Tags["家里"] >= 0 {
 		t.Fatalf("after remove: %v %v", got, it.Tags)
 	}
-	// 删了再加回来
+	// Delete it and add it back
 	it, _ = a.SetTags(x.ID, []string{"家里"}, nil)
 	if it.Tags["家里"] <= 0 {
 		t.Fatalf("re-add: %v", it.Tags)

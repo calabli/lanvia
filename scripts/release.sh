@@ -1,10 +1,10 @@
 #!/bin/bash
-# 把 dist/ 里的安装包发布到 GitHub Release：先建草稿，逐个上传（失败重试 3 次），全部传完再正式发布。
-# 先运行 ./scripts/build.sh 打包。
+# Publish the installers in dist/ to a GitHub Release: create a draft first, upload them one by one
+# (retry 3 times on failure), then publish once everything is up. Run ./scripts/build.sh first.
 #
-#   ./scripts/release.sh v0.14.0 "Lanvia v0.14.0 · 标题" notes.md
+#   ./scripts/release.sh v0.14.0 "Lanvia v0.14.0 · title" notes.md
 #
-# 注意：桌面版的自动更新按 Lanvia-macos.zip、Lanvia-windows-<架构>.exe 和 SHA256SUMS.txt 找安装包，发布里要有这些文件。
+# Note: the desktop auto updater looks for the installers by Lanvia-macos.zip, Lanvia-windows-<arch>.exe and SHA256SUMS.txt, so the release has to contain those files.
 set -u
 TAG=$1; TITLE=$2; NOTES=$3
 REPO=calabli/lanvia
@@ -15,7 +15,7 @@ if ! gh release view "$TAG" --repo $REPO >/dev/null 2>&1; then
   gh release create "$TAG" --repo $REPO --draft --target "$(git rev-parse HEAD)" --title "$TITLE" --notes-file "$NOTES" >/dev/null || { echo "创建草稿失败" >&2; exit 1; }
   echo "draft created"
 fi
-# 校验文件先传，免得自动更新找到了安装包却没有对应的校验值
+# Upload the checksum file first, so the auto updater never finds an installer without matching checksums
 for f in dist/SHA256SUMS.txt dist/Lanvia-macos.zip dist/Lanvia-macos-*.dmg dist/Lanvia-windows-*.exe dist/lanvia-cli-*.tar.gz dist/lanvia-cli-*.exe; do
   [ -f "$f" ] || continue
   for try in 1 2 3; do

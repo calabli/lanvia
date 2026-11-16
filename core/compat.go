@@ -9,22 +9,22 @@ import (
 	"time"
 )
 
-// 向前兼容：让以后的新功能经过这个版本的设备时不被丢掉。
+// Forward compatibility: so that future features are not dropped when passing through devices running this version.
 //
-// 以前每加一个功能（评论、清单、标签），内容经过旧版本设备转发时，旧版本不认识的字段都会丢。
-// 从这个版本起：
-//   - 内容（Item）里不认识的字段原样保存在 Extra 里，存盘、转发、同步历史时都带着；
-//   - 不认识的同步操作（Envelope.Op）带有编号（EID）时原样转发给其他设备，按编号去重防止绕圈。
+// Previously, every new feature (comments, lists, tags) lost all fields the old version did not know about when content was relayed by an older device.
+// From this version on:
+//   - Fields in the content (Item) that are not recognized are kept verbatim in Extra, and are carried along when storing, relaying and syncing history;
+//   - Sync operations that are not recognized (Envelope.Op) are relayed verbatim to other devices when they carry a number (EID), deduplicated by that number to prevent loops.
 //
-// 所以以后的新功能，只要把每条内容的状态放在 Item 的新字段里，或者用带 EID 的新操作同步，
-// 中间隔着这个版本的设备也能传过去。
+// So future features only need to keep the state of each entry in a new field of Item, or to sync it with a new operation carrying an EID,
+// and they will pass through devices running this version.
 
 const (
-	maxExtraBytes = 16 << 10 // 每条内容保留的未知字段最多这么大
+	maxExtraBytes = 16 << 10 // unknown fields kept per entry are at most this large
 	maxExtraKeys  = 32
 )
 
-// itemKnown 是 Item 自己的 JSON 字段名。
+// itemKnown holds the JSON field names of Item itself.
 var itemKnown = func() map[string]bool {
 	m := map[string]bool{}
 	t := reflect.TypeOf(Item{})
@@ -37,7 +37,7 @@ var itemKnown = func() map[string]bool {
 	return m
 }()
 
-type itemNoMethods Item // 去掉 MarshalJSON / UnmarshalJSON，避免递归
+type itemNoMethods Item // drop MarshalJSON / UnmarshalJSON to avoid recursion
 
 func (it *Item) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, (*itemNoMethods)(it)); err != nil {
@@ -55,7 +55,7 @@ func (it *Item) UnmarshalJSON(b []byte) error {
 		}
 		size += len(k) + len(v)
 		if size > maxExtraBytes || len(it.Extra) >= maxExtraKeys {
-			it.Extra = nil // 太大的不保留，免得被塞满
+			it.Extra = nil // do not keep the oversized ones, so that they cannot fill it up
 			return nil
 		}
 		if it.Extra == nil {
@@ -75,7 +75,7 @@ func (it Item) MarshalJSON() ([]byte, error) {
 	if err != nil || len(extra) <= 2 {
 		return b, nil
 	}
-	// {"id":...} + {"未知字段":...} → {"id":...,"未知字段":...}
+	// {"id":...} + {"unknown field":...} → {"id":...,"unknown field":...}
 	var buf bytes.Buffer
 	buf.Write(b[:len(b)-1])
 	buf.WriteByte(',')
@@ -83,7 +83,7 @@ func (it Item) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// adoptExtra 本机这条内容没有未知字段、对方的有时，补上（例如经过旧版本转发时丢了，又从别处同步回来）。
+// adoptExtra fills in the unknown fields when this machine's copy of the entry has none but the peer's copy does (for example they were dropped while relayed by an old version and were then synced back from elsewhere).
 func (s *Store) adoptExtra(id string, extra map[string]json.RawMessage) *Item {
 	if len(extra) == 0 {
 		return nil
@@ -102,7 +102,7 @@ func (s *Store) adoptExtra(id string, extra map[string]json.RawMessage) *Item {
 	return &n
 }
 
-// eidCache 记住最近转发过的同步消息编号，同一条消息绕回来时不再转发。
+// eidCache remembers the IDs of recently relayed sync messages, so that a message coming back around is not relayed again.
 type eidCache struct {
 	mu   sync.Mutex
 	seen map[string]time.Time
@@ -129,5 +129,5 @@ func (c *eidCache) first(eid string) bool {
 	return true
 }
 
-// knownOps 是这个版本认识的同步操作；其余的带编号时原样转发。
+// knownOps are the sync operations this version recognizes; the rest are relayed verbatim when they carry an ID.
 var knownOps = map[string]bool{"add": true, "delete": true, "clear": true, "edit": true, "meta": true, "fav": true, "tags": true, "todo": true, "comment": true, "sync": true}

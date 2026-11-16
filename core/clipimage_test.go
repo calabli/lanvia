@@ -20,9 +20,9 @@ func testImage(w, h int) *image.NRGBA {
 	return img
 }
 
-// PNG → Windows 位图 → PNG，像素一致（含透明度）
+// PNG → Windows bitmap → PNG, with identical pixels (alpha included)
 func TestDIBRoundTrip(t *testing.T) {
-	src := testImage(13, 7) // 奇数宽度：行尾不需要补齐（32 位色），但高度方向从下往上
+	src := testImage(13, 7) // odd width: rows need no padding (32-bit color), but the height direction is bottom-up
 	var pb bytes.Buffer
 	png.Encode(&pb, src)
 	dib, pngOut, err := imageToClip(pb.Bytes())
@@ -43,7 +43,7 @@ func TestDIBRoundTrip(t *testing.T) {
 	}
 }
 
-// 24 位色、从上往下存、每行要补齐到 4 字节的位图；以及 32 位色但 alpha 全是 0（应当按不透明处理）
+// 24-bit bitmaps stored top-down with every row padded to 4 bytes; and 32-bit images whose alpha is all 0 (should be treated as opaque)
 func TestDIBVariants(t *testing.T) {
 	w, h := 3, 2
 	stride := (w*24 + 31) / 32 * 4 // 12
@@ -51,10 +51,10 @@ func TestDIBVariants(t *testing.T) {
 	le := binary.LittleEndian
 	le.PutUint32(dib[0:], 40)
 	le.PutUint32(dib[4:], uint32(w))
-	le.PutUint32(dib[8:], uint32(int32(-h))) // 负数：从上往下
+	le.PutUint32(dib[8:], uint32(int32(-h))) // negative: top-down
 	le.PutUint16(dib[12:], 1)
 	le.PutUint16(dib[14:], 24)
-	dib[40+0], dib[40+1], dib[40+2] = 1, 2, 3 // 第一行第一个像素 BGR
+	dib[40+0], dib[40+1], dib[40+2] = 1, 2, 3 // first pixel of the first row in BGR
 	out, err := dibToPNG(dib)
 	if err != nil {
 		t.Fatal(err)
@@ -78,7 +78,7 @@ func TestDIBVariants(t *testing.T) {
 	}
 }
 
-// 收到 JPEG 时也给出 PNG
+// Also produce a PNG when the input is a JPEG
 func TestImageToClipJPEG(t *testing.T) {
 	var jb bytes.Buffer
 	jpeg.Encode(&jb, testImage(8, 8), nil)

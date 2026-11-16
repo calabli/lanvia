@@ -102,7 +102,7 @@ function mountInboxLayout() {
   if (!inboxListMode()) {
     if (PANEL) $('.inbox-search-row').after($('#kindFilters'));
     $('#listComposerHost').append(clip, composer);
-    // 托盘面板：输入区固定在最下面，列表在中间单独滚动（见 panel.css）
+    // Tray panel: the composer is pinned to the bottom and the list scrolls on its own in between (see panel.css)
     if (PANEL) $('.inbox-list-column').append($('#listComposerHost'));
     return;
   }

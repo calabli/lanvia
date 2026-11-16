@@ -1,8 +1,8 @@
 'use strict';
 
-// 基础：工具函数、签名与鉴权、设备识别、图标、剪贴板。其余脚本都依赖这里。
+// Foundation: utilities, signing and authentication, device detection, icons, clipboard. Every other script depends on this.
 
-/* ================= 基础工具 ================= */
+/* ================= Basic Utilities ================= */
 
 const $ = (s, el = document) => el.querySelector(s);
 const store = {
@@ -13,7 +13,7 @@ const store = {
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const enc = new TextEncoder();
 
-/* SHA-256 / HMAC：局域网走 http，浏览器的 crypto.subtle 不可用，所以自带一份实现。 */
+/* SHA-256 / HMAC: the LAN runs over http, where the browser's crypto.subtle is unavailable, so we ship our own implementation. */
 const K256 = new Uint32Array([
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
   0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -59,40 +59,40 @@ function hmac(key, msg) {
 }
 const hex = b => Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
 
-/* ================= 状态与鉴权 ================= */
+/* ================= State & Authentication ================= */
 
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const normCode = s => (s || '').toUpperCase().split('').filter(c => ALPHABET.includes(c)).join('');
 const fmtCode = c => c.length > 5 ? c.slice(0, 5) + '-' + c.slice(5) : c;
 
 const isLoopback = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
-// 桌面客户端里的窗口：panel 是托盘弹出的快捷面板，main 是主窗口
+// Windows of the desktop client: panel is the quick panel popped up from the tray, main is the main window
 const QS = new URLSearchParams(location.search);
 const DESKTOP = QS.get('desktop');
 const PANEL = DESKTOP === 'panel';
-const PREVIEW = DESKTOP === 'preview'; // 桌面端的悬浮预览窗口
+const PREVIEW = DESKTOP === 'preview'; // floating preview window of the desktop app
 const PREVIEW_ID = QS.get('id');
 const S = {
   key: null, ek: null, ekRaw: null, strict: false, offset: 0, items: [], devices: [], you: null, node: null, local: false,
   info: null, filter: '', tag: '', kind: 'all', from: '', since: 0, fuzzy: false, es: null, connected: false, retry: 0, unseen: 0,
-  view: [], sel: 0, // 当前显示的列表和键盘选中项（快捷面板）
+  view: [], sel: 0, // list currently shown and keyboard selection (quick panel)
 };
 const desktop = (action, id) => api('POST', '/api/desktop/' + action + (id ? '?id=' + id : '')).catch(() => {});
 
 function setCode(code) {
   S.key = code ? sha256(enc.encode('lanvia-key:' + code)) : null;
-  // 内容加密密钥（与电脑之间用的相同），见 crypto.js
+  // content encryption key (the same one used between computers), see crypto.js
   S.ekRaw = S.key ? hmac(S.key, enc.encode('lanvia-content-encryption')) : null;
   S.ek = S.ekRaw ? LC.newKey(S.ekRaw) : null;
   if (CW) CW.postMessage({ type: 'key', raw: S.ekRaw });
 }
-// 签名 v2：带随机 nonce、覆盖查询参数；写请求的 nonce 电脑只接受一次，截获的请求不能重放
+// Signature v2: carries a random nonce and covers the query parameters; for write requests the computer accepts a nonce only once, so a captured request cannot be replayed
 function sign(method, path, query = '') {
   const ts = String(Date.now() + S.offset), n = hex(crypto.getRandomValues(new Uint8Array(8)));
   return { ts, n, sig: hex(hmac(S.key, enc.encode(`lanvia2\n${ts}\n${n}\n${method}\n${path}\n${query}`))) };
 }
 const sealQuery = q => LC.b64(LC.seal(S.ek, enc.encode(q)));
-// 带签名的地址（EventSource、明文下载等没法加请求头的场合）；查询参数加密成 _q
+// Signed URL (for cases like EventSource or plaintext downloads where headers cannot be added); query parameters are encrypted into _q
 function signedURL(path, params = {}, method = 'GET') {
   const q = new URLSearchParams(params).toString();
   if (!S.key) return path + (q ? '?' + q : '');
@@ -102,8 +102,8 @@ function signedURL(path, params = {}, method = 'GET') {
   out.set('_v', '2'); out.set('_t', ts); out.set('_n', n); out.set('_s', sig);
   return path + '?' + out;
 }
-// 列表里图片等地址：同一地址 4 分钟内复用同一个签名（签名 5 分钟有效），
-// 否则每次渲染签名都不同，卡片会被当成“有变化”而重建、图片重新加载。
+// URLs for images and the like in the list: the same URL reuses the same signature within 4 minutes (signatures stay valid for 5 minutes),
+// otherwise every render produces a different signature, the card is treated as "changed" and rebuilt, and the image reloads.
 const URLS = new Map();
 function stableURL(path) {
   const hit = URLS.get(path);
@@ -113,7 +113,7 @@ function stableURL(path) {
   return url;
 }
 
-// 准备请求：签名，加密查询参数和请求体。body 可以是对象（JSON）或 Uint8Array。返回 fetch 的参数
+// Prepare a request: sign it, encrypt the query parameters and the request body. body can be an object (JSON) or a Uint8Array. Returns the arguments for fetch
 function prepare(method, path, body) {
   const [p, q = ''] = path.split(/\?(.*)/s);
   const headers = {};
@@ -138,7 +138,7 @@ async function readBody(r) {
   return isEnc(r) ? LC.open(S.ek, b) : b;
 }
 const dec = new TextDecoder();
-// SSE 事件：发给手机的是加密后的 base64url，本机窗口是明文 JSON
+// SSE events: what is sent to the phone is encrypted base64url, the local window gets plain JSON
 const evData = e => JSON.parse(/^[[{]/.test(e.data) ? e.data : dec.decode(LC.open(S.ek, LC.unb64(e.data))));
 
 async function api(method, path, body) {
@@ -150,15 +150,15 @@ async function api(method, path, body) {
   return data;
 }
 
-/* ---- 文件内容：手机上要先下载、解密，再交给 <img> / <video> / 下载 ---- */
+/* ---- File content: on the phone it must be downloaded and decrypted first, then handed to <img> / <video> / download ---- */
 
-// 更大的文件在手机上整个解密要占用同样大的内存，改为明文传输（只允许加密连接时除外）
+// Decrypting a larger file as a whole on the phone takes just as much memory, so it is transferred in plaintext (except when only encrypted connections are allowed)
 const PLAIN_MAX = 256 << 20;
 const plainOK = it => !S.strict && (it.size || 0) > PLAIN_MAX;
 
-/* ---- 后台线程（crypto-worker.js）：大文件的下载解密、上传加密不占用页面主线程 ---- */
+/* ---- Background thread (crypto-worker.js): downloading and decrypting large files and encrypting uploads do not block the page's main thread ---- */
 
-let CW = null; // Worker；false 表示不可用
+let CW = null; // Worker; false means unavailable
 const CW_JOBS = new Map();
 let cwSeq = 0;
 function cryptoWorker() {
@@ -178,7 +178,7 @@ function cryptoWorker() {
   } catch { CW = false; }
   return CW;
 }
-// 交给后台线程做一件事，返回 Promise；signal 可以取消
+// Hand one job to the background thread, returns a Promise; signal can cancel it
 function cwRun(msg, onProgress, signal) {
   const w = cryptoWorker(), id = ++cwSeq;
   return new Promise((resolve, reject) => {
@@ -188,7 +188,7 @@ function cwRun(msg, onProgress, signal) {
   });
 }
 
-// 下载一个文件（加密时同时解密），返回 Blob。onProgress(已收到字节数)
+// Download one file (decrypting it at the same time when encrypted), returns a Blob. onProgress(bytes received so far)
 async function fetchBlob(path, type, onProgress, signal) {
   if (cryptoWorker()) {
     const { url, init } = prepare('GET', path);
@@ -208,7 +208,7 @@ async function fetchBlob(path, type, onProgress, signal) {
   return new Blob(parts, { type: type || '' });
 }
 
-// 图片、视频的可用地址：本机窗口直接用地址；手机上解密成 blob: 地址并缓存（缩略图和小图）
+// Usable URL for images and videos: the local window uses the URL directly; on the phone it is decrypted into a blob: URL and cached (thumbnails and small images)
 const MEDIA = new Map(); // path -> Promise<url>
 let mediaBytes = 0;
 function mediaURL(path, it, onProgress) {
@@ -218,9 +218,9 @@ function mediaURL(path, it, onProgress) {
   if (hit) return hit;
   const p = fetchBlob(path, path.startsWith('/api/thumb/') ? 'image/jpeg' : it.mime, onProgress).then(b => {
     const url = URL.createObjectURL(b);
-    if (b.size > 8 << 20) { setTimeout(() => URL.revokeObjectURL(url), 10 * 60e3); MEDIA.delete(path); return url; } // 大文件不缓存
+    if (b.size > 8 << 20) { setTimeout(() => URL.revokeObjectURL(url), 10 * 60e3); MEDIA.delete(path); return url; } // large files are not cached
     mediaBytes += b.size;
-    if (mediaBytes > 64 << 20) { // 缓存超过 64 MB：清掉最早的一半
+    if (mediaBytes > 64 << 20) { // cache over 64 MB: drop the oldest half
       for (const [k, v] of [...MEDIA].slice(0, MEDIA.size >> 1)) { MEDIA.delete(k); v.then(URL.revokeObjectURL); }
       mediaBytes = 0;
     }
@@ -231,7 +231,7 @@ function mediaURL(path, it, onProgress) {
   return p;
 }
 
-// 把文件加密成上传用的 Blob（与电脑之间的帧格式相同）。onProgress(0–1)
+// Encrypt a file into a Blob for uploading (same frame format as between computers). onProgress(0–1)
 async function sealFile(file, onProgress, signal) {
   if (cryptoWorker()) return cwRun({ type: 'seal', file }, (done, total) => onProgress?.(done / total), signal);
   const s = new LC.Sealer(S.ek), parts = [], CHUNK = 64 * LC.FRAME, size = file.size;
@@ -255,7 +255,7 @@ async function syncTime() {
   } catch {}
 }
 
-/* ================= 设备识别 ================= */
+/* ================= Device Detection ================= */
 
 function detectKind() {
   const ua = navigator.userAgent;
@@ -272,7 +272,7 @@ const KIND_NAME = { ios: 'iPhone', ipad: 'iPad', android: '安卓手机', window
 const myName = () => (S.local && S.node ? S.node.name : store.get('name') || KIND_NAME[KIND]);
 const isTouch = matchMedia('(pointer: coarse)').matches;
 
-/* ================= 图标 ================= */
+/* ================= Icons ================= */
 
 const I = (d, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
 const ICON = {
@@ -313,7 +313,7 @@ const ICON = {
 };
 const kindIcon = k => ({ ios: ICON.phone, android: ICON.phone, ipad: ICON.tablet, mac: ICON.laptop, windows: ICON.laptop, linux: ICON.laptop }[k] || ICON.globe);
 
-// 字体大小：所有文字乘以同一个倍数（80%–160%），每台设备各自保存
+// Font size: all text is scaled by the same factor (80%–160%), every device stores its own value
 const FS_MIN = 0.8, FS_MAX = 1.6, FS_STEP = 0.05;
 function applyFont(v) {
   v = Math.round(Math.min(FS_MAX, Math.max(FS_MIN, +v || 1)) / FS_STEP) * FS_STEP;
@@ -340,13 +340,13 @@ function applyTheme(theme) {
   button.title = `外观：${names[theme]}，点击切换`;
 }
 
-/* ================= 剪贴板 ================= */
+/* ================= Clipboard ================= */
 
 async function copyText(text) {
   try {
     if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; }
   } catch {}
-  // 非安全上下文（局域网 http）只能走 execCommand，必须在用户点击的同步调用栈里
+  // In an insecure context (LAN http) only execCommand works, and it must run inside the synchronous call stack of a user click
   const ta = document.createElement('textarea');
   ta.value = text;
   ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;font-size:16px';

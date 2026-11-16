@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// Client 是一个通过 SSE 连接到本节点的浏览器（手机、平板或电脑）。
+// Client is a browser (phone, tablet or computer) connected to this node over SSE.
 type Client struct {
 	ClientInfo
 	ch chan []byte
@@ -19,7 +19,7 @@ type ClientInfo struct {
 	Name  string `json:"name"`
 	Kind  string `json:"kind"` // ios | ipad | android | mac | windows | linux | web
 	Since int64  `json:"since"`
-	Local bool   `json:"local,omitempty"` // 本机仪表盘
+	Local bool   `json:"local,omitempty"` // local dashboard
 }
 
 type Hub struct {
@@ -64,14 +64,14 @@ func (h *Hub) Broadcast(event string, v any) {
 	for c := range h.clients {
 		select {
 		case c.ch <- msg:
-		default: // 慢客户端丢消息；重连时会拿到完整快照
+		default: // drop the message for slow clients; they get a full snapshot when they reconnect
 		}
 	}
 }
 
 func nowMs() int64 { return time.Now().UnixMilli() }
 
-// bcastItem 把新增 / 更新的内容推给网页（长正文截断）。
+// bcastItem pushes newly added / updated content to the web page (long texts are truncated).
 func (a *App) bcastItem(event string, it *Item) { a.hub.Broadcast(event, it.forClient()) }
 
 func clientItems(items []*Item) []*Item {

@@ -10,20 +10,20 @@ import (
 	"time"
 )
 
-// 文件占用上限：每台电脑都会备份其他设备的文件，N 台电脑就是 N 份，所以要限制总量。
-//   - 原件（本机发出 / 别人上传到本机的，Origin 是本机）永远不删，否则这份文件可能在所有设备上都没了；
-//   - 超出上限时只删副本，从最旧的开始，“永久保留”的放到最后。条目本身保留，需要时再从其他设备取。
+// Storage limit: every computer backs up the files of the other devices, so N computers mean N copies and the total has to be capped.
+//   - Originals (sent from this machine / uploaded to this machine by others, where Origin is this machine) are never deleted, otherwise the file could end up missing on every device;
+//   - When the limit is exceeded only replicas are deleted, starting with the oldest and leaving the "permanently kept" ones until last. The entries themselves are kept and can be fetched from other devices again when needed.
 
 type StorageUsage struct {
-	Own      int64 `json:"own"`      // 原件占用（字节）
-	Replicas int64 `json:"replicas"` // 副本占用
-	Count    int   `json:"count"`    // 副本个数
-	QuotaMB  int   `json:"quotaMB"`  // 上限，0 为不限
+	Own      int64 `json:"own"`      // space used by originals (bytes)
+	Replicas int64 `json:"replicas"` // space used by replicas
+	Count    int   `json:"count"`    // number of replicas
+	QuotaMB  int   `json:"quotaMB"`  // limit in MB, 0 means unlimited
 }
 
-// reserve 为即将写入的 n 字节预留空间：必要时先清理旧副本。放不下返回 false。
-// 并发的下载各自预留，合计不会超过上限；下载结束（成功或失败）后调用 release。
-// 成功时应先把文件改名就位再 release，这样中间不会有一刻少算。
+// reserve reserves space for the n bytes about to be written, cleaning up old replicas first if needed. Returns false when it does not fit.
+// Concurrent downloads reserve separately and never exceed the limit in total; call release once the download ends (successfully or not).
+// On success, rename the file into place before calling release, so that it is never briefly undercounted.
 func (a *App) reserve(n int64) (release func(), ok bool) {
 	a.quotaMu.Lock()
 	defer a.quotaMu.Unlock()
@@ -46,7 +46,7 @@ type blobFile struct {
 	size int64
 }
 
-// scanBlobs 统计本机的文件占用，并清理残留：中断的临时文件、已经没有对应条目的文件。
+// scanBlobs totals the file space used on this machine and cleans up leftovers: interrupted temporary files and files whose entry is gone.
 func (a *App) scanBlobs() (own []blobFile, replicas []blobFile) {
 	self := a.cfgSnapshot().ID
 	items := map[string]*Item{}
@@ -68,7 +68,7 @@ func (a *App) scanBlobs() (own []blobFile, replicas []blobFile) {
 		}
 		it := items[name]
 		if it == nil {
-			// 条目已被删除或过期，但文件还在（例如删除时正在下载）
+			// the entry was deleted or expired but the file is still there (for example it was being downloaded when it got deleted)
 			if time.Since(info.ModTime()) > time.Hour {
 				os.Remove(filepath.Join(a.store.blobDir, name))
 			}
@@ -95,8 +95,8 @@ func (a *App) StorageUsage() StorageUsage {
 	return u
 }
 
-// makeRoom 确保再写入 need 字节（含已预留的）后不超过上限：必要时删除副本。返回能否放下。
-// 调用方须持有 quotaMu。
+// makeRoom makes sure that writing need more bytes (including the already reserved ones) stays within the limit, deleting replicas if needed. Reports whether it fits.
+// The caller must hold quotaMu.
 func (a *App) makeRoom(need int64) bool {
 	quota := int64(a.cfgSnapshot().StorageMB) << 20
 	if quota <= 0 {
@@ -113,7 +113,7 @@ func (a *App) makeRoom(need int64) bool {
 	if used+need <= quota {
 		return true
 	}
-	// 先删普通的，再删“永久保留”的；同类里先删旧的
+	// delete the ordinary ones first, then the "permanently kept" ones; within a group, delete the oldest first
 	sort.Slice(reps, func(i, j int) bool {
 		if reps[i].it.pinned() != reps[j].it.pinned() {
 			return !reps[i].it.pinned()
@@ -136,14 +136,14 @@ func (a *App) makeRoom(need int64) bool {
 	return used+need-freed <= quota
 }
 
-// enforceQuota 在上限调小或原件增多后，把副本清理到上限以内。
+// enforceQuota trims the replicas back within the limit after the limit was lowered or more originals arrived.
 func (a *App) enforceQuota() {
 	a.quotaMu.Lock()
 	a.makeRoom(a.reserved)
 	a.quotaMu.Unlock()
 }
 
-// ClearReplicas 删除所有副本（条目保留，需要时再从其他设备获取）。
+// ClearReplicas deletes all replicas (the entries are kept and can be fetched from other devices again when needed).
 func (a *App) ClearReplicas() (int, int64) {
 	a.quotaMu.Lock()
 	defer a.quotaMu.Unlock()
@@ -155,7 +155,7 @@ func (a *App) ClearReplicas() (int, int64) {
 			freed += b.size
 		}
 	}
-	// 本次运行期间不再自动下载回来（重启后也只补最近 3 天的，见 wantFetch）
+	// do not auto-download them back during this run (after a restart only the most recent 3 days are fetched, see wantFetch)
 	a.fetch.mu.Lock()
 	for _, b := range reps {
 		a.fetch.lastTry[b.it.ID] = time.Now().Add(100 * 365 * 24 * time.Hour)

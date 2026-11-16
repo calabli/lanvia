@@ -23,23 +23,23 @@ type App struct {
 	clip  *ClipWatcher
 
 	onChange    func()
-	onIncoming  func(Item) // 其他设备实时发来新内容（桌面通知用）
+	onIncoming  func(Item) // new content sent in real time by other devices (for desktop notifications)
 	desktopHook func(action, id string) bool
-	saved       map[string]string // 已保存到“下载”的文件：id -> 路径
-	fetch       *fetcher          // 后台下载其他设备的文件
+	saved       map[string]string // files saved to the "Downloads" folder: id -> path
+	fetch       *fetcher          // downloads files from other devices in the background
 
-	lower lowerCache // 全文搜索用的小写正文缓存
+	lower lowerCache // lowercased body cache used by full-text search
 
-	quotaMu  sync.Mutex // 保护 reserved，以及“腾空间”这一步
-	reserved int64      // 正在下载、还没落盘的副本预留的空间（.part 文件不计入占用）
+	quotaMu  sync.Mutex // guards reserved and the "make room" step
+	reserved int64      // space reserved for replicas that are downloading and not yet on disk (.part files do not count towards usage)
 
-	nonces   nonceCache   // v2 写请求用过的 nonce，防重放
-	eids     eidCache     // 转发过的同步消息编号，见 compat.go
-	upd      *UpdateState // 桌面版的更新状态，见 update.go
+	nonces   nonceCache   // nonces used by v2 write requests, to prevent replay
+	eids     eidCache     // IDs of sync messages already forwarded, see compat.go
+	upd      *UpdateState // desktop update state, see update.go
 	delivery deliveryLog  // Recent, in-memory receipt results; never part of synced history.
 }
 
-// credsFor 由配置得到密钥；重新生成过的 token 优先于由配对码派生的。
+// credsFor derives the credentials from the config; a regenerated token takes precedence over one derived from the pairing code.
 func credsFor(c *Config) creds {
 	cr := deriveCreds(c.Code)
 	if c.Token != "" {
@@ -75,12 +75,12 @@ func (a *App) updateCfg(fn func(*Config)) error {
 	a.cr = credsFor(&a.cfg)
 	c := a.cfg
 	a.mu.Unlock()
-	a.hub.Broadcast("settings", c.Settings) // 托盘菜单里改的设置，打开着的窗口也要跟着变
+	a.hub.Broadcast("settings", c.Settings) // settings changed in the tray menu must reach the open windows too
 	a.changed()
 	return c.save(a.dir)
 }
 
-// ---- 内容变更：本地产生、远端转发、历史合并都汇集到这里 ----
+// ---- Content changes: locally produced, remotely forwarded and history-merged changes all funnel through here ----
 
 func (a *App) newText(text, from string, apply bool, sender ...string) *Item {
 	it := &Item{ID: randHex(8), Kind: "text", Text: text, From: from, Origin: a.cfgSnapshot().ID, TS: nowMs()}
@@ -88,7 +88,7 @@ func (a *App) newText(text, from string, apply bool, sender ...string) *Item {
 	return it
 }
 
-// ingest 加入一条新内容。apply 表示内容来自别的设备，应写入本机剪贴板。
+// ingest adds a new item. apply means the item comes from another device and should be written to the local clipboard.
 func (a *App) ingest(it *Item, fromPeer string, apply bool, sender ...string) bool {
 	if !a.store.Add(it) {
 		return false
@@ -101,7 +101,7 @@ func (a *App) ingest(it *Item, fromPeer string, apply bool, sender ...string) bo
 				log.Printf(L("写入剪贴板失败: %v", "Writing to clipboard failed: %v"), err)
 			}
 		case it.Kind == "file" && isClipImageMime(it.Mime) && it.Size <= maxClipImage && a.clip.ok:
-			go a.applyImage(it) // 图片可能要先从对方下载
+			go a.applyImage(it) // the image may have to be downloaded from the peer first
 		}
 	}
 	a.peers.relay(Envelope{Op: "add", Item: it}, fromPeer, sender...)
@@ -109,7 +109,7 @@ func (a *App) ingest(it *Item, fromPeer string, apply bool, sender ...string) bo
 		a.enqueueFetch(it.ID)
 	}
 	a.changed()
-	// 其他设备或手机发来的（不含本机剪贴板和本机仪表盘发出的，也不含历史同步）
+	// sent by another device or a phone (not from the local clipboard or the local dashboard, and not from history sync)
 	if c := a.cfgSnapshot(); it.From != c.Name {
 		a.mu.RLock()
 		fn := a.onIncoming
@@ -138,10 +138,10 @@ func (a *App) clear(ts int64, fromPeer string) {
 	}
 }
 
-// merge 合并对方的历史：只补齐缺失的记录，不写剪贴板。
-// 合并得到的新内容会再转发给其他设备（除了 from）：手动添加设备时网络可能是一条链（C–A–B），
-// 只靠各自连上时拉一次历史，C 的内容到不了 B。转发用同样的“历史”格式，接收方同样走 merge，
-// 只转发自己第一次见到的部分，所以不会无限循环。
+// merge merges the peer's history: it only fills in missing records and does not touch the clipboard.
+// newly merged items are forwarded on to other devices (except from): when devices are added manually the network may be a chain (C–A–B),
+// and pulling the history once when each pair connects would never get C's items to B. Forwarding uses the same "history" format and the receiver goes through merge as well,
+// forwarding only the parts it has seen for the first time, so it cannot loop forever.
 func (a *App) merge(s storeFile, from string) {
 	if s.ClearedAt > 0 {
 		a.clear(s.ClearedAt, "")
@@ -149,8 +149,8 @@ func (a *App) merge(s storeFile, from string) {
 	for id := range s.Tomb {
 		a.remove(id, "")
 	}
-	var fresh []*Item            // 本机新增或更新过的内容（当前状态）
-	touched := map[string]bool{} // 需要连同版本一起转发的内容
+	var fresh []*Item            // items newly added or updated on this machine (current state)
+	touched := map[string]bool{} // items that need to be forwarded together with their versions
 	for i := len(s.Items) - 1; i >= 0; i-- {
 		it := s.Items[i]
 		if !validItem(it) {
@@ -161,7 +161,7 @@ func (a *App) merge(s storeFile, from string) {
 			touched[it.ID] = true
 			continue
 		}
-		// 已有的内容：补上对方更新过的保留设置、收藏、标签和清单，以及本机缺的未知字段
+		// existing item: fill in the retention setting, favorite, tags and checklist the peer updated, plus unknown fields missing locally
 		if u := a.store.adoptExtra(it.ID, it.Extra); u != nil {
 			touched[it.ID] = true
 		}
@@ -190,7 +190,7 @@ func (a *App) merge(s storeFile, from string) {
 			}
 		}
 	}
-	// 合并编辑历史。对方的内容里已经是编辑后的文本，所以这里不能把当前文本当成原始版本
+	// Merge the edit history. The peer's item already holds the edited text, so the current text must not be treated as the original version here
 	for id, vs := range s.Versions {
 		if it, added, _ := a.store.applyVersions(id, vs, false); added {
 			a.bcastItem("update", it)
@@ -208,7 +208,7 @@ func (a *App) merge(s storeFile, from string) {
 			fresh = append(fresh, it)
 		}
 	}
-	go a.fetchMissing() // 新设备上线：顺便补下之前没取到的文件
+	go a.fetchMissing() // a new device came online: also fetch the files that were missed earlier
 	if len(fresh) == 0 {
 		return
 	}
@@ -217,7 +217,7 @@ func (a *App) merge(s storeFile, from string) {
 	a.relaySync(fresh, from)
 }
 
-// relaySync 把一批内容（连同各自的全部版本）转发给其他设备，按大小分批，避免单个请求过大。
+// relaySync forwards a batch of items (together with all their versions) to other devices, splitting them by size so no single request gets too large.
 func (a *App) relaySync(items []*Item, from string) {
 	const batchLimit = 1 << 20
 	newBatch := func() storeFile {
@@ -284,15 +284,15 @@ func preview(it *Item) string {
 	return string(r)
 }
 
-// ---- 在线设备 ----
+// ---- Online devices ----
 
 type Device struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Kind string `json:"kind"`
-	Node bool   `json:"node"`          // 运行 Lanvia 的电脑
-	Host bool   `json:"host"`          // 当前浏览器连接的那台
-	Enc  bool   `json:"enc,omitempty"` // 与本机之间的传输已加密（节点）
+	Node bool   `json:"node"`          // a computer running Lanvia
+	Host bool   `json:"host"`          // the one the current browser is connected to
+	Enc  bool   `json:"enc,omitempty"` // the transfer to and from this machine is encrypted (node)
 	Via  string `json:"via,omitempty"`
 }
 
@@ -311,7 +311,7 @@ func (a *App) devices() []Device {
 	out := []Device{{ID: c.ID, Name: c.Name, Kind: osKind(runtime.GOOS), Node: true, Host: true}}
 	addClients := func(cs []ClientInfo, via string) {
 		for _, x := range cs {
-			if !x.Local { // 电脑上自己的仪表盘不重复显示
+			if !x.Local { // do not show the dashboard of this computer itself again
 				out = append(out, Device{ID: x.ID, Name: x.Name, Kind: x.Kind, Via: via})
 			}
 		}
@@ -324,20 +324,20 @@ func (a *App) devices() []Device {
 	return out
 }
 
-// pruneLoop 定期清理过期历史。单条可以设成 1 小时后删除，所以每分钟检查一次（只是遍历内存里的列表）。
+// pruneLoop periodically cleans up expired history. A single item can be set to be deleted after 1 hour, so it checks every minute (just walking the in-memory list).
 func (a *App) pruneLoop() {
 	for i := 0; ; i++ {
 		a.prune()
 		a.autoResume()
 		if i%5 == 4 {
-			a.enforceQuota() // 顺便清理残留文件
-			a.fetchMissing() // 每 5 分钟重试一次没下载成功的文件
+			a.enforceQuota() // also clean up leftover files
+			a.fetchMissing() // retry the files that failed to download every 5 minutes
 		}
 		time.Sleep(time.Minute)
 	}
 }
 
-// SetItemExpiry 设置单条内容的保留时长并同步到所有设备。ttl 为 0 且 keep 为 false 时恢复跟随全局设置。
+// SetItemExpiry sets the retention duration of a single item and syncs it to all devices. When ttl is 0 and keep is false the item follows the global setting again.
 func (a *App) SetItemExpiry(id string, ttl time.Duration, keep bool) (*Item, error) {
 	if a.store.Get(id) == nil {
 		return nil, errors.New("内容不存在")
@@ -355,7 +355,7 @@ func (a *App) SetItemExpiry(id string, ttl time.Duration, keep bool) (*Item, err
 	return it, nil
 }
 
-// SetFavorite 收藏 / 取消收藏一条内容并命名，同步到所有设备。
+// SetFavorite favorites or unfavorites an item and names it, syncing to all devices.
 func (a *App) SetFavorite(id string, fav bool, title string) (*Item, error) {
 	if a.store.Get(id) == nil {
 		return nil, errors.New("内容不存在")
@@ -374,7 +374,7 @@ func (a *App) afterFav(it *Item, fromPeer string) {
 	a.changed()
 }
 
-// Favorites 返回所有收藏，最新的在前。
+// Favorites returns all favorites, newest first.
 func (a *App) Favorites() []Item {
 	var out []Item
 	for _, it := range a.store.List() {

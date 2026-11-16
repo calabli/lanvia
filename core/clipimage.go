@@ -14,11 +14,11 @@ import (
 	"time"
 )
 
-// 剪贴板里的图片（截图、在浏览器或看图软件里复制的图片）：复制后作为图片文件发送；
-// 开着“主动粘贴”时，其他设备发来的图片也自动放进本机剪贴板。
-// 各平台的读写见 clipboard_*.go；这里是与平台无关的部分，以及 Windows 位图格式（DIB）与 PNG 之间的转换。
+// Images on the clipboard (screenshots, images copied in a browser or an image viewer): they are sent as image files after copying;
+// with "active paste" enabled, images sent by other devices are put into the local clipboard as well.
+// The platform specific reading and writing lives in clipboard_*.go; this is the platform independent part plus the conversion between the Windows bitmap format (DIB) and PNG.
 
-const maxClipImage = 20 << 20 // 超过这么大的图片不自动发送、不自动放进剪贴板
+const maxClipImage = 20 << 20 // images larger than this are neither sent automatically nor put into the clipboard automatically
 
 var errNoImage = errors.New("clipboard has no image")
 
@@ -30,7 +30,7 @@ func isClipImageMime(m string) bool {
 	return false
 }
 
-// newClipImage 把剪贴板里的图片（PNG）保存为一条图片内容并发送给其他设备。
+// newClipImage saves the image on the clipboard (PNG) as an image entry and sends it to the other devices.
 func (a *App) newClipImage(data []byte) (*Item, error) {
 	c := a.cfgSnapshot()
 	id := randHex(8)
@@ -47,7 +47,7 @@ func (a *App) newClipImage(data []byte) (*Item, error) {
 	return it, nil
 }
 
-// applyImage 把其他设备发来的图片放进本机剪贴板（本机没有文件时先从对方取）。
+// applyImage puts an image sent by another device into the local clipboard (fetching it from the peer first when this machine does not have the file).
 func (a *App) applyImage(it *Item) {
 	rc, err := a.openBlob(it)
 	if err != nil {
@@ -58,7 +58,7 @@ func (a *App) applyImage(it *Item) {
 	if err != nil || len(data) > maxClipImage {
 		return
 	}
-	// 下载期间可能又来了新内容，或者用户改了设置：那就不再覆盖剪贴板
+	// new content may have arrived during the download, or the user changed the settings: then do not overwrite the clipboard
 	if c := a.cfgSnapshot(); !c.AutoApply || a.Paused() || !a.store.isLatest(it.ID) {
 		return
 	}
@@ -67,9 +67,9 @@ func (a *App) applyImage(it *Item) {
 	}
 }
 
-// ---- Windows 位图（CF_DIB / CF_DIBV5）与 PNG 的转换 ----
+// ---- conversion between Windows bitmaps (CF_DIB / CF_DIBV5) and PNG ----
 
-// dibToPNG 把 Windows 剪贴板里的位图（BITMAPINFOHEADER 及其后的像素）转成 PNG。支持 24、32 位色。
+// dibToPNG converts a bitmap from the Windows clipboard (BITMAPINFOHEADER and the pixels after it) into PNG. It supports 24 and 32 bit color.
 func dibToPNG(b []byte) ([]byte, error) {
 	if len(b) < 40 {
 		return nil, errNoImage
@@ -87,7 +87,7 @@ func dibToPNG(b []byte) ([]byte, error) {
 	}
 	off := hdr
 	if comp == 3 && hdr == 40 {
-		off += 12 // BI_BITFIELDS：三个颜色掩码跟在 40 字节的头后面（V4/V5 头里已经包含）
+		off += 12 // BI_BITFIELDS: the three color masks follow the 40 byte header (they are already included in V4/V5 headers)
 	}
 	stride := (w*bpp + 31) / 32 * 4
 	if len(b) < off+stride*h {
@@ -96,7 +96,7 @@ func dibToPNG(b []byte) ([]byte, error) {
 	img := image.NewNRGBA(image.Rect(0, 0, w, h))
 	step, hasAlpha := bpp/8, false
 	for y := 0; y < h; y++ {
-		sy := h - 1 - y // 默认从下往上存
+		sy := h - 1 - y // stored bottom-up by default
 		if topDown {
 			sy = y
 		}
@@ -111,7 +111,7 @@ func dibToPNG(b []byte) ([]byte, error) {
 			}
 		}
 	}
-	if step == 4 && !hasAlpha { // 很多程序 32 位色时 alpha 全是 0，表示不透明
+	if step == 4 && !hasAlpha { // many programs set alpha to 0 for 32 bit color, which means opaque
 		for i := 3; i < len(img.Pix); i += 4 {
 			img.Pix[i] = 255
 		}
@@ -123,8 +123,8 @@ func dibToPNG(b []byte) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-// imageToClip 把收到的图片（PNG / JPEG / GIF）转成 Windows 剪贴板要的位图（32 位色、从下往上），
-// 同时给出 PNG（支持透明的程序会优先用它）。
+// imageToClip converts a received image (PNG / JPEG / GIF) into the bitmap the Windows clipboard expects (32 bit color, bottom-up),
+// and at the same time returns a PNG (which programs that support transparency prefer).
 func imageToClip(data []byte) (dib, pngData []byte, err error) {
 	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width*cfg.Height > thumbMaxPixels {

@@ -4,7 +4,7 @@ package core
 
 import "syscall"
 
-// 允许同一台机器上多个实例同时收听广播端口（方便调试，也避免端口被占时直接失败）。
+// Allow several instances on the same machine to listen on the broadcast port at once (handy for debugging, and it avoids failing outright when the port is taken).
 func reuseControl(network, address string, c syscall.RawConn) error {
 	return c.Control(func(fd uintptr) {
 		syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)

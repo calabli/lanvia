@@ -11,29 +11,29 @@ import (
 	"strings"
 )
 
-// Settings 是可在仪表盘里实时切换的选项。
+// Settings are the options that can be switched live from the dashboard.
 type Settings struct {
-	AutoApply bool `json:"autoApply"` // 收到其他设备的文本时写入本机剪贴板
-	Watch     bool `json:"watch"`     // 主动模式：复制即发送；false 为被动模式，手动发送
-	// 历史保留天数，0 表示永久。只对本机生效：过期内容会被删除，也不会再从其他设备同步回来。
+	AutoApply bool `json:"autoApply"` // write text received from other devices into the local clipboard
+	Watch     bool `json:"watch"`     // active mode: copying sends right away; false is passive mode, where sending is manual
+	// number of days to keep the history, 0 means forever. Only applies to this machine: expired content is deleted and is not synced back from other devices.
 	HistoryDays int `json:"historyDays"`
-	// 自动下载其他设备发来的文件（MB 上限）：0 关闭，-1 不限。发送方关机后本机仍保有一份。
+	// automatically download the files sent by other devices (limit in MB): 0 disables it, -1 means unlimited. A copy is kept on this machine even after the sender shuts down.
 	AutoFetchMB int `json:"autoFetchMB"`
-	// 文件占用上限（MB），0 不限。超出时只删其他设备文件的副本，本机的原件不删。
+	// storage limit in MB, 0 means unlimited. When exceeded, only copies of files from other devices are deleted, never the originals on this machine.
 	StorageMB int `json:"storageMB"`
-	// 只允许加密连接：拒绝不支持加密的旧版本节点，也防止中间人去掉加密
+	// allow only encrypted connections: reject old nodes without encryption support and prevent man-in-the-middle from stripping the encryption
 	StrictEnc bool `json:"strictEnc"`
-	// 界面语言：空为跟随系统，"zh" 或 "en"。本机的网页窗口和托盘菜单共用
+	// interface language: empty means follow the system, "zh" or "en". Shared by the web window and the tray menu on this machine
 	Lang string `json:"lang"`
-	// 收到其他设备的内容时弹出系统通知（桌面版）
+	// show a system notification when content arrives from another device (desktop version)
 	Notify bool `json:"notify"`
-	// 暂停同步到这个时间（毫秒）；-1 表示直到手动恢复，0 表示没有暂停
+	// pause syncing until this time (in milliseconds); -1 means until it is resumed manually, 0 means not paused
 	PausedUntil int64 `json:"pausedUntil"`
-	// 应用黑名单：在这些应用里复制的内容不发送（bundle id / 进程名 / 应用名，不区分大小写）
+	// application blacklist: content copied in these applications is not sent (bundle id / process name / application name, case-insensitive)
 	BlockApps []string `json:"blockApps"`
-	// 关闭 token 访问（快捷指令、curl）。token 和内容都是明文传输
+	// disable token access (shortcuts, curl). Both the token and the content are transmitted in plain text
 	TokenOff bool `json:"tokenOff"`
-	// 自动更新（桌面版）：有新版本时在后台下载，不使用 Lanvia 窗口时自动安装并重新打开
+	// automatic updates (desktop version): download a new version in the background and, when the Lanvia window is not in use, install it and reopen automatically
 	AutoUpdate bool `json:"autoUpdate"`
 }
 
@@ -46,13 +46,13 @@ const (
 type Config struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
-	Code string `json:"code"` // 配对码（规范化后，不含分隔符）
+	Code string `json:"code"` // pairing code (normalized, without separators)
 	Port int    `json:"port"`
-	// 手动添加的设备地址（host:port），自动发现失效时使用
+	// manually added device addresses (host:port), used when auto discovery fails
 	Peers []string `json:"peers,omitempty"`
-	// 重新生成过的自动化 token；空表示用由配对码派生的
+	// regenerated automation token; empty means the one derived from the pairing code is used
 	Token string `json:"token,omitempty"`
-	// 上次运行的版本，用于自动更新后提示“已更新到 vX”
+	// version of the last run, used to show "updated to vX" after an automatic update
 	LastVersion string `json:"lastVersion,omitempty"`
 	Settings
 }
@@ -78,7 +78,7 @@ func loadConfig(dir string) (*Config, error) {
 		if err := json.Unmarshal(b, c); err != nil {
 			return nil, err
 		}
-		// 旧版本的配置里没有这一项：默认不再永久保存
+		// older configurations do not have this entry: no longer keep everything forever by default
 		var raw map[string]json.RawMessage
 		if json.Unmarshal(b, &raw) == nil {
 			if _, ok := raw["historyDays"]; !ok {
@@ -127,7 +127,7 @@ func (c *Config) save(dir string) error {
 	return os.Rename(tmp, filepath.Join(dir, "config.json"))
 }
 
-// hostName 返回一个对人友好的设备名。
+// hostName returns a human friendly device name.
 func hostName() string {
 	if runtime.GOOS == "darwin" {
 		if out, err := exec.Command("scutil", "--get", "ComputerName").Output(); err == nil {

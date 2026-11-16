@@ -11,10 +11,10 @@ import (
 	"testing"
 )
 
-// 在 JPEG 的 SOI 之后插入一段只含方向标记的 EXIF
+// Inserts an EXIF block that holds only the orientation tag right after the JPEG SOI
 func withOrientation(jpg []byte, o uint16) []byte {
-	tiff := []byte("II*\x00\x08\x00\x00\x00") // 小端，IFD0 在偏移 8
-	tiff = append(tiff, 1, 0)                 // 1 个条目
+	tiff := []byte("II*\x00\x08\x00\x00\x00") // little-endian, IFD0 at offset 8
+	tiff = append(tiff, 1, 0)                 // 1 entry
 	e := make([]byte, 12)
 	binary.LittleEndian.PutUint16(e[0:], 0x0112) // Orientation
 	binary.LittleEndian.PutUint16(e[2:], 3)      // SHORT
@@ -31,7 +31,7 @@ func withOrientation(jpg []byte, o uint16) []byte {
 }
 
 func TestThumbnail(t *testing.T) {
-	// 2000×1000 的横图，左半红右半蓝
+	// a 2000×1000 landscape image, left half red and right half blue
 	src := image.NewRGBA(image.Rect(0, 0, 2000, 1000))
 	for y := 0; y < 1000; y++ {
 		for x := 0; x < 2000; x++ {
@@ -54,7 +54,7 @@ func TestThumbnail(t *testing.T) {
 		t.Fatalf("size %v, want 480x240", b)
 	}
 
-	// EXIF 方向 6（顺时针转 90°）：缩略图应变成竖的，原来的左边（红）到上边
+	// EXIF orientation 6 (rotate 90° clockwise): the thumbnail should become portrait, with the original left side (red) on top
 	out, _ = makeThumb(withOrientation(jb.Bytes(), 6))
 	img, _ = jpeg.Decode(bytes.NewReader(out))
 	if b := img.Bounds(); b.Dx() != 240 || b.Dy() != 480 {
@@ -64,7 +64,7 @@ func TestThumbnail(t *testing.T) {
 		t.Fatal("orientation not applied: top should be red")
 	}
 
-	// 透明 PNG：透明部分垫白
+	// Transparent PNG: transparent areas are padded with white
 	pn := image.NewNRGBA(image.Rect(0, 0, 100, 100))
 	var pb bytes.Buffer
 	png.Encode(&pb, pn)

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// 以后版本加的字段：解析时保留，存盘、重启、同步快照、推给网页时都还在
+// Fields added by later versions: they are kept while parsing and are still there after saving, restarting, taking a sync snapshot, or pushing to the web page
 func TestItemKeepsUnknownFields(t *testing.T) {
 	in := `{"id":"a000000000000001","kind":"text","text":"hi","from":"x","origin":"o","ts":5,"reactions":{"👍":["Mac"]},"pinnedAt":123}`
 	var it Item
@@ -37,7 +37,7 @@ func TestItemKeepsUnknownFields(t *testing.T) {
 	if !strings.Contains(string(snap), `"reactions":{"👍":["Mac"]}`) {
 		t.Fatalf("snapshot lost fields: %s", snap)
 	}
-	// 收藏等写时复制的修改不会丢掉未知字段
+	// Copy-on-write changes such as favoriting do not drop unknown fields
 	r.applyFav(it.ID, true, "", nowMs())
 	if string(r.Get(it.ID).Extra["pinnedAt"]) != "123" {
 		t.Fatal("copy-on-write lost Extra")
@@ -50,7 +50,7 @@ func TestItemExtraLimits(t *testing.T) {
 	if err := json.Unmarshal([]byte(big), &it); err != nil || it.Extra != nil || it.Text != "hi" {
 		t.Fatalf("oversized extra should be dropped: err=%v extra=%d", err, len(it.Extra))
 	}
-	// 没有未知字段时输出与以前完全相同
+	// With no unknown fields the output is exactly the same as before
 	plain := Item{ID: "a000000000000001", Kind: "text", Text: "hi", From: "x", Origin: "o", TS: 5}
 	b, _ := json.Marshal(plain)
 	if string(b) != `{"id":"a000000000000001","kind":"text","text":"hi","from":"x","origin":"o","ts":5}` {
@@ -58,7 +58,7 @@ func TestItemExtraLimits(t *testing.T) {
 	}
 }
 
-// 本机这条没有未知字段（例如经过旧版本转发时丢了）、别处同步来的有：补上
+// This local copy has no unknown fields (e.g. they were lost when an older version forwarded it) but the synced one does: adopt them
 func TestAdoptExtra(t *testing.T) {
 	s := openStore(t.TempDir())
 	s.Add(&Item{ID: "a000000000000001", Kind: "text", Text: "x", From: "x", Origin: "o", TS: nowMs()})

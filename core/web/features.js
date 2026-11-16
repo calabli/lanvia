@@ -1,10 +1,10 @@
 'use strict';
 
-// 发送模式、页内对话框、收藏、单条保留时长、文件占用与手动添加设备的渲染。
+// Rendering of send mode, in-page dialogs, favorites, per-item retention, storage usage and manually added devices.
 
-/* ================= 主动复制 / 主动粘贴 ================= */
+/* ================= Active Copy / Active Paste ================= */
 
-// 主动复制：本机复制后自动发送（settings.watch）；主动粘贴：收到的文字自动写入本机剪贴板（settings.autoApply）。两者互相独立
+// Active copy: send automatically after copying on this machine (settings.watch); active paste: received text is written to the local clipboard automatically (settings.autoApply). The two are independent
 const isActive = () => S.info?.settings?.watch !== false;
 const isAutoPaste = () => !!S.info?.settings?.autoApply;
 
@@ -36,7 +36,7 @@ function renderMode() {
   if (!active) refreshClip();
 }
 
-/* ---- 暂停同步 ---- */
+/* ---- Pause Sync ---- */
 
 function renderPause() {
   const row = $('#pauseRow');
@@ -58,7 +58,7 @@ async function pause(minutes) {
   } catch (e) { toast(e.message); }
 }
 
-/* ---- 应用黑名单 ---- */
+/* ---- App Blocklist ---- */
 
 function renderBlock() {
   const list = S.info?.settings?.blockApps || [];
@@ -89,7 +89,7 @@ async function setMode(key, on) {
 function bindModeMenu() {
   const m = $('#modeMenu'), btn = $('#modeBtn');
   btn.onclick = () => {
-    if (isPaused()) return pause(0); // 暂停中点一下就恢复
+    if (isPaused()) return pause(0); // clicking while paused resumes sync
     if (!m.hidden) { m.hidden = true; return; }
     renderMode();
     m.hidden = false;
@@ -115,11 +115,11 @@ async function refreshClip() {
       box.textContent = `剪贴板里是一张图片（${fmtSize(c.image)}）`;
       box.classList.remove('empty');
     } else if (c.reason) {
-      delete box.dataset.raw; // 提示文字需要翻译
+      delete box.dataset.raw; // the hint text needs translation
       box.textContent = c.reason;
       box.classList.add('empty');
     } else {
-      box.dataset.raw = ''; // 剪贴板内容原样显示
+      box.dataset.raw = ''; // clipboard content is shown verbatim
       box.textContent = c.text + (c.length > [...c.text].length ? '…' : '');
       box.classList.remove('empty');
     }
@@ -137,7 +137,7 @@ async function sendClipboard() {
   refreshClip();
 }
 
-/* ================= 页内对话框（不依赖浏览器 / WebView 的 confirm、prompt） ================= */
+/* ================= In-Page Dialogs (no dependency on the browser / WebView confirm, prompt) ================= */
 
 function uiAsk(message, { input = false, value = '', placeholder = '', ok = '确定', cancel = '取消', danger = false } = {}) {
   return new Promise(resolve => {
@@ -160,7 +160,7 @@ function uiAsk(message, { input = false, value = '', placeholder = '', ok = '确
 const uiConfirm = (msg, opt) => uiAsk(msg, opt);
 const uiPrompt = (msg, opt) => uiAsk(msg, { ...opt, input: true });
 
-/* ================= 收藏 / 常用片段 ================= */
+/* ================= Favorites / Snippets ================= */
 
 async function setFav(it, fav, title = '') {
   try {
@@ -186,7 +186,7 @@ function toggleFav(it, anchor) {
   ]);
 }
 
-// 通用的小菜单（与保留时长菜单共用样式）
+// generic small menu (shares the styling of the retention menu)
 function openMenu(anchor, title, options) {
   const m = $('#expiryMenu');
   menuItem = null;
@@ -199,7 +199,7 @@ function openMenu(anchor, title, options) {
   $('button', m)?.focus();
 }
 
-/* ================= 单条保留时长 ================= */
+/* ================= Per-Item Retention ================= */
 
 const EXPIRY_OPTIONS = [
   { label: '1 小时后删除', ttl: 3600 },
@@ -238,7 +238,7 @@ function openExpiryMenu(it, anchor) {
   $('button', m)?.focus();
 }
 
-/* ================= 标签编辑 ================= */
+/* ================= Tag Editing ================= */
 
 let tagItem = null, tagAnchor = null;
 function openTagMenu(it, anchor) {
@@ -256,7 +256,7 @@ function openTagMenu(it, anchor) {
 function placeTagMenu() {
   const m = $('#tagMenu');
   if (m.hidden) return;
-  // 卡片可能因为标签变化被重建，按钮要重新找
+  // the card may be rebuilt when the tags change, so the button has to be looked up again
   if (!tagAnchor?.isConnected) tagAnchor = $(`.item[data-id="${tagItem?.id}"] [data-act="tags"]`);
   if (!tagAnchor) return;
   const r = tagAnchor.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
@@ -326,13 +326,13 @@ function bindFontMenu() {
   const m = $('#fontMenu'), btn = $('#fontBtn');
   btn.innerHTML = ICON.fontSize;
   btn.onclick = () => (m.hidden ? openFontMenu(btn) : (m.hidden = true));
-  // 拖动时实时生效（字号变了，菜单和按钮的位置也会变，所以每次都重新定位）
+  // applies live while dragging (the font size changes, so the menu and button positions change too and are recomputed every time)
   m.addEventListener('input', e => { if (e.target.id === 'fsRange') { showFont(setFont(e.target.value)); place(); } });
   m.addEventListener('click', e => { if (e.target.closest('#fsReset')) { showFont(setFont(1)); place(); } });
   const place = () => { const r = btn.getBoundingClientRect(), w = m.offsetWidth; m.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px'; m.style.top = r.bottom + 6 + 'px'; };
   m.addEventListener('keydown', e => { if (e.key === 'Escape') { m.hidden = true; btn.focus(); } });
   document.addEventListener('mousedown', e => { if (!m.hidden && !m.contains(e.target) && !btn.contains(e.target)) m.hidden = true; });
-  // 桌面版：⌘/Ctrl + 加号、减号、0 调整字号（浏览器里保留浏览器自己的缩放）
+  // Desktop: ⌘/Ctrl + plus, minus, 0 to change the font size (in the browser we keep the browser's own zoom)
   if (DESKTOP) addEventListener('keydown', e => {
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
     const cur = applyFont(store.get('fontSize'));
@@ -347,7 +347,7 @@ function bindFontMenu() {
     if (!m.hidden) place();
     toast(`字体大小 ${Math.round(v * 100)}%`);
   });
-  // 桌面版的几个窗口共用设置：一个窗口里改了，其他窗口跟着变
+  // several desktop windows share the setting: change it in one window and the others follow
   addEventListener('storage', e => { if (e.key === 'lanvia.fontSize') showFont(applyFont(e.newValue)); });
 }
 

@@ -22,7 +22,7 @@ func fileSize(t *testing.T, p string) int64 {
 func TestStoreSplitRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	s := openStore(dir)
-	big := strings.Repeat("长内容 log line\n", 8000) // 约 150 KB
+	big := strings.Repeat("长内容 log line\n", 8000) // about 150 KB
 	s.Add(&Item{ID: "a000000000000001", Kind: "text", Text: "short", From: "x", Origin: "o", TS: nowMs() - 2000})
 	s.Add(&Item{ID: "b000000000000002", Kind: "text", Text: big, From: "x", Origin: "o", TS: nowMs() - 1000})
 	s.applyVersions("a000000000000001", []*TextVersion{{ID: "c000000000000003", Text: "short v2", By: "y", TS: nowMs()}}, true)
@@ -54,7 +54,7 @@ func TestStoreSplitRoundTrip(t *testing.T) {
 	}
 }
 
-// 只重写改动过的内容的文件
+// Only the files of changed items are rewritten
 func TestStoreWritesOnlyChanged(t *testing.T) {
 	dir := t.TempDir()
 	s := openStore(dir)
@@ -86,13 +86,13 @@ func TestStoreCleansFiles(t *testing.T) {
 	s.applyVersions("a000000000000001", []*TextVersion{{ID: "c000000000000003", Text: big + "y", By: "y", TS: nowMs()}}, true)
 	s.Add(&Item{ID: "b000000000000002", Kind: "text", Text: big, From: "x", Origin: "o", TS: nowMs()})
 	s.Flush()
-	// 编辑后变短：长正文文件删除
+	// Shorter after the edit: the long text file is deleted
 	s.applyVersions("b000000000000002", []*TextVersion{{ID: "d000000000000004", Text: "short now", By: "y", TS: nowMs() + 5}}, true)
 	s.Flush()
 	if fileSize(t, s.textPath("b000000000000002")) != -1 {
 		t.Fatal("text file kept after the text became short")
 	}
-	// 删除：正文和版本文件一起删
+	// Deleting: the text file and the version file are deleted together
 	s.Delete("a000000000000001")
 	if fileSize(t, s.textPath("a000000000000001")) != -1 || fileSize(t, s.verPath("a000000000000001")) != -1 {
 		t.Fatal("files kept after delete")
@@ -102,7 +102,7 @@ func TestStoreCleansFiles(t *testing.T) {
 	}
 }
 
-// 旧版本把版本和长正文都写在 history.json 里，打开后应迁移到新格式且不丢数据。
+// Old versions wrote both the versions and the long texts into history.json; opening it should migrate to the new format without losing data.
 func TestStoreMigratesOldFormat(t *testing.T) {
 	dir := t.TempDir()
 	big := strings.Repeat("旧格式长正文\n", 5000)
@@ -133,7 +133,7 @@ func TestStoreMigratesOldFormat(t *testing.T) {
 	}
 }
 
-// 索引（byID）在各种增删改之后始终与列表一致，indexOf 能找到每一条
+// The index (byID) always stays consistent with the list after any insert, delete or update, and indexOf finds every entry
 func TestStoreIndexConsistent(t *testing.T) {
 	dir := t.TempDir()
 	s := openStore(dir)
@@ -150,7 +150,7 @@ func TestStoreIndexConsistent(t *testing.T) {
 	}
 	now := nowMs()
 	for i := 0; i < maxItems+50; i++ {
-		ts := now - int64(i%40)*1000 // 很多条时间相同，考验二分查找后的线性部分
+		ts := now - int64(i%40)*1000 // many entries share the same timestamp, exercising the linear part after the binary search
 		s.Add(&Item{ID: fmt.Sprintf("%016x", i+1), Kind: "text", Text: "x", From: "x", Origin: "o", TS: ts, Keep: i%7 == 0})
 	}
 	check("add over cap")

@@ -12,9 +12,9 @@ import (
 	"syscall"
 )
 
-// 用安装器装的 Lanvia 归 root 所有（v0.13.0 的安装器），标准账户也改不了“应用程序”：
-// 这些情况下不能直接替换，改为通过系统的密码对话框以管理员身份替换，并把新版本交还给当前用户，
-// 这样以后的更新就不用再输密码了。
+// A Lanvia installed with the installer belongs to root (the installer of v0.13.0), and a standard account cannot modify "Applications" either:
+// in those cases it cannot be replaced directly, so it is replaced as administrator through the system password dialog, and the new version is handed back to the current user,
+// so that later updates do not need a password anymore.
 
 func ownedByMe(path string) bool {
 	st, err := os.Lstat(path)
@@ -27,13 +27,13 @@ func ownedByMe(path string) bool {
 
 func writable(dir string) bool { return syscall.Access(dir, 2 /* W_OK */) == nil }
 
-// CanReplace 判断当前用户能不能直接替换 appPath（不需要管理员权限）。
+// CanReplace reports whether the current user can replace appPath directly (without administrator rights).
 func CanReplace(appPath string) bool {
 	return writable(filepath.Dir(appPath)) && ownedByMe(appPath) && ownedByMe(filepath.Join(appPath, "Contents")) &&
 		ownedByMe(filepath.Join(appPath, "Contents", "MacOS", "Lanvia"))
 }
 
-// DownloadDir 是下载安装包的目录：能直接替换时放在 App 旁边（替换只需改名），否则放在用户缓存目录。
+// DownloadDir is the directory the installer is downloaded to: next to the App when it can be replaced directly (replacing only needs a rename), otherwise in the user cache directory.
 func DownloadDir(appPath string) string {
 	if CanReplace(appPath) {
 		return filepath.Dir(appPath)
@@ -47,7 +47,7 @@ func DownloadDir(appPath string) string {
 	return dir
 }
 
-// InstallMacAuto 能直接替换就直接替换；否则弹出系统的密码对话框，以管理员身份替换。
+// InstallMacAuto replaces it directly when that is possible; otherwise it pops up the system password dialog and replaces it as administrator.
 func InstallMacAuto(zipPath, appPath string) error {
 	if CanReplace(appPath) {
 		return InstallMac(zipPath, appPath)
@@ -66,7 +66,7 @@ func installMacAdmin(zipPath, appPath string) error {
 	if err != nil {
 		return err
 	}
-	// 解压 → 检查 → 旧版改名备份 → 新版就位 → 交还给当前用户 → 删除备份；中途失败就恢复旧版
+	// Unzip → check → rename the old version as a backup → put the new version in place → hand it back to the current user → delete the backup; on failure the old version is restored
 	script := fmt.Sprintf(`set -e
 t=$(/usr/bin/mktemp -d /tmp/lanvia-update.XXXXXX)
 trap '/bin/rm -rf "$t"' EXIT
@@ -81,7 +81,7 @@ if ! /bin/mv "$t/Lanvia.app" %[2]s; then /bin/mv %[2]s.old %[2]s; exit 1; fi
 	osa := fmt.Sprintf("do shell script %s with administrator privileges with prompt %s", appleScriptQuote(script), appleScriptQuote(prompt))
 	out, err := exec.Command("osascript", "-e", osa).CombinedOutput()
 	if err != nil {
-		if strings.Contains(string(out), "-128") { // 用户点了“取消”
+		if strings.Contains(string(out), "-128") { // the user clicked "Cancel"
 			return ErrCanceled
 		}
 		return fmt.Errorf("替换失败：%v %s", err, strings.TrimSpace(string(out)))

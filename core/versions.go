@@ -7,13 +7,13 @@ import (
 	"unicode/utf8"
 )
 
-// TextVersion 是一条文本内容的一个版本。
+// TextVersion is one version of a text item.
 //
-// 同步规则（多台设备同时编辑也能收敛到同一结果）：
-//   - 版本集合只增不减，按 ID 去重，各节点之间求并集；
-//   - 当前内容取 (TS, ID) 最大的版本，所以同时编辑时较晚的一方生效，另一方保留在历史里；
-//   - 原始内容作为第一个版本，ID 与内容 ID 相同。它在第一次被编辑时由各节点按同样的规则生成，
-//     所以哪台设备生成的都一样。
+// Sync rules (several devices editing at the same time still converge on the same result):
+//   - the version set only grows, is deduplicated by ID and unioned across nodes;
+//   - the current text is the version with the largest (TS, ID), so the later edit wins and the other one is kept in the history;
+//   - the original text is the first version, with the same ID as the item; every node generates it with the same rule on the first edit,
+//     so the result is the same everywhere.
 type TextVersion struct {
 	ID   string `json:"id"`
 	Text string `json:"text"`
@@ -34,9 +34,9 @@ func validVersion(v *TextVersion) bool {
 	return v != nil && idRe.MatchString(v.ID) && v.TS > 0 && len(v.Text) <= maxTextLen && utf8.ValidString(v.Text)
 }
 
-// applyVersions 把一组版本并入某条内容。synthOriginal 为 true 时，如果这条内容还没有历史，
-// 先把当前文本记为原始版本（只有在确实没见过任何编辑时，当前文本才是原始内容）。
-// 返回更新后的内容副本、是否有新版本、当前内容是否改变。
+// applyVersions merges a set of versions into an item. When synthOriginal is true and the item has
+// no history yet, the current text is recorded as the original version (only when no edit was really
+// seen is the current text the original one). It returns the updated copy of the item, whether there are new versions and whether the current text changed.
 func (s *Store) applyVersions(id string, in []*TextVersion, synthOriginal bool) (*Item, bool, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -64,8 +64,8 @@ func (s *Store) applyVersions(id string, in []*TextVersion, synthOriginal bool) 
 	if !added {
 		return nil, false, false
 	}
-	sort.Slice(vs, func(i, j int) bool { return newer(vs[j], vs[i]) }) // 旧的在前
-	// 版本太多时丢掉最旧的编辑，但保留原始版本
+	sort.Slice(vs, func(i, j int) bool { return newer(vs[j], vs[i]) }) // oldest first
+	// drop the oldest edits when there are too many versions, but keep the original version
 	if len(vs) > maxVersions {
 		keep := []*TextVersion{}
 		if vs[0].ID == id {
@@ -78,7 +78,7 @@ func (s *Store) applyVersions(id string, in []*TextVersion, synthOriginal bool) 
 	s.touch(id)
 
 	cur := vs[len(vs)-1]
-	n := *it // 写时复制：旧的指针可能正被其他 goroutine 序列化
+	n := *it // copy on write: the old pointer may be serialized by another goroutine right now
 	n.Text, n.Rev = cur.Text, len(vs)-1
 	n.EditedAt, n.EditedBy = 0, ""
 	if cur.ID != it.ID {
@@ -86,13 +86,13 @@ func (s *Store) applyVersions(id string, in []*TextVersion, synthOriginal bool) 
 	}
 	s.setAt(idx, &n)
 	if n.Text != it.Text && (len(n.Text) > previewBytes || len(it.Text) > previewBytes) {
-		s.dirtyText[id] = true // 长正文变了，或者在长短之间切换
+		s.dirtyText[id] = true // the long text changed, or it switched between long and short
 	}
 	s.markDirty()
 	return &n, true, n.Text != it.Text
 }
 
-// Versions 返回某条内容的所有版本，新的在前。没被编辑过时只有原始版本。
+// Versions returns all versions of an item, newest first. An item that was never edited has only the original version.
 func (s *Store) Versions(id string) []*TextVersion {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -110,14 +110,14 @@ func (s *Store) Versions(id string) []*TextVersion {
 	return out
 }
 
-// isLatest 判断这条内容是否是最新的一条（也就是各设备剪贴板里的那条）。
+// isLatest reports whether an item is the newest one (the one in the clipboard of every device).
 func (s *Store) isLatest(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.items) > 0 && s.items[0].ID == id
 }
 
-// EditItem 在本机修改一条文本，生成新版本并同步给所有设备。
+// EditItem edits a text on this machine, creates a new version and syncs it to every device.
 func (a *App) EditItem(id, text, by string) (*Item, error) {
 	if strings.TrimSpace(text) == "" {
 		return nil, errors.New("内容不能为空")
@@ -141,7 +141,7 @@ func (a *App) EditItem(id, text, by string) (*Item, error) {
 	return it, nil
 }
 
-// applyRemoteEdit 处理其他节点转发来的编辑。
+// applyRemoteEdit handles an edit forwarded by another node.
 func (a *App) applyRemoteEdit(id string, v *TextVersion, fromPeer string) {
 	if it, added, changed := a.store.applyVersions(id, []*TextVersion{v}, true); added {
 		a.afterEdit(it, changed, v, fromPeer)
@@ -150,7 +150,7 @@ func (a *App) applyRemoteEdit(id string, v *TextVersion, fromPeer string) {
 
 func (a *App) afterEdit(it *Item, changed bool, v *TextVersion, fromPeer string) {
 	a.bcastItem("update", it)
-	// 改的是最新一条时，各电脑剪贴板里的内容也跟着更新
+	// when the newest item was changed, the clipboard on every computer is updated too
 	if changed && a.store.isLatest(it.ID) && a.cfgSnapshot().AutoApply {
 		a.clip.Apply(it.Text)
 	}

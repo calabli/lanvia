@@ -20,11 +20,11 @@ type lanAddr struct {
 	Iface string
 }
 
-// 虚拟网卡：VPN/代理隧道、容器、虚拟机。它们的地址手机连不上，不应出现在二维码和地址列表里。
+// Virtual network interfaces: VPN/proxy tunnels, containers, virtual machines. Phones cannot reach their addresses, so they should not show up in the QR code or in the address list.
 var (
 	virtualPrefixes = []string{"utun", "tun", "tap", "zt", "br-", "veth", "docker", "vmnet", "vboxnet", "bridge", "awdl", "llw"}
 	virtualContains = []string{"vethernet", "vmware", "virtualbox", "hyper-v", "wsl", "tailscale", "zerotier", "docker", "loopback", "pseudo"}
-	proxyNet        = &net.IPNet{IP: net.IPv4(198, 18, 0, 0), Mask: net.CIDRMask(15, 32)} // 代理软件 fake-ip 网段
+	proxyNet        = &net.IPNet{IP: net.IPv4(198, 18, 0, 0), Mask: net.CIDRMask(15, 32)} // fake-ip range used by proxy software
 )
 
 func isVirtual(ifc net.Interface, ip net.IP) bool {
@@ -45,8 +45,8 @@ func isVirtual(ifc net.Interface, ip net.IP) bool {
 	return false
 }
 
-// lanAddrs 列出可用于局域网的 IPv4 地址，排除虚拟网卡，私有地址和常见物理网卡排在前面。
-// 如果过滤后一个都不剩（比如只有 VPN），退回到全部地址，至少还能手动尝试。
+// lanAddrs lists the IPv4 addresses usable on the LAN, excluding virtual interfaces, with private addresses and common physical interfaces sorted first.
+// If nothing is left after the filtering (for example only a VPN), it falls back to all addresses, so that they can still be tried manually.
 func lanAddrs() []lanAddr {
 	var real, all []lanAddr
 	ifs, _ := net.Interfaces()

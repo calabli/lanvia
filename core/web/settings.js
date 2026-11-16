@@ -1,8 +1,8 @@
 'use strict';
 
-// 本机仪表盘（设置、配对二维码）与配对流程。
+// Local dashboard (settings, pairing QR code) and the pairing flow.
 
-/* ================= 本机仪表盘 ================= */
+/* ================= Local Dashboard ================= */
 
 async function loadInfo() {
   try { S.info = await api('GET', '/api/info'); } catch { return; }
@@ -12,7 +12,7 @@ async function loadInfo() {
   const prev = sel.value;
   sel.innerHTML = (i.urls || []).map(u => `<option>${esc(u)}</option>`).join('') || '<option>未检测到局域网地址</option>';
   if (prev && i.urls?.includes(prev)) sel.value = prev;
-  // 只有一个地址时没必要让人选
+  // no point in letting people pick when there is only one address
   const single = (i.urls || []).length <= 1;
   sel.hidden = single;
   $('#urlText').hidden = !single;
@@ -27,7 +27,7 @@ async function loadInfo() {
   $('#optStrict').checked = !!i.settings.strictEnc;
   if ((i.settings.lang || '') !== (store.get('lang') || '')) applyLang(i.settings.lang || '');
   const keep = String(i.settings.historyDays ?? 30), ks = $('#optKeep');
-  if (![...ks.options].some(o => o.value === keep)) ks.add(new Option(`${keep} 天`, keep)); // 手动改过配置文件的情况
+  if (![...ks.options].some(o => o.value === keep)) ks.add(new Option(`${keep} 天`, keep)); // the config file was edited by hand
   ks.value = keep;
   const fetchMB = String(i.settings.autoFetchMB ?? 100), fs = $('#optFetch');
   if (![...fs.options].some(o => o.value === fetchMB)) fs.add(new Option(`${fetchMB} MB 以下`, fetchMB));
@@ -71,7 +71,7 @@ async function saveSettings(patch) {
   catch (e) { toast('保存失败：' + e.message); }
 }
 
-/* ================= 配对 ================= */
+/* ================= Pairing ================= */
 
 function showPair(err) {
   $('#app').hidden = true;

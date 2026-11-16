@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-// 电脑端“下载”直接保存到 下载/Lanvia，WebView 里没有浏览器的下载管理器。
+// On the desktop "Download" saves straight to Downloads/Lanvia: the WebView has no download manager.
 func downloadsDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -21,7 +21,7 @@ func downloadsDir() string {
 	return filepath.Join(home, "Downloads", "Lanvia")
 }
 
-// SaveFile 把一个文件保存到 下载/Lanvia，返回保存路径。同一条内容只保存一次。
+// SaveFile saves a file to Downloads/Lanvia and returns the path. The same item is only saved once.
 func (a *App) SaveFile(id string) (string, error) {
 	it := a.store.Get(id)
 	if it == nil || it.Kind != "file" {
@@ -65,7 +65,7 @@ func (a *App) SaveFile(id string) (string, error) {
 	return dst, nil
 }
 
-// openBlob 打开本地文件；本机没有时通过自己的 HTTP 接口从来源设备取（顺便缓存）。
+// openBlob opens a local file; when it is missing here it is fetched from the source device over our own HTTP API (and cached on the way).
 func (a *App) openBlob(it *Item) (io.ReadCloser, error) {
 	if f, err := os.Open(a.store.blobPath(it.ID)); err == nil {
 		return f, nil
@@ -95,13 +95,13 @@ func uniquePath(dir, name string) string {
 	}
 }
 
-// inDownloads 确保只能打开/显示 下载/Lanvia 里的文件。
+// inDownloads makes sure only files inside Downloads/Lanvia can be opened or shown.
 func inDownloads(p string) bool {
 	rel, err := filepath.Rel(downloadsDir(), filepath.Clean(p))
 	return err == nil && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel)
 }
 
-// RevealFile 在访达 / 资源管理器中显示文件。
+// RevealFile shows the file in Finder / Explorer.
 func RevealFile(p string) error {
 	switch runtime.GOOS {
 	case "darwin":
@@ -113,7 +113,7 @@ func RevealFile(p string) error {
 	}
 }
 
-// OpenFile 用系统默认程序打开文件。
+// OpenFile opens the file with the default application.
 func OpenFile(p string) error {
 	switch runtime.GOOS {
 	case "darwin":

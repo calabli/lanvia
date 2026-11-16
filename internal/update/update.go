@@ -1,5 +1,5 @@
-// Package update 实现桌面版的自动更新：查询 GitHub 上的最新版本，下载对应平台的安装包，
-// 用 SHA256SUMS.txt 校验后替换当前程序。替换步骤和界面无关，可以单独测试。
+// Package update implements the automatic update of the desktop client: it looks up the latest version on GitHub, downloads the installer for the matching platform,
+// and replaces the current program after verifying it with SHA256SUMS.txt. The replacement steps are independent of the UI and can be tested on their own.
 package update
 
 import (
@@ -21,11 +21,11 @@ import (
 	"time"
 )
 
-// DefaultAPI 是 GitHub 接口里最新版本的地址。接口对不登录的访问每个公网 IP 每小时只给 60 次，
-// 共用出口的网络里很容易用完（返回 403），所以检查更新主要走网页地址，见 Find。
+// DefaultAPI is the address of the latest version in the GitHub API. For unauthenticated access the API allows only 60 requests per hour per public IP,
+// which is easily used up on networks sharing an egress IP (it returns 403), so update checks mainly go through the web address, see Find.
 const DefaultAPI = "https://api.github.com/repos/calabli/lanvia/releases/latest"
 
-// 发布所在的仓库和网站地址
+// The repository and the website address where the releases live
 const (
 	DefaultRepo = "calabli/lanvia"
 	githubWeb   = "https://github.com"
@@ -33,18 +33,18 @@ const (
 
 var ErrNotFound = errors.New("找不到发布信息（仓库不是公开的，或还没有发布）")
 
-// ErrCanceled 表示用户在密码对话框里点了“取消”。
+// ErrCanceled means the user clicked "Cancel" in the password dialog.
 var ErrCanceled = errors.New("已取消更新")
 
 type Release struct {
 	Tag    string  `json:"tag_name"`
 	Name   string  `json:"name"`
-	Body   string  `json:"body"` // 发布说明（Markdown）
+	Body   string  `json:"body"` // release notes (Markdown)
 	URL    string  `json:"html_url"`
 	Assets []Asset `json:"assets"`
 }
 
-// Has 判断这个版本有没有某个安装包（有的版本只发布了部分平台）。
+// Has reports whether this release has a given installer (some releases only cover some platforms).
 func (r *Release) Has(name string) bool { return name != "" && r.asset(name) != nil }
 
 type Asset struct {
@@ -64,8 +64,8 @@ func (r *Release) asset(name string) *Asset {
 
 var client = &http.Client{Timeout: 30 * time.Second}
 
-// Find 查询最新发布的版本：先用网页地址（不受接口访问次数限制），失败时再试接口。
-// apiURL 不是 DefaultAPI 时（测试用的假服务器）直接用接口。网页方式拿不到更新说明，需要时用 Notes 补。
+// Find looks up the latest release: it uses the web address first (not limited by the API request count) and falls back to the API when that fails.
+// When apiURL is not DefaultAPI (a fake server for tests) it goes straight to the API. The web route gives no release notes, so use Notes to fill them in when needed.
 func Find(ctx context.Context, apiURL string) (*Release, error) {
 	if apiURL != DefaultAPI {
 		return Latest(ctx, apiURL)
@@ -80,7 +80,7 @@ func Find(ctx context.Context, apiURL string) (*Release, error) {
 	return nil, err
 }
 
-// Notes 尽量取某个版本的更新说明（走接口，可能因为访问次数用完而失败，失败时返回空）。
+// Notes tries to fetch the release notes of a version (it goes through the API and may fail because the request count is used up; it returns an empty string on failure).
 func Notes(ctx context.Context, apiURL, tag string) string {
 	if apiURL != DefaultAPI {
 		return ""
@@ -100,8 +100,8 @@ func Notes(ctx context.Context, apiURL, tag string) string {
 	return r.Body
 }
 
-// latestWeb 不用接口查最新版本：github.com/<repo>/releases/latest 会跳转到 /releases/tag/<版本>，
-// 再读这个版本的 SHA256SUMS.txt，里面列出了它有哪些安装包；下载地址按固定格式拼出来。
+// latestWeb looks up the latest version without the API: github.com/<repo>/releases/latest redirects to /releases/tag/<version>,
+// and then it reads the SHA256SUMS.txt of that version, which lists the installers it has; the download URLs are built from a fixed format.
 func latestWeb(ctx context.Context, base, repo string) (*Release, error) {
 	noRedirect := &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	req, _ := http.NewRequestWithContext(ctx, "GET", base+"/"+repo+"/releases/latest", nil)
@@ -151,7 +151,7 @@ func fetch(ctx context.Context, u string) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 }
 
-// Latest 通过 GitHub 接口查询最新发布的版本。
+// Latest looks up the latest release through the GitHub API.
 func Latest(ctx context.Context, apiURL string) (*Release, error) {
 	req, _ := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -173,7 +173,7 @@ func Latest(ctx context.Context, apiURL string) (*Release, error) {
 	return &r, nil
 }
 
-// Newer 判断 tag（如 v0.6.0）是否比 current（如 0.5.0）新。
+// Newer reports whether tag (such as v0.6.0) is newer than current (such as 0.5.0).
 func Newer(tag, current string) bool {
 	a, b := parse(tag), parse(current)
 	for i := 0; i < 3; i++ {
@@ -196,11 +196,11 @@ func parse(v string) [3]int {
 	return out
 }
 
-// AssetName 返回当前平台的桌面版安装包文件名；不支持的平台返回空。
+// AssetName returns the file name of the desktop installer for the current platform; unsupported platforms get an empty string.
 func AssetName(goos, goarch string) string {
 	switch goos {
 	case "darwin":
-		return "Lanvia-macos.zip" // 通用二进制，Apple 芯片和 Intel 都用这个
+		return "Lanvia-macos.zip" // universal binary, used by both Apple silicon and Intel
 	case "windows":
 		if goarch == "amd64" || goarch == "arm64" {
 			return "Lanvia-windows-" + goarch + ".exe"
@@ -209,10 +209,10 @@ func AssetName(goos, goarch string) string {
 	return ""
 }
 
-// Download 下载安装包到 dir，并用发布里的 SHA256SUMS.txt 校验。dir 应和目标程序在同一磁盘上，
-// 这样后面可以直接改名替换。
+// Download downloads the installer into dir and verifies it with the SHA256SUMS.txt from the release. dir should be on the same disk as the target program,
+// so that the program can later be replaced by renaming it.
 //
-// onProgress（可以为 nil）在下载过程中被调用，参数是已下载和总共的字节数。
+// onProgress (which may be nil) is called during the download, with the number of bytes downloaded and the total.
 func Download(ctx context.Context, r *Release, name, dir string, onProgress func(done, total int64)) (string, error) {
 	a := r.asset(name)
 	if a == nil {
@@ -238,7 +238,7 @@ func Download(ctx context.Context, r *Release, name, dir string, onProgress func
 		}
 	}()
 	req, _ := http.NewRequestWithContext(ctx, "GET", a.URL, nil)
-	resp, err := (&http.Client{}).Do(req) // 大文件不限总时长，由 ctx 控制
+	resp, err := (&http.Client{}).Do(req) // large files have no overall time limit, ctx controls it
 	if err != nil {
 		f.Close()
 		return "", err
@@ -259,7 +259,7 @@ func Download(ctx context.Context, r *Release, name, dir string, onProgress func
 	}
 	n, err := io.Copy(w, resp.Body)
 	if err == nil && onProgress != nil {
-		onProgress(n, max(total, n)) // 下载完成：总是报告一次 100%（服务器没给大小时也一样）
+		onProgress(n, max(total, n)) // download finished: always report 100% once (also when the server did not report a size)
 	}
 	f.Close()
 	if err != nil {
@@ -289,7 +289,7 @@ func checksum(ctx context.Context, url, name string) (string, error) {
 	return "", fmt.Errorf("校验文件里没有 %s", name)
 }
 
-// AppBundle 返回正在运行的 .app 路径（macOS）；不是从 .app 运行时返回空。
+// AppBundle returns the path of the running .app (macOS); it returns an empty string when not running from a .app.
 func AppBundle(exe string) string {
 	exe, _ = filepath.EvalSymlinks(exe)
 	macos := filepath.Dir(exe)
@@ -301,8 +301,8 @@ func AppBundle(exe string) string {
 	return ""
 }
 
-// InstallMac 用 zip 里的 Lanvia.app 替换 appPath。zip 应已下载到 appPath 所在目录。
-// 先把旧版改名备份，新版就位后再删除备份；任何一步失败都会恢复旧版。
+// InstallMac replaces appPath with the Lanvia.app inside the zip. The zip should already be downloaded into the directory of appPath.
+// It renames the old version as a backup first and deletes the backup once the new version is in place; any failing step restores the old version.
 func InstallMac(zipPath, appPath string) error {
 	dir := filepath.Dir(appPath)
 	tmp, err := os.MkdirTemp(dir, ".lanvia-update-")
@@ -323,15 +323,15 @@ func InstallMac(zipPath, appPath string) error {
 		return fmt.Errorf("无法替换 %s：%v", appPath, err)
 	}
 	if err := os.Rename(newApp, appPath); err != nil {
-		os.Rename(backup, appPath) // 恢复旧版
+		os.Rename(backup, appPath) // restore the old version
 		return err
 	}
-	os.RemoveAll(backup) // 正在运行的旧程序已加载进内存，删除文件不影响它
+	os.RemoveAll(backup) // the running old program is already loaded into memory, deleting the file does not affect it
 	return nil
 }
 
-// InstallWindows 用 newExe 替换 exePath。Windows 不能覆盖正在运行的 exe，但可以改名，
-// 所以先把旧版改名为 .old（下次启动时由 CleanupOld 删除），再把新版放到原位置。
+// InstallWindows replaces exePath with newExe. Windows cannot overwrite a running exe, but it can be renamed,
+// so the old version is renamed to .old first (deleted by CleanupOld on the next start) and then the new version is put in the original place.
 func InstallWindows(newExe, exePath string) error {
 	old := exePath + ".old"
 	os.Remove(old)
@@ -345,7 +345,7 @@ func InstallWindows(newExe, exePath string) error {
 	return nil
 }
 
-// CleanupOld 删除上次更新留下的旧版程序（Windows）。
+// CleanupOld deletes the old program left over from the last update (Windows).
 func CleanupOld(exePath string) { os.Remove(exePath + ".old") }
 
 type progressWriter struct {

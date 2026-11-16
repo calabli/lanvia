@@ -7,12 +7,12 @@ import (
 	"rsc.io/qr"
 )
 
-// PrintBanner 在终端打印配对码、访问地址和扫码用的二维码。
+// PrintBanner prints the pairing code, the access URLs and the QR code used for scanning in the terminal.
 func (a *App) PrintBanner() {
 	c := a.cfgSnapshot()
 	urls := a.LANURLs()
 	fmt.Printf("\n  \x1b[1mLanvia %s\x1b[0m · %s\n\n", Version, c.Name)
-	lbl := func(zh, en string) string { // 标签对齐：中文按显示宽度补空格
+	lbl := func(zh, en string) string { // label alignment: pad with spaces by display width
 		if english.Load() {
 			return fmt.Sprintf("%-14s", en)
 		}
@@ -41,7 +41,7 @@ func (a *App) PrintBanner() {
 	fmt.Println()
 }
 
-// printQR 用半高方块字符在终端里画二维码，强制白底黑码，深色终端也能扫。
+// printQR draws a QR code in the terminal with half-height block characters, forcing a white background and a dark code so it stays scannable on dark terminals.
 func printQR(text string) {
 	code, err := qr.Encode(text, qr.L)
 	if err != nil {

@@ -2,7 +2,7 @@ package main
 
 import "strings"
 
-// 托盘菜单的中英文。界面语言在设置里选，留空时跟随系统。
+// Chinese and English text for the tray menu. The UI language is chosen in settings; when left empty it follows the system.
 
 var trayEN = map[string]string{
 	"还没有内容":          "Nothing yet",
@@ -63,7 +63,7 @@ func (d *desktop) lang() string {
 	return sysLang()
 }
 
-// tr 翻译托盘里的文字；中文是源文本。
+// tr translates the text in the tray menu; Chinese is the source text.
 func (d *desktop) tr(s string) string {
 	if d.lang() != "en" {
 		return s

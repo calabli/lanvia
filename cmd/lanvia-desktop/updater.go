@@ -16,40 +16,40 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// 检查更新与自动更新：启动后不久和每 6 小时检查一次，也可以在设置页或托盘菜单里手动检查。
-// 有新版本时：
-//   - 开着“自动更新”：在后台下载并校验，等到没有在用 Lanvia 窗口时自动安装、重新打开，之后通知“已更新到 vX”；
-//   - 关着：通知一次，托盘菜单和设置页里显示“更新到 vX”，由用户决定什么时候更新。
-// 下载后用发布里的 SHA256SUMS.txt 校验；macOS 上没有权限直接替换时（用安装器装的旧版本），会弹出系统的密码对话框。
+// Update checking and automatic updates: a check runs shortly after startup and every 6 hours, and it can also be triggered manually from the settings page or the tray menu.
+// When a new version is available:
+//   - With "auto update" on: it is downloaded and verified in the background, then installed and reopened once no Lanvia window is in use, followed by the "Updated to vX" notification;
+//   - With it off: a single notification is sent, the tray menu and the settings page show "Update to vX", and the user decides when to update.
+// After downloading, it is verified with the SHA256SUMS.txt from the release; on macOS, when there is no permission to replace the app directly (an old version installed with the installer), the system password dialog pops up.
 
 type updater struct {
 	d        *desktop
 	mu       sync.Mutex
 	st       core.UpdateState
-	latest   *update.Release // 比当前版本新、且有本平台安装包的发布
-	pkg      string          // 已下载并校验的安装包
+	latest   *update.Release // a release newer than the current version that has an installer for this platform
+	pkg      string          // the downloaded and verified installer
 	pkgTag   string
-	busy     bool // 正在下载或安装
+	busy     bool // downloading or installing
 	notified string
 }
 
 func newUpdater(d *desktop) *updater {
 	if runtime.GOOS == "windows" {
 		if exe, err := os.Executable(); err == nil {
-			update.CleanupOld(exe) // 上次更新留下的旧版
+			update.CleanupOld(exe) // the old version left over from the last update
 		}
 	}
 	return &updater{d: d}
 }
 
 func apiURL() string {
-	if u := os.Getenv("LANVIA_UPDATE_URL"); u != "" { // 测试用
+	if u := os.Getenv("LANVIA_UPDATE_URL"); u != "" { // for tests
 		return u
 	}
 	return update.DefaultAPI
 }
 
-// publish 把状态推给设置页，并刷新托盘菜单。调用方不能持有 u.mu。
+// publish pushes the state to the settings page and refreshes the tray menu. The caller must not hold u.mu.
 func (u *updater) publish(fn func(s *core.UpdateState)) {
 	u.mu.Lock()
 	if fn != nil {
@@ -65,7 +65,7 @@ func (u *updater) auto() bool { return u.d.node.Settings().AutoUpdate }
 
 func (u *updater) loop() {
 	u.publish(nil)
-	// 刚自动更新过：告诉用户已经是新版本了
+	// Just auto-updated: tell the user it is already the new version
 	if prev := u.d.node.NoteVersion(); prev != "" && prev != core.Version && update.Newer(core.Version, prev) {
 		u.d.notify.simple(fmt.Sprintf(u.d.tr("已更新到 %s"), "v"+core.Version), u.d.tr("Lanvia 已经自动更新并重新打开"))
 	}
@@ -77,7 +77,7 @@ func (u *updater) loop() {
 	}
 }
 
-// autoInstallLoop：开着自动更新、安装包已经下载好时，等到没有在用 Lanvia 窗口再安装，免得打断正在做的事。
+// autoInstallLoop: with auto update on and the installer already downloaded, wait until no Lanvia window is in use before installing, so that it does not interrupt what is being done.
 func (u *updater) autoInstallLoop() {
 	for range time.Tick(time.Minute) {
 		u.mu.Lock()
@@ -109,7 +109,7 @@ func (u *updater) check(manual bool) {
 		return
 	}
 	name := update.AssetName(runtime.GOOS, runtime.GOARCH)
-	// 有的版本只发布了部分平台：没有本平台的安装包就当作没有新版本
+	// Some releases only cover some platforms: without an installer for this platform there is no new version
 	if !update.Newer(rel.Tag, core.Version) || !rel.Has(name) {
 		u.mu.Lock()
 		u.latest = nil
@@ -122,7 +122,7 @@ func (u *updater) check(manual bool) {
 		}
 		return
 	}
-	if rel.Body == "" { // 网页方式查到的版本没有更新说明，尽量从接口补上（失败也不影响更新）
+	if rel.Body == "" { // a release found through the web page has no release notes, so try to fill them in from the API (a failure does not block the update)
 		rel.Body = update.Notes(ctx, apiURL(), rel.Tag)
 	}
 	u.mu.Lock()
@@ -131,14 +131,14 @@ func (u *updater) check(manual bool) {
 	u.notified = rel.Tag
 	stale := u.pkg != "" && u.pkgTag != rel.Tag
 	u.mu.Unlock()
-	if stale { // 下载好的是更旧的新版本，作废
+	if stale { // the downloaded package is an older new version, drop it
 		u.dropPackage()
 	}
 	u.publish(func(s *core.UpdateState) {
 		s.Checking, s.Latest, s.Notes, s.URL, s.CheckedAt = false, rel.Tag, rel.Body, rel.URL, time.Now().UnixMilli()
 	})
 	if u.auto() {
-		go u.download() // 后台下载，下好后找合适的时机安装
+		go u.download() // download in the background, install it at a suitable time once it is ready
 		return
 	}
 	if first || manual {
@@ -161,7 +161,7 @@ func (u *updater) target() (string, error) {
 	return exe, nil
 }
 
-// download 下载并校验安装包，返回是否成功（已经下载好时直接返回成功）。
+// download downloads and verifies the installer, and reports whether it succeeded (it returns success right away when the package is already downloaded).
 func (u *updater) download() bool {
 	u.mu.Lock()
 	rel := u.latest
@@ -188,7 +188,7 @@ func (u *updater) download() bool {
 	name := update.AssetName(runtime.GOOS, runtime.GOARCH)
 	lastPct := -1
 	pkg, err := update.Download(ctx, rel, name, update.DownloadDir(target), func(done, total int64) {
-		if pct := int(done * 100 / max(total, 1)); total > 0 && pct != lastPct { // 百分比变了才推送
+		if pct := int(done * 100 / max(total, 1)); total > 0 && pct != lastPct { // only push when the percentage changed
 			lastPct = pct
 			u.publish(func(s *core.UpdateState) { s.Progress = float64(done) / float64(total) })
 		}
@@ -217,7 +217,7 @@ func (u *updater) dropPackage() {
 	u.publish(func(s *core.UpdateState) { s.Ready = false })
 }
 
-// install 安装新版本（还没下载就先下载），成功后退出，由后台脚本重新打开新版。
+// install installs the new version (it downloads it first if that has not happened yet) and quits on success; a background script reopens the new version.
 func (u *updater) install() {
 	if !u.download() {
 		return
@@ -246,7 +246,7 @@ func (u *updater) install() {
 		return
 	}
 	log.Printf("已更新到 %s，正在重新打开", tag)
-	u.d.app.Quit() // 后台脚本会在退出后打开新版
+	u.d.app.Quit() // the background script opens the new version after quitting
 }
 
 func (u *updater) doInstall(pkg string) error {
@@ -263,13 +263,13 @@ func (u *updater) doInstall(pkg string) error {
 		return err
 	}
 	u.mu.Lock()
-	u.pkg = "" // 已经装上，安装包已被用掉或会被删除
+	u.pkg = "" // it is installed, the package has been used up or will be deleted
 	u.mu.Unlock()
 	os.Remove(pkg)
 	return update.Relaunch(target)
 }
 
-// menuItem 把“更新到 vX”或“检查更新”加到托盘菜单。
+// menuItem adds "Update to vX" or "Check for updates" to the tray menu.
 func (u *updater) menuItem(m *application.Menu) {
 	u.mu.Lock()
 	st, rel := u.st, u.latest

@@ -1,11 +1,11 @@
-// Lanvia 桌面客户端：菜单栏 / 托盘常驻，不依赖浏览器。
+// Lanvia desktop client: lives in the menu bar / tray, without a browser.
 //
-//   - 点托盘图标弹出快捷面板：输入即搜索，↑↓ 选择，回车写入剪贴板（不注册全局快捷键，避免和其他应用冲突）
-//   - 右键托盘图标：最近内容一键复制、同步开关、开机启动、退出
-//   - 预览：面板里按空格或 ⌘Y，长内容在独立的悬浮窗口里查看和复制；⌘E 编辑，可查看历史版本
-//   - 主窗口：配对二维码、设置、完整历史
+//   - Clicking the tray icon pops up the quick panel: type to search, ↑↓ to select, Enter copies to the clipboard (no global hotkeys are registered, to avoid conflicting with other apps)
+//   - Right-clicking the tray icon: one-click copy of recent items, sync toggle, launch at login, quit
+//   - Preview: press Space or ⌘Y in the panel to view and copy long content in a separate floating window; ⌘E edits it, and past versions can be viewed
+//   - Main window: pairing QR code, settings, full history
 //
-// 节点（core）运行在同一个进程里，窗口加载的是它在 localhost 上提供的页面。
+// The node (core) runs in the same process; the windows load the pages it serves on localhost.
 package main
 
 import (
@@ -36,7 +36,7 @@ type desktop struct {
 	panel   *application.WebviewWindow
 	main    *application.WebviewWindow
 	preview *application.WebviewWindow
-	winMu   sync.Mutex // 保护按需创建 main / preview
+	winMu   sync.Mutex // guards the on-demand creation of main / preview
 	notify  *notifier
 	update  *updater
 
@@ -58,10 +58,10 @@ func main() {
 		Name:        "Lanvia",
 		Description: "局域网内多设备即时共享剪贴板与文件",
 		Icon:        applicationIcon,
-		// 页面由 core 在 localhost 上提供，这里不需要打包前端资源
+		// Pages are served by core on localhost, so no frontend assets need to be bundled here
 		Assets: application.AssetOptions{Handler: http.NotFoundHandler()},
 		Mac: application.MacOptions{
-			ActivationPolicy: application.ActivationPolicyAccessory, // 只在菜单栏，不占程序坞
+			ActivationPolicy: application.ActivationPolicyAccessory, // menu bar only, no dock icon
 		},
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID:               "app.lanvia.desktop",
@@ -96,11 +96,11 @@ func (d *desktop) build() {
 		BackgroundColour: application.NewRGB(0xf2, 0xf5, 0xfa),
 		Windows:          application.WindowsWindow{HiddenOnTaskbar: true},
 	})
-	// 主窗口和预览窗口第一次用到时才创建（见 mainWindow / previewWindow），
-	// 启动时只有快捷面板：它要挂在托盘图标上。每个窗口都是一个完整的网页，常驻会占内存和 CPU。
+	// The main and preview windows are only created the first time they are needed (see mainWindow / previewWindow),
+	// at startup there is just the quick panel: it hangs off the tray icon. Every window is a full web page, so keeping them around costs memory and CPU.
 	d.hideOnClose(d.panel)
 
-	// macOS 上 WebView 的 ⌘C / ⌘V / ⌘A 依赖“编辑”菜单；菜单栏应用看不到这个菜单，但快捷键需要它
+	// On macOS the WebView's ⌘C / ⌘V / ⌘A rely on the "Edit" menu; a menu bar app cannot see that menu, but the shortcuts need it
 	if runtime.GOOS == "darwin" {
 		appMenu := d.app.NewMenu()
 		appMenu.AddRole(application.AppMenu)
@@ -122,7 +122,7 @@ func (d *desktop) build() {
 	d.fillMenu()
 	d.tray.SetMenu(d.menu)
 
-	// 网页里的“收起”“打开主窗口”“预览”
+	// "Hide", "Open main window" and "Preview" in the web page
 	d.node.SetDesktopHook(func(action, id string) bool {
 		switch action {
 		case "hide":
@@ -168,12 +168,12 @@ func (d *desktop) build() {
 		}
 		return true
 	})
-	core.SetLanguage(d.lang()) // 日志跟随界面语言
+	core.SetLanguage(d.lang()) // logs follow the UI language
 	d.node.OnChange(func() { core.SetLanguage(d.lang()); d.refreshMenu() })
 	d.node.OnIncoming(d.notify.incoming)
 	go d.update.loop()
 
-	// 第一次使用（还没有任何内容）时打开主窗口，方便扫码配对
+	// On first use (when there is no content yet) open the main window, so pairing by QR code is easy
 	if len(d.node.Recent(1)) == 0 {
 		d.showMain()
 	}
@@ -189,7 +189,7 @@ func (d *desktop) togglePanel() {
 	d.panel.Focus()
 }
 
-// hideOnClose：关闭窗口只是隐藏，Lanvia 继续在后台同步，下次打开也不用重新加载。
+// hideOnClose: closing the window only hides it, Lanvia keeps syncing in the background and does not have to reload next time.
 func (d *desktop) hideOnClose(w *application.WebviewWindow) {
 	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		w.Hide()
@@ -232,14 +232,14 @@ func syncWindowChrome(w *application.WebviewWindow) {
 	w.ExecJS(fmt.Sprintf("window.setNativeWindowMaximized?.(%t)", w.IsMaximised()))
 }
 
-// previewWindow 返回预览窗口；第一次创建时直接打开 url，返回 true。
+// previewWindow returns the preview window; on first creation it opens url directly and returns true.
 func (d *desktop) previewWindow(url string) (*application.WebviewWindow, bool) {
 	d.winMu.Lock()
 	defer d.winMu.Unlock()
 	if d.preview != nil {
 		return d.preview, false
 	}
-	// 预览窗口像访达的“快速查看”：可拖动、可调整大小，默认悬浮在最上层
+	// The preview window works like Finder's "Quick Look": it can be dragged and resized, and floats on top by default
 	d.preview = d.app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:        "preview",
 		Title:       "Lanvia 预览",
@@ -249,7 +249,7 @@ func (d *desktop) previewWindow(url string) (*application.WebviewWindow, bool) {
 		MinHeight:   240,
 		URL:         url,
 		AlwaysOnTop: true,
-		// 不用 HideOnEscape：编辑时 Esc 是“取消编辑”，由网页自己决定何时关闭
+		// HideOnEscape is not used: while editing, Esc means "cancel edit", and the web page decides when to close
 	})
 	d.hideOnClose(d.preview)
 	return d.preview, true
@@ -269,7 +269,7 @@ func (d *desktop) openPreviewMode(id, mode string) {
 
 func (d *desktop) openPreview(id string) { d.openPreviewMode(id, "view") }
 
-// anyWindowFocused：有 Lanvia 窗口在前台时，页面里已经有提示，不再弹系统通知。
+// anyWindowFocused: when a Lanvia window is in the foreground the page already shows a hint, so no system notification is needed.
 func (d *desktop) anyWindowFocused() bool {
 	for _, w := range []*application.WebviewWindow{d.panel, d.main, d.preview} {
 		if w != nil && w.IsVisible() && w.IsFocused() {
@@ -285,7 +285,7 @@ func (d *desktop) showMain() {
 	w.Focus()
 }
 
-// sendClipboard 手动发送当前剪贴板。没有窗口可以提示，所以在菜单栏图标旁边短暂显示结果。
+// sendClipboard manually sends the current clipboard. There is no window to show a hint in, so the result is briefly shown next to the menu bar icon.
 func (d *desktop) sendClipboard() {
 	msg := d.tr("已发送")
 	if _, err := d.node.SendClipboard(); err != nil {
@@ -296,7 +296,7 @@ func (d *desktop) sendClipboard() {
 }
 
 func (d *desktop) flash(msg string) {
-	if runtime.GOOS != "darwin" { // Windows 托盘没有文字标签，用提示文字代替
+	if runtime.GOOS != "darwin" { // the Windows tray has no text label, so use a tooltip instead
 		d.tray.SetTooltip("Lanvia · " + msg)
 		time.AfterFunc(3*time.Second, func() { d.tray.SetTooltip("Lanvia") })
 		return
@@ -308,7 +308,7 @@ func (d *desktop) flash(msg string) {
 	time.AfterFunc(2*time.Second, func() { d.tray.SetLabel("") })
 }
 
-// refreshMenu 合并短时间内的多次变化，避免频繁重建菜单。
+// refreshMenu merges the changes that happen within a short time, to avoid rebuilding the menu too often.
 func (d *desktop) refreshMenu() {
 	d.mu.Lock()
 	if d.pending {
@@ -356,7 +356,7 @@ func (d *desktop) fillMenu() {
 			})
 		}
 	}
-	// 收藏的常用片段：点一下就复制
+	// Favorite snippets: one click copies them
 	if favs := d.node.Favorites(); len(favs) > 0 {
 		sub := m.AddSubmenu(d.tr("收藏"))
 		for _, it := range favs {
@@ -381,11 +381,11 @@ func (d *desktop) fillMenu() {
 	m.AddSeparator()
 
 	s := d.node.Settings()
-	// 两个独立的开关：复制后要不要自动发出去、收到的要不要自动放进剪贴板
+	// Two independent switches: whether to auto-send what was copied, and whether to auto-apply what was received
 	m.AddCheckbox(d.tr("主动复制 · 复制后自动发送"), s.Watch).OnClick(func(c *application.Context) { d.node.SetWatch(c.IsChecked()) })
 	m.AddCheckbox(d.tr("主动粘贴 · 收到后放进剪贴板"), s.AutoApply).OnClick(func(c *application.Context) { d.node.SetAutoApply(c.IsChecked()) })
 	m.Add(d.tr("发送当前剪贴板")).OnClick(func(*application.Context) { d.sendClipboard() })
-	// 暂停同步：本机复制的不发送，收到的不写入剪贴板
+	// Pause syncing: local copies are not sent, and received items are not written to the clipboard
 	if until := d.node.PausedUntil(); until != 0 {
 		label := d.tr("恢复同步（已暂停）")
 		if until > 0 {
@@ -421,7 +421,7 @@ func (d *desktop) fillMenu() {
 	m.Add(d.tr("退出 Lanvia")).OnClick(func(*application.Context) { d.app.Quit() })
 }
 
-// menuLabel 取第一行并截断，菜单项太长会被系统撑得很宽。
+// menuLabel takes the first line and truncates it, because a long menu item makes the system stretch the menu very wide.
 func menuLabel(s string) string {
 	s = strings.TrimSpace(s)
 	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
@@ -437,7 +437,7 @@ func menuLabel(s string) string {
 	return s
 }
 
-// fatalWindow 在端口被占用等情况下给出可读的提示，而不是静默退出。
+// fatalWindow shows a readable message when the port is taken and the like, instead of exiting silently.
 func (d *desktop) fatalWindow(err error) {
 	msg := fmt.Sprintf(`<body style="font:15px/1.6 -apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;padding:28px">
 <h2 style="margin:0 0 12px">Lanvia 无法启动</h2><p>%s</p>

@@ -1,14 +1,14 @@
 'use strict';
 
-// 预览窗口：查看、代码高亮、编辑、历史版本与逐行对比。
+// Preview window: viewing, syntax highlighting, editing, version history and line-by-line diff.
 
-/* ================= 预览、编辑与历史版本 ================= */
+/* ================= Preview, editing and version history ================= */
 
-let PV = null; // 正在预览的内容
-// mode: view 查看 | edit 编辑 | history 历史版本
+let PV = null; // the item being previewed
+// mode: view (viewing) | edit (editing) | history (version history)
 const PVS = { com: false, coms: null, comFor: null, mono: null, wrap: store.get('pv.wrap') !== '0', mode: 'view', base: '', hist: [], sel: null, diff: true, lang: null, fmt: false };
 
-// 预览里显示的文本：JSON 可以切换为格式化后的样子
+// Text shown in the preview: JSON can be toggled to its formatted form
 function pvText() {
   if (PV.kind === 'todo') return todoText(PV);
   if (PVS.fmt && PVS.lang === 'json' && PVS.mode === 'view') {
@@ -17,7 +17,7 @@ function pvText() {
   return PV.text;
 }
 
-// 看起来像代码 / 配置 / 日志时默认用等宽字体和行号
+// Use a monospace font and line numbers by default when it looks like code / config / log
 function looksLikeCode(t) {
   const ls = t.split('\n');
   if (ls.length < 3) return false;
@@ -26,7 +26,7 @@ function looksLikeCode(t) {
 }
 
 function openPreview(it, mode = 'view') {
-  // 快捷面板太窄，交给桌面端打开一个可拖动、可置顶的独立窗口
+  // The quick panel is too narrow, let the desktop open a separate draggable, always-on-top window
   if (PANEL) return desktop(mode === 'view' ? 'preview' : mode, it.id);
   if (inboxListMode()) return selectInboxItem(it, mode, true);
   showPreview(it, mode);
@@ -36,7 +36,7 @@ let previewRequest = 0;
 async function showPreview(it, mode = 'view', focus = true) {
   const request = ++previewRequest;
   const previousFocus = document.activeElement;
-  // 列表里的长正文是截断的，预览前先取全文
+  // Long text in the list is truncated, fetch the full text before previewing
   if (it.textLen) {
     try { it = await loadFull(it); } catch (e) { if (request === previewRequest) toast('加载失败：' + e.message); return false; }
   }
@@ -44,10 +44,10 @@ async function showPreview(it, mode = 'view', focus = true) {
   PV = it;
   PVS.lang = it.kind === 'text' ? HL.detect(it.text) : null;
   PVS.mono = it.kind === 'text' ? (!!PVS.lang || looksLikeCode(it.text)) : false;
-  // 单行的长 JSON 默认就展开，方便阅读
+  // A long single-line JSON is expanded by default for easier reading
   PVS.fmt = PVS.lang === 'json' && !it.text.trim().includes('\n') && it.text.length > 80;
   PVS.mode = 'view';
-  // 评论面板：从评论按钮打开，或这条已经有评论时默认展开
+  // Comment panel: opened from the comment button, or expanded by default when the item already has comments; the wide reading area uses tabs and starts on "Content"
   PVS.com = mode === 'comments' || !!it.comments;
   PVS.coms = null; PVS.comFor = null;
   $('#pvWarn').hidden = true;
@@ -65,7 +65,7 @@ async function showPreview(it, mode = 'view', focus = true) {
   return true;
 }
 
-/* ---- 评论 ---- */
+/* ---- Comments ---- */
 
 async function loadComments() {
   const id = PV?.id;
@@ -104,7 +104,7 @@ async function sendComment() {
   try {
     await api('POST', `/api/items/${PV.id}/comments`, { text, by: myName() });
     input.value = '';
-    PVS.comScrolled = false; // 自己发的评论滚到最下面
+    PVS.comScrolled = false; // scroll your own comment to the bottom
     await loadComments();
   } catch (e) { toast('评论失败：' + e.message); }
   input.disabled = false;
@@ -117,7 +117,7 @@ async function deleteComment(cid) {
   catch (e) { toast('删除失败：' + e.message); }
 }
 
-// 头部、工具栏、底栏都随模式变化
+// Header, toolbar and footer all change with the mode
 function renderPreview() {
   const it = PV, isText = it.kind === 'text', m = PVS.mode;
   const fromDev = S.devices.find(x => x.name === it.from);
@@ -162,7 +162,7 @@ function renderPreview() {
 const ROW_CHUNK = 1500;
 const rowsHTML = (from, to) => PVS.rows.slice(from, to).map(l => `<div class="ln">${l || ' '}</div>`).join('');
 
-// 预览滚动到底部附近时追加下一批行（行号由 CSS 计数器自动接续）
+// Append the next batch of lines when the preview scrolls near the bottom (line numbers continue automatically via CSS counters)
 function moreRows() {
   const box = $('#pvBody'), code = $('.pv-code', box);
   if (!code || !PVS.rows || PVS.shown >= PVS.rows.length) return;
@@ -174,10 +174,10 @@ function moreRows() {
 
 function textHTML(text) {
   const lines = text.split('\n');
-  if (PVS.mono && lines.length <= 200000) { // 分批渲染，几万行也不卡
-    // 识别出语言时按语法着色，否则只加行号和链接
+  if (PVS.mono && lines.length <= 200000) { // rendered in batches, tens of thousands of lines stay smooth
+    // Colorize by syntax when the language is detected, otherwise just add line numbers and links
     const rows = PVS.lang ? HL.lines(text, PVS.lang) : lines.map(linkify);
-    // 每行一个元素，几万行一次性放进页面会很卡：先放一批，滚动到底部附近再接着放
+    // One element per line, dropping tens of thousands of lines into the page at once is slow: add the first batch, then continue near the bottom
     PVS.rows = rows;
     PVS.shown = Math.min(rows.length, ROW_CHUNK);
     return `<div class="pv-code${PVS.wrap ? ' wrap' : ''}" data-raw style="--gutter:${String(lines.length).length + 1}ch">${
@@ -196,11 +196,11 @@ function renderPreviewBody() {
       body.innerHTML = `<div class="pv-file"><div class="file-icon">${ICON.file}</div><div class="file-name" data-raw>${esc(it.name)}</div><div class="muted">${fmtSize(it.size || 0)} · ${esc(it.mime || '')}</div></div>`;
       return;
     }
-    // 手机上要先下载、解密：显示进度，完成后再放进 <img> / <video>
+    // On phones it has to be downloaded and decrypted first: show the progress, then put it into <img> / <video>
     body.innerHTML = `<div class="pv-media"><div class="pv-file muted pv-loading">${S.key ? '正在加载…' : ''}</div></div>`;
     const size = it.size || 0, tip = $('.pv-loading', body);
     mediaURL('/api/blob/' + it.id, it, got => { if (size && tip) tip.textContent = `正在加载 ${Math.round(got / size * 100)}%`; }).then(url => {
-      if (PV !== it) return; // 加载期间换了别的内容
+      if (PV !== it) return; // the content changed while loading
       $('.pv-media', body).innerHTML = img ? `<img src="${esc(url)}" alt="${esc(it.name)}">` : `<video src="${esc(url)}" controls autoplay></video>`;
     }, e => { if (PV === it && tip) tip.textContent = '加载失败：' + e.message; });
     return;
@@ -241,13 +241,13 @@ async function previewCopyAll(andClose) {
   if (!PV) return;
   if (PV.kind === 'file') { download(PV); return; }
   const text = PVS.mode === 'history' ? (PVS.hist.find(v => v.id === PVS.sel)?.text ?? PV.text) : pvText();
-  // 历史版本、格式化后的 JSON 和原文不同，不能按条目 ID 让服务端复制
+  // A history version and the formatted JSON differ from the original, so the server cannot copy them by item ID
   const sameAsItem = PV.kind === 'todo' || (PVS.mode !== 'history' && text === PV.text);
   await doCopy(text, andClose ? null : $('#pvCopy'), sameAsItem ? PV.id : null);
   if (andClose) closePreview();
 }
 
-/* ---- 编辑 ---- */
+/* ---- Editing ---- */
 
 function startEdit() {
   if (!PV || PV.kind !== 'text') return;
@@ -264,7 +264,7 @@ function startEdit() {
   ta.scrollTop = 0;
 }
 
-// 返回 true 表示已退出编辑
+// Returns true when editing has been left
 async function cancelEdit() {
   const ta = $('#pvEditor');
   if (ta && ta.value !== PVS.base && !(await uiConfirm('放弃这次修改吗？', { ok: '放弃修改', danger: true }))) return false;
@@ -297,7 +297,7 @@ async function saveEdit() {
   }
 }
 
-/* ---- 历史版本 ---- */
+/* ---- Version history ---- */
 
 async function openHistory() {
   if (!PV || PV.kind !== 'text') return;
@@ -356,7 +356,7 @@ async function restoreVersion() {
   } catch (e) { toast('恢复失败：' + e.message); }
 }
 
-/* ---- 逐行对比（最长公共子序列，先去掉相同的首尾） ---- */
+/* ---- Line-by-line diff (longest common subsequence, identical head and tail removed first) ---- */
 
 function diffLines(oldText, newText) {
   const a = oldText.split('\n'), b = newText.split('\n');
@@ -373,7 +373,7 @@ function diffLines(oldText, newText) {
   let i = 0, j = 0;
   while (i < n || j < m) {
     if (i < n && j < m && A[i] === B[j]) { ops.push(['=', A[i]]); i++; j++; }
-    else if (i < n && (j === m || L[(i + 1) * w + j] >= L[i * w + j + 1])) ops.push(['-', A[i++]]); // 先删后增
+    else if (i < n && (j === m || L[(i + 1) * w + j] >= L[i * w + j + 1])) ops.push(['-', A[i++]]); // delete before insert
     else ops.push(['+', B[j++]]);
   }
   return ops.concat(a.slice(ea).map(l => ['=', l]));
@@ -385,12 +385,12 @@ function diffStats(oldText, newText) {
   return { add: ops.filter(o => o[0] === '+').length, del: ops.filter(o => o[0] === '-').length };
 }
 
-// 相同的大段内容折叠起来，只保留改动前后各 3 行
+// Collapse the long identical stretches, keeping only 3 lines before and after each change
 function diffHTML(ops) {
   if (!ops.some(o => o[0] !== '=')) return '<div class="pv-note">与上一版内容相同。</div>';
   const keep = new Uint8Array(ops.length);
   ops.forEach((o, i) => { if (o[0] !== '=') for (let k = Math.max(0, i - 3); k <= Math.min(ops.length - 1, i + 3); k++) keep[k] = 1; });
-  // 只折叠 4 行以上的连续未改动内容，更短的直接显示
+  // Only collapse unchanged runs of 4 lines or more, shorter ones are shown as they are
   for (let i = 0; i < ops.length;) {
     if (keep[i]) { i++; continue; }
     let j = i; while (j < ops.length && !keep[j]) j++;
@@ -409,10 +409,10 @@ function diffHTML(ops) {
   return `<div class="pv-diff${PVS.mono ? ' mono' : ''}">${out}</div>`;
 }
 
-/* ---- 列表数据更新（编辑同步过来时） ---- */
+/* ---- List data updates (when an edit syncs over) ---- */
 
 function upsertItem(it) {
-  if (!it.textLen) FULL.delete(it.id); // 内容变了，缓存的全文作废（API 返回的完整内容另存）
+  if (!it.textLen) FULL.delete(it.id); // the content changed, the cached full text is stale (the full content returned by the API is stored separately)
   else if (FULL.get(it.id)?.rev !== it.rev) FULL.delete(it.id);
   const i = S.items.findIndex(x => x.id === it.id);
   if (i >= 0) S.items[i] = it;
@@ -422,16 +422,16 @@ function upsertItem(it) {
 async function onItemUpdated(it) {
   upsertItem(it);
   if (PV?.id !== it.id) return;
-  // 只是评论数变了（有人评论或删除评论）：只刷新评论，不重画正文（不打断阅读和编辑）
+  // Only the comment count changed (someone commented or deleted a comment): refresh the comments only, do not redraw the body (do not interrupt reading and editing)
   if (it.comments !== PV.comments && it.rev === PV.rev && it.fav === PV.fav && it.metaTs === PV.metaTs) {
-    PV.comments = it.comments; // 不换对象：正在加载的图片还认这个对象
+    PV.comments = it.comments; // keep the same object: images that are still loading still recognize it
     $('#pvComBtn').innerHTML = ICON.comment + (it.comments ? `<span class="count">${it.comments}</span>` : '');
     if (!$('#pvCom').hidden) loadComments();
     return;
   }
   if (it.textLen) { try { it = await loadFull(it); } catch { return; } }
   if (PVS.mode === 'edit') {
-    // 正在编辑时别人改了：提示，不打断
+    // Someone else changed it while you were editing: warn, do not interrupt
     if (it.text !== PVS.base) {
       $('#pvWarn').innerHTML = `${esc(it.editedBy || '其他设备')} 刚刚修改了这条内容。保存后你的版本会成为最新版本，对方的修改会保留在历史版本中。`;
       $('#pvWarn').hidden = false;
@@ -465,7 +465,7 @@ function bindPreview() {
   $('#pvDiff').onclick = () => { PVS.diff = !PVS.diff; renderPreview(); };
   $('#pvRestore').onclick = restoreVersion;
   $('#pvHistList').addEventListener('click', e => { const b = e.target.closest('[data-vid]'); if (b) selectVersion(b.dataset.vid); });
-  // 预览窗口默认悬浮在最上层，可以切换
+  // The preview window floats on top by default, it can be toggled
   let pinned = true;
   $('#pvPin').hidden = !PREVIEW;
   $('#pvPin').classList.toggle('on', pinned);
@@ -485,7 +485,7 @@ function bindPreview() {
     // The embedded todo is editable: Enter submits its form and Space toggles
     // its checkboxes instead of triggering the read-only preview shortcuts.
     if (e.target.closest('.reader-todo') && e.target.closest('input, button, select, textarea')) return;
-    // 在评论框里打字：回车发送（表单处理），Esc 只是离开输入框，其余快捷键都不生效
+    // Typing in the comment box: Enter sends (handled by the form), Esc only leaves the input, no other shortcut applies
     if (e.target.closest('#pvCom')) {
       if (e.key === 'Escape') { e.preventDefault(); e.target.blur(); $('#pvBody').focus({ preventScroll: true }); }
       return;

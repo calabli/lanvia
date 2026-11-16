@@ -16,71 +16,71 @@ import (
 
 type Item struct {
 	ID     string `json:"id"`
-	Kind   string `json:"kind"` // text | file | todo（清单，见 todo.go）
+	Kind   string `json:"kind"` // text | file | todo (checklist, see todo.go)
 	Text   string `json:"text,omitempty"`
 	Name   string `json:"name,omitempty"`
 	Mime   string `json:"mime,omitempty"`
 	Size   int64  `json:"size,omitempty"`
-	From   string `json:"from"`   // 来源设备的显示名
-	Origin string `json:"origin"` // 持有文件内容的节点 ID
-	TS     int64  `json:"ts"`     // 毫秒
+	From   string `json:"from"`   // display name of the source device
+	Origin string `json:"origin"` // node ID that holds the file content
+	TS     int64  `json:"ts"`     // milliseconds
 
-	// 编辑信息（见 versions.go）。Text 始终是当前版本的内容。
-	Rev      int    `json:"rev,omitempty"`      // 被编辑过的次数（版本数 - 1）
-	EditedAt int64  `json:"editedAt,omitempty"` // 当前版本的时间
-	EditedBy string `json:"editedBy,omitempty"` // 当前版本的编辑者
+	// Edit info (see versions.go). Text always holds the content of the current version.
+	Rev      int    `json:"rev,omitempty"`      // number of times it was edited (version count - 1)
+	EditedAt int64  `json:"editedAt,omitempty"` // time of the current version
+	EditedBy string `json:"editedBy,omitempty"` // editor of the current version
 
-	// 单条保留时长，同步到所有设备（以 MetaTS 较新的为准）。都为空时跟随本机的全局设置。
-	ExpiresAt int64 `json:"expiresAt,omitempty"` // 到期时间（毫秒）
-	Keep      bool  `json:"keep,omitempty"`      // 永久保留：不受全局设置和数量上限影响
-	MetaTS    int64 `json:"metaTs,omitempty"`    // 最近一次修改保留设置的时间
+	// Per-item retention duration, synced to all devices (the newer MetaTS wins). When both are empty, follow the local global setting.
+	ExpiresAt int64 `json:"expiresAt,omitempty"` // expiry time (milliseconds)
+	Keep      bool  `json:"keep,omitempty"`      // keep forever: unaffected by the global setting and the item count limit
+	MetaTS    int64 `json:"metaTs,omitempty"`    // time the retention setting was last changed
 
-	// 收藏（常用片段），同步到所有设备，以 FavTS 较新的为准。收藏的内容不会过期，也不受数量上限影响。
+	// Favorite (frequent snippet), synced to all devices, the newer FavTS wins. Favorites never expire and are unaffected by the item count limit.
 	Fav   bool   `json:"fav,omitempty"`
-	Title string `json:"title,omitempty"` // 片段名称，例如“家里 WiFi”，可用于搜索
+	Title string `json:"title,omitempty"` // snippet name, e.g. "Home WiFi", usable for search
 	FavTS int64  `json:"favTs,omitempty"`
 
-	// 未删除的评论数（见 comments.go），由本机根据评论计算
+	// number of comments that are not deleted (see comments.go), computed locally from the comments
 	Comments int `json:"comments,omitempty"`
 
-	// 标签（见 tags.go）：标签 -> 最近一次添加（正数）或移除（负数）的时间
+	// Tags (see tags.go): tag -> time it was last added (positive) or removed (negative)
 	Tags map[string]int64 `json:"tags,omitempty"`
 
-	// 清单（Kind 为 todo）：各项，以及标题（Text）最近一次修改的时间
+	// Checklist (Kind is todo): the entries, plus the time the title (Text) was last changed
 	Todo   []*TodoEntry `json:"todo,omitempty"`
 	TextTS int64        `json:"textTs,omitempty"`
 
-	// 只出现在推给网页的副本里：正文被截断时的全文字数
+	// only present in the replica pushed to the web: full text length when the body is truncated
 	TextLen int `json:"textLen,omitempty"`
-	// 只出现在 history.json 里：正文太长，存在 texts/<id>.txt
+	// only present in history.json: body too long, stored in texts/<id>.txt
 	TextFile bool `json:"textFile,omitempty"`
 
-	// 这个版本不认识的字段（以后的新功能），原样保存和转发，见 compat.go
+	// fields this version does not understand (features of later versions), stored and forwarded as-is, see compat.go
 	Extra map[string]json.RawMessage `json:"-"`
 }
 
-// 推给网页的列表里每条最多带这么多字节的正文；更长的在预览、编辑时再取全文（GET /api/items/{id}）。
-// 节点之间同步历史仍然传全文。
+// Each entry in the list pushed to the web carries at most this many bytes of body; longer bodies are fetched in full when previewing or editing (GET /api/items/{id}).
+// History sync between nodes still carries the full text.
 const previewBytes = 16 << 10
 
-// forClient 返回给网页列表用的副本：正文过长时截断，TextLen 记下全文字数。
+// forClient returns the replica used for the web list: the body is truncated when too long, and TextLen records the full length.
 func (it *Item) forClient() *Item {
 	if it.Kind != "text" || len(it.Text) <= previewBytes {
 		return it
 	}
 	c := *it
 	cut := previewBytes
-	for cut > 0 && !utf8.RuneStart(c.Text[cut]) { // 不切断多字节字符
+	for cut > 0 && !utf8.RuneStart(c.Text[cut]) { // do not split a multi-byte character
 		cut--
 	}
 	c.Text, c.TextLen = c.Text[:cut], utf8.RuneCountInString(it.Text)
 	return &c
 }
 
-// pinned 表示这条内容不应被自动清理：永久保留、已收藏，或者是清单。
+// pinned reports whether this item should not be cleaned up automatically: kept forever, favorited, or a checklist.
 func (it *Item) pinned() bool { return it.Keep || it.Fav || it.Kind == "todo" }
 
-// expired 判断一条内容是否已过期：单条设置优先，否则按本机的全局保留时长。
+// expired reports whether an item has expired: the per-item setting wins, otherwise the local global retention duration applies.
 func (it *Item) expired(now, keepMs int64) bool {
 	switch {
 	case it.pinned():
@@ -104,20 +104,20 @@ type Store struct {
 	mu        sync.Mutex
 	path      string
 	blobDir   string
-	items     []*Item          // 新的在前（按 TS 从大到小）
-	byID      map[string]*Item // 按 ID 索引，与 items 同步维护
+	items     []*Item          // newest first (by TS, descending)
+	byID      map[string]*Item // indexed by ID, kept in sync with items
 	tomb      map[string]int64
 	clearedAt int64
-	versions  map[string][]*TextVersion // 内容 ID -> 历史版本（含原始版本），只有被编辑过的才有
-	textDir   string                    // 长正文：texts/<id>.txt
-	verDir    string                    // 历史版本：versions/<id>.json
-	comments  map[string][]*Comment     // 内容 ID -> 评论（含已删除的墓碑），旧的在前
-	comDir    string                    // 评论：comments/<id>.json
-	dirtyCom  map[string]bool           // 需要写入评论文件的内容
-	dirtyText map[string]bool           // 需要写入（或删除）长正文文件的内容
-	dirtyVer  map[string]bool           // 需要写入版本文件的内容
-	seen      map[string]int64          // 每条内容在本机最后一次变化（新增、编辑、收藏、保留设置）的时间，用于增量同步
-	keepMs    atomic.Int64              // 历史保留时长（毫秒），0 表示永久
+	versions  map[string][]*TextVersion // content ID -> history versions (including the original), only for edited items
+	textDir   string                    // long bodies: texts/<id>.txt
+	verDir    string                    // history versions: versions/<id>.json
+	comments  map[string][]*Comment     // content ID -> comments (including the tombstones of deleted ones), oldest first
+	comDir    string                    // comments: comments/<id>.json
+	dirtyCom  map[string]bool           // items whose comment files need to be written
+	dirtyText map[string]bool           // items whose long body files need to be written (or deleted)
+	dirtyVer  map[string]bool           // items whose version files need to be written
+	seen      map[string]int64          // time each item last changed on this machine (added, edited, favorited, retention setting), used for incremental sync
+	keepMs    atomic.Int64              // history retention duration (milliseconds), 0 means forever
 	dirty     chan struct{}
 }
 
@@ -127,13 +127,13 @@ type storeFile struct {
 	ClearedAt int64                     `json:"clearedAt"`
 	Versions  map[string][]*TextVersion `json:"versions,omitempty"`
 	Comments  map[string][]*Comment     `json:"comments,omitempty"`
-	Seen      map[string]int64          `json:"seen,omitempty"` // 仅 history.json：每条内容在本机最后一次变化的时间
-	Now       int64                     `json:"now,omitempty"`  // 仅同步响应：响应方此刻的时间，下次增量同步从这里开始
+	Seen      map[string]int64          `json:"seen,omitempty"` // history.json only: time each item last changed on this machine
+	Now       int64                     `json:"now,omitempty"`  // sync response only: the responder's current time, where the next incremental sync starts
 }
 
-// 保存方式：history.json 只放索引（各条内容的元数据和短正文）；超过 16 KB 的正文放在 texts/<id>.txt，
-// 编辑历史放在 versions/<id>.json。每次变化只重写改动过的小文件，最后再写索引，
-// 所以即使中途断电，索引引用的文件也都已经在了。
+// Storage layout: history.json only holds the index (each item's metadata and short body); bodies over 16 KB go to texts/<id>.txt,
+// edit history goes to versions/<id>.json. Each change only rewrites the small files that changed, and the index is written last,
+// so even if the power goes out midway, the files the index refers to are already there.
 func openStore(dir string) *Store {
 	s := &Store{
 		path:      filepath.Join(dir, "history.json"),
@@ -176,7 +176,7 @@ func (s *Store) load() {
 	if f.Tomb != nil {
 		s.tomb = f.Tomb
 	}
-	migrate := len(f.Versions) > 0 // 旧版本把历史版本都放在 history.json 里
+	migrate := len(f.Versions) > 0 // older versions kept all history versions in history.json
 	for _, it := range f.Items {
 		if it.TextFile {
 			t, err := os.ReadFile(s.textPath(it.ID))
@@ -186,21 +186,21 @@ func (s *Store) load() {
 			}
 			it.Text, it.TextFile = string(t), false
 		} else if len(it.Text) > previewBytes {
-			s.dirtyText[it.ID] = true // 旧格式的长正文：下次保存时移到单独的文件
+			s.dirtyText[it.ID] = true // long body in the old format: move it to its own file on the next save
 			migrate = true
 		}
 		s.items = append(s.items, it)
 	}
 	known := map[string]bool{}
 	now := nowMs()
-	sort.SliceStable(s.items, func(i, j int) bool { return s.items[i].TS > s.items[j].TS }) // 保证按时间排列，见 indexOf
+	sort.SliceStable(s.items, func(i, j int) bool { return s.items[i].TS > s.items[j].TS }) // keep the time ordering, see indexOf
 	for _, it := range s.items {
 		known[it.ID] = true
 		s.byID[it.ID] = it
 		if v, ok := f.Seen[it.ID]; ok {
 			s.seen[it.ID] = v
 		} else {
-			s.seen[it.ID] = now // 旧数据没有记录：当作刚变化过，最多被多同步一次
+			s.seen[it.ID] = now // old data has no record: treat it as just changed, so it is synced one extra time at most
 		}
 	}
 	for id, vs := range f.Versions {
@@ -208,7 +208,7 @@ func (s *Store) load() {
 			s.versions[id], s.dirtyVer[id] = vs, true
 		}
 	}
-	// 读取版本文件，顺便清理没有对应内容的残留文件
+	// read the version files and clean up leftover files that have no matching item
 	if ents, err := os.ReadDir(s.verDir); err == nil {
 		for _, e := range ents {
 			id := strings.TrimSuffix(e.Name(), ".json")
@@ -227,7 +227,7 @@ func (s *Store) load() {
 			}
 		}
 	}
-	// 评论文件；评论数以文件为准重新计算
+	// comment files; the comment counts are recomputed from the files
 	if ents, err := os.ReadDir(s.comDir); err == nil {
 		for _, e := range ents {
 			id := strings.TrimSuffix(e.Name(), ".json")
@@ -259,7 +259,7 @@ func (s *Store) load() {
 	}
 }
 
-// dropFiles 删除一条内容在磁盘上的所有附属文件（调用方持有锁）。
+// dropFiles deletes all files attached to an item on disk (the caller holds the lock).
 func (s *Store) dropFiles(id string) {
 	os.Remove(s.blobPath(id))
 	os.Remove(s.thumbPath(id))
@@ -281,7 +281,7 @@ func (s *Store) hasBlob(id string) bool {
 	return err == nil
 }
 
-// Add 插入一条记录；重复、已删除或早于“清空”时间点的记录会被忽略。
+// Add inserts a record; duplicate, deleted, or older than the "clear" timestamp records are ignored.
 func (s *Store) Add(it *Item) bool {
 	if !idRe.MatchString(it.ID) {
 		return false
@@ -291,18 +291,18 @@ func (s *Store) Add(it *Item) bool {
 	if _, dead := s.tomb[it.ID]; dead || it.TS <= s.clearedAt {
 		return false
 	}
-	if it.expired(nowMs(), s.keepMs.Load()) { // 已过期的不再收（包括其他设备同步来的）
+	if it.expired(nowMs(), s.keepMs.Load()) { // expired items are no longer accepted (including ones synced from other devices)
 		return false
 	}
 	if s.byID[it.ID] != nil {
 		return false
 	}
-	it.Comments = liveComments(s.comments[it.ID]) // 对方算的评论数不作数，评论随后单独合并
+	it.Comments = liveComments(s.comments[it.ID]) // the comment count from the peer does not count; comments are merged separately afterwards
 	if it.Kind == "todo" {
-		it.Todo, _ = mergeTodo(nil, it.Todo) // 整理顺序、去掉墓碑里的文字
+		it.Todo, _ = mergeTodo(nil, it.Todo) // tidy the order and drop the text of tombstoned entries
 	}
 	if len(it.Tags) > 0 {
-		it.Tags, _ = mergeTags(nil, it.Tags) // 去掉不合法的标签
+		it.Tags, _ = mergeTags(nil, it.Tags) // drop invalid tags
 	}
 	i := sort.Search(len(s.items), func(i int) bool { return s.items[i].TS < it.TS })
 	s.items = append(s.items, nil)
@@ -313,7 +313,7 @@ func (s *Store) Add(it *Item) bool {
 	if len(it.Text) > previewBytes {
 		s.dirtyText[it.ID] = true
 	}
-	// 超过上限时从最旧的开始删，跳过“永久保留”的
+	// when over the limit, delete the oldest first, skipping the ones kept forever
 	for i := len(s.items) - 1; len(s.items) > maxItems && i >= 0; i-- {
 		if old := s.items[i]; !old.pinned() {
 			s.removeAt(i)
@@ -324,7 +324,7 @@ func (s *Store) Add(it *Item) bool {
 	return true
 }
 
-// Delete 返回 true 表示这是一次新的删除（需要继续向其他节点传播）。
+// Delete reports whether this is a new deletion (one that still needs to be propagated to other nodes).
 func (s *Store) Delete(id string) bool {
 	if !idRe.MatchString(id) {
 		return false
@@ -368,8 +368,8 @@ func (s *Store) setRetention(days int) {
 	s.keepMs.Store(int64(days) * 24 * int64(time.Hour/time.Millisecond))
 }
 
-// Prune 删除过期的内容（连同文件和历史版本），返回被删除的 ID。
-// 过期是本机的设置，不写墓碑、不通知其他设备。
+// Prune deletes expired items (together with their files and history versions) and returns the deleted IDs.
+// Expiry is a local setting: no tombstone is written and other devices are not notified.
 func (s *Store) Prune() []string {
 	now, k := nowMs(), s.keepMs.Load()
 	s.mu.Lock()
@@ -395,8 +395,8 @@ func (s *Store) Prune() []string {
 	return gone
 }
 
-// newerMeta 判断一次保留设置是否比 x 现有的更新。时间相同（多台设备同一毫秒修改）时按固定规则
-// 决胜：永久保留优先，其次到期时间更晚的优先。所有设备用同样的规则，结果一致。
+// newerMeta reports whether a retention setting is newer than x's current one. On a tie (several devices changed within the same millisecond) a fixed rule
+// decides: keep forever wins first, then the later expiry time. All devices use the same rule, so the result is consistent.
 func newerMeta(ts, expiresAt int64, keep bool, x *Item) bool {
 	if ts != x.MetaTS {
 		return ts > x.MetaTS
@@ -407,7 +407,7 @@ func newerMeta(ts, expiresAt int64, keep bool, x *Item) bool {
 	return !keep && expiresAt > x.ExpiresAt
 }
 
-// applyFav 更新收藏状态和名称，只接受更新的修改；时间相同时收藏优先、名称较大的优先，各设备结果一致。
+// applyFav updates the favorite state and title, accepting only newer changes; on a tie favoriting wins, then the larger title. All devices end up with the same result.
 func (s *Store) applyFav(id string, fav bool, title string, ts int64) *Item {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -431,7 +431,7 @@ func (s *Store) applyFav(id string, fav bool, title string, ts int64) *Item {
 	return &n
 }
 
-// applyMeta 更新一条内容的保留设置，只接受比现有设置更新的修改。
+// applyMeta updates an item's retention setting, accepting only changes newer than the current one.
 func (s *Store) applyMeta(id string, expiresAt int64, keep bool, metaTS int64) *Item {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -439,7 +439,7 @@ func (s *Store) applyMeta(id string, expiresAt int64, keep bool, metaTS int64) *
 	if i < 0 || !newerMeta(metaTS, expiresAt, keep, s.items[i]) {
 		return nil
 	}
-	n := *s.items[i] // 写时复制
+	n := *s.items[i] // copy on write
 	n.ExpiresAt, n.Keep, n.MetaTS = expiresAt, keep, metaTS
 	if keep {
 		n.ExpiresAt = 0
@@ -456,8 +456,8 @@ func (s *Store) Get(id string) *Item {
 	return s.byID[id]
 }
 
-// indexOf 返回内容在 s.items 里的位置，找不到返回 -1（调用方持有锁）。
-// items 按时间从新到旧排列：先按 ID 查到时间，再二分查找位置。
+// indexOf returns the position of an item in s.items, or -1 when not found (the caller holds the lock).
+// items are sorted newest to oldest: look up the time by ID first, then binary search for the position.
 func (s *Store) indexOf(id string) int {
 	it := s.byID[id]
 	if it == nil {
@@ -469,7 +469,7 @@ func (s *Store) indexOf(id string) int {
 			return i
 		}
 	}
-	for i, x := range s.items { // 顺序被打乱时（不应发生）退回逐个查找
+	for i, x := range s.items { // fall back to a linear scan when the order is broken (should not happen)
 		if x.ID == id {
 			return i
 		}
@@ -477,13 +477,13 @@ func (s *Store) indexOf(id string) int {
 	return -1
 }
 
-// setAt 用新的副本替换第 i 条（写时复制，调用方持有锁）。
+// setAt replaces the i-th entry with a new replica (copy on write, the caller holds the lock).
 func (s *Store) setAt(i int, n *Item) {
 	s.items[i] = n
 	s.byID[n.ID] = n
 }
 
-// removeAt 移除第 i 条（调用方持有锁）。
+// removeAt removes the i-th entry (the caller holds the lock).
 func (s *Store) removeAt(i int) {
 	delete(s.byID, s.items[i].ID)
 	s.items = append(s.items[:i], s.items[i+1:]...)
@@ -506,9 +506,9 @@ func (s *Store) LatestText() *Item {
 	return nil
 }
 
-// Snapshot 用于节点间同步历史。
-// Snapshot 返回 since（本机时间）之后有变化的内容及其版本、删除记录；since <= 0 时返回全部。
-// 时间都用本机记录的“最后变化时间”，不依赖各设备的时钟，也覆盖“旧内容刚从别的设备同步到本机”的情况。
+// Snapshot is used to sync history between nodes.
+// Snapshot returns the items changed after since (local time), together with their versions and deletion records; when since <= 0 it returns everything.
+// Times always use the locally recorded "last change time", so they do not depend on the clocks of the individual devices, and they also cover the case where an old item was just synced in from another device.
 func (s *Store) Snapshot(since int64) storeFile {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -533,7 +533,7 @@ func (s *Store) Snapshot(since int64) storeFile {
 	return out
 }
 
-// touch 记录一条内容在本机发生了变化（调用方持有锁）。
+// touch records that an item changed on this machine (the caller holds the lock).
 func (s *Store) touch(id string) { s.seen[id] = nowMs() }
 
 func (s *Store) markDirty() {
@@ -545,7 +545,7 @@ func (s *Store) markDirty() {
 
 func (s *Store) saver() {
 	for range s.dirty {
-		time.Sleep(300 * time.Millisecond) // 合并短时间内的多次写入
+		time.Sleep(300 * time.Millisecond) // merge the writes that happen within a short time
 		s.Flush()
 	}
 }
@@ -562,7 +562,7 @@ func (s *Store) Flush() {
 			delete(s.tomb, k)
 		}
 	}
-	// 在锁里整理好要写的数据，写文件放到锁外
+	// prepare the data to write inside the lock, and write the files outside the lock
 	index := make([]*Item, len(s.items))
 	byID := make(map[string]*Item, len(s.items))
 	for i, it := range s.items {
@@ -603,7 +603,7 @@ func (s *Store) Flush() {
 	failed := false
 	for _, t := range texts {
 		if !t.large {
-			os.Remove(s.textPath(t.id)) // 编辑后变短了
+			os.Remove(s.textPath(t.id)) // it got shorter after an edit
 		} else if writeAtomic(s.textPath(t.id), []byte(t.text)) != nil {
 			failed = true
 		}
@@ -620,7 +620,7 @@ func (s *Store) Flush() {
 			failed = true
 		}
 	}
-	if failed { // 附属文件没写成功就不更新索引，避免索引指向不存在的文件；下次再试
+	if failed { // do not update the index when the attached files could not be written, so the index never points at a missing file; try again next time
 		log.Print(L("保存历史失败：写入正文或版本文件出错", "Saving history failed: couldn't write text or version files"))
 		s.mu.Lock()
 		for _, t := range texts {

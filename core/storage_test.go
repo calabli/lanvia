@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// 并发下载同时申请空间时，合计不能超过上限（以前各自检查后再下载，会一起超出）。
+// When concurrent downloads ask for space at the same time, the total must not exceed the limit (they used to check separately and then download, which went over together).
 func TestReserveConcurrent(t *testing.T) {
 	a := testApp(t, func(c *Config) { c.StorageMB = 1 })
 	const size = 400 << 10
@@ -35,7 +35,7 @@ func TestReserveConcurrent(t *testing.T) {
 		t.Fatal("third reservation granted while two are held")
 	}
 	releases[0]()
-	releases[0]() // 重复释放不应多减
+	releases[0]() // a repeated release must not free twice
 	if _, good := a.reserve(size); !good {
 		t.Fatal("reservation refused after one was released")
 	}
@@ -44,7 +44,7 @@ func TestReserveConcurrent(t *testing.T) {
 	}
 }
 
-// 已有副本时，预留空间会先清理旧副本，且不会超出上限。
+// When a copy already exists, reserving space first cleans up the old copy and does not exceed the limit.
 func TestReserveEvictsReplicas(t *testing.T) {
 	a := testApp(t, func(c *Config) { c.StorageMB = 1 })
 	const size = 400 << 10

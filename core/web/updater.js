@@ -1,7 +1,7 @@
 'use strict';
 
-// 设置页里的“关于与更新”：当前版本、检查更新、下载进度、更新内容和“自动更新”开关。
-// 下载和安装由桌面客户端完成（见 cmd/lanvia-desktop/updater.go），状态通过 SSE 的 updater 事件推过来。
+// "About and updates" in the settings page: current version, check for updates, download progress, release notes and the "auto update" switch.
+// Downloading and installing are done by the desktop client (see cmd/lanvia-desktop/updater.go); the status is pushed over SSE via the updater event.
 
 let UPD = null;
 
@@ -40,7 +40,7 @@ function renderUpdate(st) {
   if (st.latest && st.notes) $('#updNotesText').textContent = plainNotes(st.notes);
 }
 
-// 发布说明是 Markdown：去掉标题井号、加粗、代码和链接标记，按纯文本显示
+// Release notes are Markdown: strip the heading hashes, bold, code and link markers and show plain text
 const plainNotes = md => md.replace(/\r/g, '').replace(/^#{1,6}\s*/gm, '').replace(/\*\*(.+?)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1')
   .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\n{3,}/g, '\n\n').trim();
 
@@ -53,7 +53,7 @@ function bindUpdate() {
   $('#optAutoUpdate').onchange = async e => {
     await saveSettings({ autoUpdate: e.target.checked });
     renderUpdate(UPD);
-    // 刚打开自动更新、而且已经发现新版本：顺便开始下载
+    // auto update was just switched on and a new version is already known: start downloading as well
     if (e.target.checked && UPD?.latest && !UPD.ready) api('POST', '/api/update/check').catch(() => {});
   };
 }

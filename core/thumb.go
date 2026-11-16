@@ -7,7 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
-	_ "image/gif" // 注册解码器
+	_ "image/gif" // register the decoder
 	"image/jpeg"
 	_ "image/png"
 	"io"
@@ -16,18 +16,18 @@ import (
 	"strings"
 )
 
-// 列表里的图片只加载缩略图（最长边 480 像素的 JPEG），原图在预览时才加载。
-// 缩略图在电脑上生成一次后缓存在 blobs/thumbs/。
+// Images in the list only load their thumbnail (a JPEG with a longest edge of 480 pixels); the original is loaded only when previewing.
+// A thumbnail is generated once and then cached in blobs/thumbs/.
 
 const (
 	thumbMax       = 480
-	thumbMaxBytes  = 60 << 20   // 更大的图片不生成缩略图
-	thumbMaxPixels = 50_000_000 // 解码会占用约 4 字节/像素的内存
+	thumbMaxBytes  = 60 << 20   // larger images get no thumbnail
+	thumbMaxPixels = 50_000_000 // decoding takes about 4 bytes of memory per pixel
 )
 
 var (
 	errNoThumb = errors.New("no thumbnail")
-	thumbSem   = make(chan struct{}, 2) // 同时最多生成 2 张，打开一屏图片时不至于占满 CPU
+	thumbSem   = make(chan struct{}, 2) // at most 2 are generated at a time, so opening a screen of images does not hog the CPU
 )
 
 func (s *Store) thumbPath(id string) string { return filepath.Join(s.blobDir, "thumbs", id+".jpg") }
@@ -43,7 +43,7 @@ func thumbable(it *Item) bool {
 	return false
 }
 
-// Thumbnail 返回缩略图文件的路径，没有就现在生成。
+// Thumbnail returns the path of the thumbnail file, generating it now if it does not exist yet.
 func (a *App) Thumbnail(it *Item) (string, error) {
 	if !thumbable(it) {
 		return "", errNoThumb
@@ -54,10 +54,10 @@ func (a *App) Thumbnail(it *Item) (string, error) {
 	}
 	thumbSem <- struct{}{}
 	defer func() { <-thumbSem }()
-	if _, err := os.Stat(p); err == nil { // 排队期间别的请求已经生成了
+	if _, err := os.Stat(p); err == nil { // another request generated it while we were waiting in the queue
 		return p, nil
 	}
-	rc, err := a.openBlob(it) // 本机没有原图时会从其他设备取
+	rc, err := a.openBlob(it) // when the original is not on this machine it is fetched from another device
 	if err != nil {
 		return "", err
 	}
@@ -86,7 +86,7 @@ func makeThumb(data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, errNoThumb
 	}
-	// 先转成 RGBA（标准库对 JPEG 的 YCbCr 等格式有快速路径），透明部分垫白底
+	// convert to RGBA first (the standard library has a fast path for JPEG's YCbCr and similar formats), padding the transparent parts with a white background
 	b := src.Bounds()
 	rgba := image.NewRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
 	draw.Draw(rgba, rgba.Bounds(), image.NewUniform(color.White), image.Point{}, draw.Src)
@@ -111,7 +111,7 @@ func makeThumb(data []byte) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-// downscale 用区域平均缩小（每个目标像素取对应源区域的平均值），缩小倍数大时也不会出现锯齿。
+// downscale shrinks with area averaging (each target pixel takes the average of the matching source region), so large reductions do not produce aliasing.
 func downscale(src *image.RGBA, w, h int) *image.RGBA {
 	sw, sh := src.Bounds().Dx(), src.Bounds().Dy()
 	if sw == w && sh == h {
@@ -137,8 +137,8 @@ func downscale(src *image.RGBA, w, h int) *image.RGBA {
 	return dst
 }
 
-// exifOrientation 读取 JPEG 里 EXIF 的方向（1–8），读不到时返回 1。
-// 手机拍的照片常常像素是横的，靠这个标记告诉看图软件要旋转。
+// exifOrientation reads the orientation (1–8) from the EXIF data of a JPEG and returns 1 when it cannot be read.
+// Photos taken with a phone are often stored sideways; this tag tells image viewers that they need to rotate.
 func exifOrientation(data []byte) int {
 	if len(data) < 4 || data[0] != 0xFF || data[1] != 0xD8 {
 		return 1
@@ -148,7 +148,7 @@ func exifOrientation(data []byte) int {
 			return 1
 		}
 		marker, size := data[i+1], int(binary.BigEndian.Uint16(data[i+2:]))
-		if marker == 0xDA || size < 2 || i+2+size > len(data) { // 到图像数据了
+		if marker == 0xDA || size < 2 || i+2+size > len(data) { // reached the image data
 			return 1
 		}
 		seg := data[i+4 : i+2+size]
@@ -193,14 +193,14 @@ func tiffOrientation(t []byte) int {
 	return 1
 }
 
-// orient 按 EXIF 方向把图片转正。
+// orient rotates the image upright according to the EXIF orientation.
 func orient(src *image.RGBA, o int) *image.RGBA {
 	if o <= 1 || o > 8 {
 		return src
 	}
 	w, h := src.Bounds().Dx(), src.Bounds().Dy()
 	dw, dh := w, h
-	if o >= 5 { // 5–8 需要宽高互换
+	if o >= 5 { // 5–8 need width and height swapped
 		dw, dh = h, w
 	}
 	dst := image.NewRGBA(image.Rect(0, 0, dw, dh))

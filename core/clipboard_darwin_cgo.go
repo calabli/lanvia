@@ -2,8 +2,8 @@
 
 package core
 
-// 直接调用 NSPasteboard，不启动任何进程。
-// 轮询时只读取 changeCount（一个整数），内容没变就不读文本，几乎不耗电。
+// Talks to NSPasteboard directly, without starting any process.
+// While polling it only reads changeCount (a single integer); as long as the content is unchanged it does not read the text, so it barely uses any power.
 
 /*
 #cgo CFLAGS: -x objective-c -fobjc-arc
@@ -11,7 +11,7 @@ package core
 #import <AppKit/AppKit.h>
 #include <stdlib.h>
 
-// 测试时换成一个独立的剪贴板，不碰用户的系统剪贴板
+// During tests switch to a separate pasteboard, so the user's system clipboard is left alone
 static NSPasteboard *lanviaTestPB = nil;
 static NSPasteboard *lanviaPB(void) { return lanviaTestPB ? lanviaTestPB : [NSPasteboard generalPasteboard]; }
 static void lanviaUseTestPasteboard(void) {
@@ -41,7 +41,7 @@ static int lanviaWriteText(const char *text) {
 	}
 }
 
-// 访达复制的文件（剪贴板里还附带文件名文本），以及密码管理器按 nspasteboard.org 约定标记的敏感内容
+// Files copied in Finder (the clipboard also carries a text with the file name), and sensitive content that password managers mark as such per the nspasteboard.org convention
 static int lanviaShouldSkip(void) {
 	@autoreleasepool {
 		NSArray<NSPasteboardType> *types = [lanviaPB() types];
@@ -53,7 +53,7 @@ static int lanviaShouldSkip(void) {
 		return 0;
 	}
 }
-// 剪贴板里的图片，统一转成 PNG。没有图片时返回 NULL
+// Images in the clipboard, all converted to PNG. Returns NULL when there is no image
 static void *lanviaReadImage(long *len) {
 	@autoreleasepool {
 		NSPasteboard *pb = lanviaPB();
@@ -73,7 +73,7 @@ static void *lanviaReadImage(long *len) {
 	}
 }
 
-// 把图片（PNG / JPEG / GIF）放进剪贴板：同时提供 PNG 和 TIFF，大多数程序都能粘贴
+// Puts an image (PNG / JPEG / GIF) into the clipboard: offers both PNG and TIFF, so most programs can paste it
 static int lanviaWriteImage(const void *data, long len) {
 	@autoreleasepool {
 		NSBitmapImageRep *rep = [NSBitmapImageRep imageRepWithData:[NSData dataWithBytes:data length:len]];
@@ -89,7 +89,7 @@ static int lanviaWriteImage(const void *data, long len) {
 	}
 }
 
-// 当前位于最前面的应用（复制内容的来源）
+// The application currently in front (the source of the copied content)
 static char *lanviaFrontApp(void) {
 	@autoreleasepool {
 		NSRunningApplication *app = [[NSWorkspace sharedWorkspace] frontmostApplication];
@@ -116,7 +116,7 @@ var (
 
 func clipboardSupported() bool { return true }
 
-// useTestPasteboard 让本进程改用一个独立的剪贴板（只在测试里调用），不影响用户的系统剪贴板。
+// useTestPasteboard makes this process use a separate clipboard (only called in tests), leaving the user's system clipboard untouched.
 func useTestPasteboard() bool {
 	C.lanviaUseTestPasteboard()
 	pbMu.Lock()
@@ -154,7 +154,7 @@ func writeClipboard(s string) error {
 
 func skipClipboardChange() bool { return C.lanviaShouldSkip() == 1 }
 
-// clipSeq 是剪贴板的变化计数，内容每变一次加一。不支持时返回 -1。
+// clipSeq is the clipboard's change counter, incremented once per content change. Returns -1 when unsupported.
 func clipSeq() int64 { return int64(C.lanviaChangeCount()) }
 
 func readClipboardImage() ([]byte, error) {

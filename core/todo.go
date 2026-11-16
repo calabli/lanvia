@@ -7,30 +7,30 @@ import (
 	"unicode/utf8"
 )
 
-// 清单（待办、购物清单、出门要带的东西）：Kind 为 "todo" 的内容，Text 是清单标题，Todo 是各项。
+// TodoEntry is one entry of a checklist (to-dos, shopping list, things to bring): a checklist is an item with Kind "todo", where Text is the checklist title and Todo holds the entries.
 //
-// 同步规则按“项”合并，所以两台设备同时勾选、添加、修改不同的项都不会互相覆盖：
-//   - 项按 ID 去重，各节点之间求并集，顺序按创建时间；
-//   - 文字、勾选状态各自按修改时间取新（时间相同按固定规则决胜）；
-//   - 删除记为墓碑（取较早的删除时间），删除的项不会被同步回来；
-//   - 标题按 TextTS 取新。
+// The sync rules merge by "entry", so two devices ticking, adding or editing different entries at the same time never overwrite each other:
+//   - entries are deduplicated by ID and unioned across nodes, ordered by creation time;
+//   - the text and the tick state each take the newer modification time (ties are broken by a fixed rule);
+//   - a deletion is recorded as a tombstone (taking the earlier deletion time), and deleted entries are not synced back;
+//   - the title takes the newer TextTS.
 //
-// 清单不会因为保留时长或数量上限被自动清理（见 pinned），只能手动删除。
-// 旧版本不认识这种内容，会直接忽略（不显示、不转发）。
+// Checklists are never cleaned up automatically because of the retention duration or the item limit (see pinned); they can only be deleted by hand.
+// Older versions do not know this kind of item and simply ignore it (not shown, not forwarded).
 type TodoEntry struct {
 	ID     string `json:"id"`
 	Text   string `json:"text"`
-	TextTS int64  `json:"textTs"` // 文字最近一次修改的时间
+	TextTS int64  `json:"textTs"` // time the text was last changed
 	Done   bool   `json:"done,omitempty"`
-	DoneTS int64  `json:"doneTs,omitempty"` // 勾选状态最近一次修改的时间
-	By     string `json:"by,omitempty"`     // 添加者
-	TS     int64  `json:"ts"`               // 创建时间，决定顺序
-	Del    int64  `json:"del,omitempty"`    // 删除时间，0 表示未删除
+	DoneTS int64  `json:"doneTs,omitempty"` // time the tick state was last changed
+	By     string `json:"by,omitempty"`     // who added it
+	TS     int64  `json:"ts"`               // creation time, which determines the order
+	Del    int64  `json:"del,omitempty"`    // deletion time, 0 means not deleted
 }
 
 const (
-	maxTodoEntries = 300 // 未删除的项最多这么多
-	maxTodoKept    = 500 // 含墓碑最多保留这么多
+	maxTodoEntries = 300 // at most this many entries that are not deleted
+	maxTodoKept    = 500 // at most this many are kept, tombstones included
 	maxTodoText    = 1000
 	maxTodoTitle   = 200
 )
@@ -52,7 +52,7 @@ func validTodo(it *Item) bool {
 	return true
 }
 
-// mergeTodoEntry 合并同一项的两个状态，返回合并结果（与参数顺序无关）。
+// mergeTodoEntry merges the two states of the same entry and returns the result (independent of the argument order).
 func mergeTodoEntry(a, b *TodoEntry) TodoEntry {
 	m := *a
 	if b.TextTS > a.TextTS || (b.TextTS == a.TextTS && b.Text > a.Text) {
@@ -65,7 +65,7 @@ func mergeTodoEntry(a, b *TodoEntry) TodoEntry {
 		m.Del = b.Del
 	}
 	if m.Del > 0 {
-		m.Text = "" // 墓碑不需要内容
+		m.Text = "" // a tombstone needs no content
 	}
 	return m
 }
@@ -79,7 +79,7 @@ func sortTodo(es []*TodoEntry) {
 	})
 }
 
-// mergeTodo 把 in 并入 cur，返回新的列表和是否有变化。cur 不会被修改。
+// mergeTodo merges in into cur and returns the new list plus whether anything changed. cur is not modified.
 func mergeTodo(cur, in []*TodoEntry) ([]*TodoEntry, bool) {
 	out := append([]*TodoEntry(nil), cur...)
 	idx := make(map[string]int, len(out))
@@ -108,7 +108,7 @@ func mergeTodo(cur, in []*TodoEntry) ([]*TodoEntry, bool) {
 		return cur, false
 	}
 	sortTodo(out)
-	// 太多时先丢最旧的墓碑
+	// when there are too many, drop the oldest tombstone first
 	for len(out) > maxTodoKept {
 		drop := -1
 		for i, e := range out {
@@ -135,8 +135,8 @@ func liveTodo(es []*TodoEntry) int {
 	return n
 }
 
-// applyTodo 把清单的变化（若干项、标题）并入本机。title 只在 titleTS 更新时生效。
-// 返回更新后的内容副本，没有变化时返回 nil。
+// applyTodo merges the changes to a checklist (some entries, the title) into the local copy. title only takes effect when titleTS is newer.
+// It returns the updated copy of the item, or nil when nothing changed.
 func (s *Store) applyTodo(id string, entries []*TodoEntry, title string, titleTS int64) *Item {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -146,7 +146,7 @@ func (s *Store) applyTodo(id string, entries []*TodoEntry, title string, titleTS
 	}
 	it := s.items[idx]
 	es, changed := mergeTodo(it.Todo, entries)
-	n := *it // 写时复制
+	n := *it // copy on write
 	n.Todo = es
 	if titleTS > it.TextTS || (titleTS == it.TextTS && titleTS > 0 && title > it.Text) {
 		if title != it.Text || titleTS != it.TextTS {
@@ -163,7 +163,7 @@ func (s *Store) applyTodo(id string, entries []*TodoEntry, title string, titleTS
 	return &n
 }
 
-// PlainText 是一条内容的纯文本形式：清单会变成“- [x] 项”的列表，用于复制、通知和托盘菜单。
+// PlainText is the plain text form of an item: a checklist becomes a list of "- [x] entry" lines, used for copying, notifications and the tray menu.
 func (it *Item) PlainText() string {
 	switch it.Kind {
 	case "file":
@@ -199,7 +199,7 @@ func cleanTodoText(s string, limit int) string {
 	return s
 }
 
-// parseTodoLine 去掉清单行前面常见的标记（“- ”“* ”“1. ”“[ ]”“[x]”“☐”“☑”），返回文字和是否已完成。
+// parseTodoLine strips the common markers at the start of a checklist line ("- ", "* ", "1. ", "[ ]", "[x]", "☐", "☑") and returns the text and whether it is done.
 func parseTodoLine(l string) (string, bool) {
 	l = strings.TrimSpace(l)
 	for _, p := range []string{"- ", "* ", "• ", "+ "} {
@@ -220,7 +220,7 @@ func parseTodoLine(l string) (string, bool) {
 	return strings.TrimSpace(l), done
 }
 
-// NewTodo 新建一个清单。lines 是初始的各项，可以带“- [ ]”之类的标记。
+// NewTodo creates a checklist. lines holds the initial entries, which may carry markers like "- [ ]".
 func (a *App) NewTodo(title string, lines []string, from string, sender ...string) (*Item, error) {
 	title = cleanTodoText(title, maxTodoTitle*4)
 	now := nowMs()
@@ -233,7 +233,7 @@ func (a *App) NewTodo(title string, lines []string, from string, sender ...strin
 		if len(es) >= maxTodoEntries {
 			return nil, errors.New("清单最多 300 项")
 		}
-		ts := now + int64(i) // 保持原来的顺序
+		ts := now + int64(i) // keep the original order
 		e := &TodoEntry{ID: randHex(8), Text: text, TextTS: ts, By: from, TS: ts, Done: done}
 		if done {
 			e.DoneTS = ts
@@ -250,19 +250,19 @@ func (a *App) NewTodo(title string, lines []string, from string, sender ...strin
 	return it, nil
 }
 
-// TodoChange 是对清单的一次修改（网页发来的）。
+// TodoChange is one change to a checklist (sent by the web page).
 type TodoChange struct {
-	Add   []string `json:"add"`   // 新增的项（可以一次加多行）
-	ID    string   `json:"id"`    // 要修改的项
-	Done  *bool    `json:"done"`  // 勾选 / 取消勾选
-	Text  *string  `json:"text"`  // 修改文字
-	Del   bool     `json:"del"`   // 删除这一项
-	Title *string  `json:"title"` // 修改标题
-	Clear bool     `json:"clear"` // 删除所有已完成的项
+	Add   []string `json:"add"`   // entries to add (several lines at once are allowed)
+	ID    string   `json:"id"`    // the entry to modify
+	Done  *bool    `json:"done"`  // tick / untick
+	Text  *string  `json:"text"`  // change the text
+	Del   bool     `json:"del"`   // delete this entry
+	Title *string  `json:"title"` // change the title
+	Clear bool     `json:"clear"` // delete all completed entries
 	By    string   `json:"by"`
 }
 
-// UpdateTodo 在本机修改清单，并同步给所有设备。
+// UpdateTodo changes a checklist on this machine and syncs it to all devices.
 func (a *App) UpdateTodo(id string, ch TodoChange) (*Item, error) {
 	cur := a.store.Get(id)
 	if cur == nil || cur.Kind != "todo" {
@@ -271,7 +271,7 @@ func (a *App) UpdateTodo(id string, ch TodoChange) (*Item, error) {
 	now := nowMs()
 	var es []*TodoEntry
 	live := liveTodo(cur.Todo)
-	next := now // 新增的项排在已有的项后面（即使本机时钟比添加那些项的设备慢）
+	next := now // new entries are placed after the existing ones (even if this machine's clock is behind the devices that added them)
 	for _, e := range cur.Todo {
 		next = max(next, e.TS+1)
 	}
@@ -310,7 +310,7 @@ func (a *App) UpdateTodo(id string, ch TodoChange) (*Item, error) {
 		case ch.Text != nil:
 			t := cleanTodoText(*ch.Text, maxTodoText)
 			if t == "" {
-				e.Del = max(now, e.TS) // 文字清空等于删除
+				e.Del = max(now, e.TS) // clearing the text means deleting
 			} else {
 				e.Text, e.TextTS = t, max(now, e.TextTS+1)
 			}
@@ -344,7 +344,7 @@ func (a *App) applyRemoteTodo(env *Item, fromPeer string) {
 	}
 }
 
-// afterTodo 通知网页，并只把变化的项转发给其他设备。
+// afterTodo notifies the web page and forwards only the changed entries to other devices.
 func (a *App) afterTodo(it *Item, es []*TodoEntry, title string, titleTS int64, withTitle bool, fromPeer string) {
 	a.bcastItem("update", it)
 	d := &Item{ID: it.ID, Kind: "todo", Todo: es}

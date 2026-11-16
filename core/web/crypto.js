@@ -1,15 +1,15 @@
 'use strict';
 
-// 手机浏览器与电脑之间的内容加密。局域网走 http，浏览器的 crypto.subtle 不可用，所以自带 AES-256-GCM。
-// 流格式与电脑之间的完全相同（见 core/crypto.go）：12 字节随机前缀，之后是若干帧
-//   [4 字节：密文长度，最高位表示最后一帧][密文 + 16 字节校验]
-// 第 i 帧的 nonce = 前缀的后 8 字节 XOR i，附加数据 = 8 字节帧序号 + 1 字节“最后一帧”标志。
-// 这个文件不依赖其他脚本（测试时直接用 node 加载）。
+// Content encryption between the phone browser and the computer. The LAN runs over http, where the browser's crypto.subtle is unavailable, so AES-256-GCM is implemented here.
+// The stream format is exactly the same as the one between computers (see core/crypto.go): a 12-byte random prefix, then frames
+//   [4 bytes: ciphertext length, the highest bit marks the last frame][ciphertext + 16-byte tag]
+// The nonce of frame i = the last 8 bytes of the prefix XOR i, additional data = 8-byte frame index + 1-byte "last frame" flag.
+// This file does not depend on other scripts (tests load it directly with node).
 
 const LC = (() => {
   const FRAME = 64 << 10, FINAL = 0x80000000, TAG = 16;
 
-  /* ---- AES（只需要加密方向：GCM 解密也是用加密生成密钥流） ---- */
+  /* ---- AES (only the encryption direction is needed: GCM decryption also uses encryption to generate the keystream) ---- */
   const SBOX = new Uint8Array(256);
   const TE = [new Uint32Array(256), new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)];
   (() => {
@@ -39,7 +39,7 @@ const LC = (() => {
     return w;
   }
 
-  // 加密一个块：输入 4 个 32 位字，结果写入 out
+  // Encrypt one block: takes 4 32-bit words and writes the result into out
   function aesBlock(k, a, b, c, d, out) {
     const [t0, t1, t2, t3] = TE;
     a ^= k[0]; b ^= k[1]; c ^= k[2]; d ^= k[3];
@@ -57,11 +57,11 @@ const LC = (() => {
     }
   }
 
-  /* ---- GHASH：按字节查表（16 个位置 × 256 个取值，每项 128 位），每块只要 16 次查表 ---- */
+  /* ---- GHASH: byte-indexed tables (16 positions × 256 values, each 128 bits), only 16 lookups per block ---- */
   function ghashTable(h) {
     const V = new Uint32Array(128 * 4);
     V.set(h);
-    for (let i = 1; i < 128; i++) { // V[i] = H · x^i：整体右移一位，移出 1 时异或 0xE1
+    for (let i = 1; i < 128; i++) { // V[i] = H · x^i: shift the whole word right by one bit, XOR with 0xE1 when a 1 is shifted out
       const p = (i - 1) * 4, q = i * 4, lsb = V[p + 3] & 1;
       V[q] = (V[p] >>> 1) ^ (lsb ? 0xe1000000 : 0);
       V[q + 1] = (V[p + 1] >>> 1) | (V[p] << 31);
@@ -77,7 +77,7 @@ const LC = (() => {
     }
     return T;
   }
-  // y ← (y ⊕ 块) · H
+  // y ← (y ⊕ block) · H
   function ghashMul(T, y) {
     let z0 = 0, z1 = 0, z2 = 0, z3 = 0;
     for (let j = 0; j < 16; j++) {
@@ -88,7 +88,7 @@ const LC = (() => {
   }
 
   const rd = (b, o) => ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0;
-  // 从 b[o..o+n) 读出最多 16 字节（不足补 0）作为 4 个字
+  // Read up to 16 bytes from b[o..o+n) (zero-padded) as 4 words
   function rdBlock(b, o, n, out) {
     if (n === 16) { out[0] = rd(b, o); out[1] = rd(b, o + 4); out[2] = rd(b, o + 8); out[3] = rd(b, o + 12); return; }
     out[0] = out[1] = out[2] = out[3] = 0;
@@ -101,12 +101,12 @@ const LC = (() => {
     return { k, T: ghashTable(h) };
   }
 
-  // GCM：plain 加密后写入 out[o..]（长度相同），返回 16 字节校验。decrypt 时 input 是密文。
+  // GCM: plain is encrypted into out[o..] (same length), returns the 16-byte tag. When decrypting, input is the ciphertext.
   function gcm(key, nonce, aad, input, out, o, decrypt) {
     const { k, T } = key;
     const n0 = rd(nonce, 0), n1 = rd(nonce, 4), n2 = rd(nonce, 8);
     const y = new Uint32Array(4), blk = new Uint32Array(4), ks = new Uint32Array(4);
-    // 附加数据
+    // additional data
     for (let i = 0; i < aad.length; i += 16) {
       rdBlock(aad, i, Math.min(16, aad.length - i), blk);
       y[0] ^= blk[0]; y[1] ^= blk[1]; y[2] ^= blk[2]; y[3] ^= blk[3]; ghashMul(T, y);
@@ -119,7 +119,7 @@ const LC = (() => {
       for (let j = 0; j < n; j++) out[o + i + j] = input[i + j] ^ (ks[j >> 2] >>> (24 - 8 * (j & 3)));
       if (!decrypt) { rdBlock(out, o + i, n, blk); y[0] ^= blk[0]; y[1] ^= blk[1]; y[2] ^= blk[2]; y[3] ^= blk[3]; ghashMul(T, y); }
     }
-    y[1] ^= aad.length * 8; y[3] ^= len * 8; // 长度块（都远小于 2^32 位）
+    y[1] ^= aad.length * 8; y[3] ^= len * 8; // length block (both are far below 2^32 bits)
     ghashMul(T, y);
     aesBlock(k, n0, n1, n2, 1, ks);
     const tag = new Uint8Array(16);
@@ -139,7 +139,7 @@ const LC = (() => {
     return a;
   }
 
-  // 加密器：按顺序喂入明文块，产出带帧的密文块。
+  // Sealer: feed plaintext blocks in order, produces framed ciphertext blocks.
   class Sealer {
     constructor(key) {
       this.key = key; this.i = 0;
@@ -159,7 +159,7 @@ const LC = (() => {
     }
   }
 
-  // 一次性加密整段数据
+  // Encrypt a whole chunk of data at once
   function seal(key, plain) {
     const s = new Sealer(key), parts = [];
     let total = 0;
@@ -172,7 +172,7 @@ const LC = (() => {
     return concat(parts, total);
   }
 
-  // 解密器：可以分段喂入（边下载边解密），每次返回已解出的明文块。
+  // Opener: can be fed in pieces (decrypt while downloading), returns the decrypted plaintext blocks each time.
   class Opener {
     constructor(key) { this.key = key; this.buf = new Uint8Array(0); this.base = null; this.i = 0; this.done = false; }
     push(chunk) {

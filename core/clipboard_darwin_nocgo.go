@@ -1,7 +1,7 @@
 //go:build darwin && !cgo
 
-// 没有 cgo 时（例如在其他平台交叉编译的命令行版）退回到 pbpaste / pbcopy / osascript。
-// 原生实现见 clipboard_darwin_cgo.go。
+// Without cgo (e.g. the command line version cross-compiled for other platforms) fall back to pbpaste / pbcopy / osascript.
+// The native implementation lives in clipboard_darwin_cgo.go.
 
 package core
 
@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// pbpaste/pbcopy 需要 UTF-8 的 locale，否则中文和 emoji 会乱码。
+// pbpaste/pbcopy need a UTF-8 locale, otherwise Chinese text and emoji come out garbled.
 func pbEnv() []string { return append(os.Environ(), "LANG=en_US.UTF-8", "LC_ALL=en_US.UTF-8") }
 
 func clipboardSupported() bool { _, err := exec.LookPath("pbpaste"); return err == nil }
@@ -32,7 +32,7 @@ func writeClipboard(s string) error {
 	return cmd.Run()
 }
 
-// pasteboardTypes 列出当前剪贴板里的数据类型。pbpaste 只能拿到文字，类型要通过 AppKit 读取。
+// pasteboardTypes lists the data types currently in the clipboard. pbpaste can only get text, the types have to be read through AppKit.
 const pasteboardTypesJS = `ObjC.import('AppKit');
 var t = $.NSPasteboard.generalPasteboard.types, out = [];
 for (var i = 0; i < t.count; i++) out.push(ObjC.unwrap(t.objectAtIndex(i)));
@@ -48,8 +48,8 @@ func pasteboardTypes() []string {
 	return strings.Split(strings.TrimSpace(string(out)), "\n")
 }
 
-// 在访达里复制文件时，剪贴板里除了文件还有一份文件名文本；密码管理器会用 nspasteboard.org
-// 约定的类型标记敏感内容（1Password、Bitwarden、钥匙串访问等都遵循）。
+// When files are copied in Finder the clipboard holds a text with the file name next to them; password managers mark sensitive content with the types
+// agreed on by nspasteboard.org (1Password, Bitwarden, Keychain Access and so on all follow it).
 var skipTypes = []string{
 	"public.file-url",
 	"NSFilenamesPboardType",
@@ -69,7 +69,7 @@ func skipClipboardChange() bool {
 	return false
 }
 
-// frontApp 没有 cgo 时用系统自带的 lsappinfo 查询（只在剪贴板变化时调用一次）。
+// frontApp without cgo queries the system's own lsappinfo (called only once per clipboard change).
 func frontApp() (id, name string) {
 	asn, err := exec.Command("lsappinfo", "front").Output()
 	if err != nil {
@@ -79,7 +79,7 @@ func frontApp() (id, name string) {
 	if err != nil {
 		return "", ""
 	}
-	// 输出形如：
+	// Output looks like:
 	//   "Google Chrome" ASN:0x0-0x1234: (in front)
 	//       bundleID="com.google.Chrome"
 	for i, line := range strings.Split(string(out), "\n") {
@@ -96,7 +96,7 @@ func frontApp() (id, name string) {
 	return id, name
 }
 
-// 这个平台暂不支持剪贴板里的图片。
+// Images in the clipboard are not supported on this platform yet.
 func clipSeq() int64                        { return -1 }
 func readClipboardImage() ([]byte, error)   { return nil, errNoImage }
 func writeClipboardImage(data []byte) error { return errNoImage }

@@ -1,10 +1,10 @@
-/* 托盘快捷面板（380×600 的小窗口）：参照 macOS 菜单栏弹出面板。
-   整个窗口不滚动：顶栏、搜索和分类固定在上面，输入框固定在下面，只有中间的列表上下滚动，任何时候都不左右滚动。 */
+/* Tray quick panel (a small 380x600 window): modelled on the macOS menu bar popover panel.
+   The window never scrolls: the top bar, search and categories stay pinned at the top, the input stays pinned at the bottom, only the list in between scrolls vertically and never horizontally. */
 html:has(body.panel) { scrollbar-gutter: auto; overflow: hidden; }
 body.panel { min-width: 0; height: 100vh; height: 100dvh; overflow: hidden; }
 body.panel #app:not([hidden]) { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 
-/* 顶栏：一行，左边是名字，右边是同步状态和少量按钮 */
+/* Top bar: one row, the name on the left, the sync status and a few buttons on the right */
 body.panel .top { position: static; flex: none; min-height: 44px; padding: 8px 10px 6px 12px; gap: 6px; border-bottom: 0; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
 body.panel .brand { font-size: calc(15px * var(--fs)); gap: 7px; }
 body.panel .brand .logo { width: 22px; height: 22px; }
@@ -14,7 +14,7 @@ body.panel .top-actions .icon-btn { width: 26px; height: 26px; }
 body.panel .top-actions .icon-btn svg { width: 15px; height: 15px; }
 body.panel #fontBtn, body.panel #themeBtn, body.panel #pairingBtn, body.panel .sidebar-toggle, body.panel .list-toggle, body.panel .window-controls { display: none !important; }
 
-/* 主体：竖向排列，只有列表滚动 */
+/* Body: stacked vertically, only the list scrolls */
 body.panel .workspace { display: flex; flex-direction: column; flex: 1; min-height: 0; margin: 0; padding: 0; max-width: none; }
 body.panel .inbox-sidebar, body.panel .inbox-reader-column, body.panel .workspace-intro, body.panel .connection-column { display: none !important; }
 body.panel .inbox-list-column { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
@@ -23,14 +23,14 @@ body.panel .inbox-search-row { position: static; flex: none; margin: 0; padding:
 body.panel .search-field { width: 100%; height: 32px; }
 body.panel #search { font-size: calc(14px * var(--fs)); }
 
-/* 分类：一行小标签，放不下时可以左右划，但不显示滚动条 */
+/* Categories: a row of small tabs, swipeable sideways when they do not fit, but no scrollbar is shown */
 body.panel #kindFilters { flex: none; display: flex; flex-direction: row; flex-wrap: nowrap; gap: 4px; margin: 0; padding: 0 10px 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 body.panel #kindFilters::-webkit-scrollbar { display: none; }
 body.panel #kindFilters .filter-btn { flex: none; min-height: 24px; padding: 0 10px; border-radius: 999px; font-size: calc(12px * var(--fs)); white-space: nowrap; background: transparent; box-shadow: none; }
 body.panel #kindFilters .filter-btn.active { background: var(--fill-strong); }
 body.panel #kindFilters .nav-symbol, body.panel #kindFilters .nav-count { display: none; }
 
-/* 列表：唯一滚动的地方；长网址、长代码行都换行，不撑出横向滚动 */
+/* List: the only place that scrolls; long URLs and long code lines wrap instead of forcing horizontal scroll */
 body.panel .inbox-results { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 2px 10px 10px; scrollbar-width: thin; }
 body.panel .list { gap: 6px; }
 body.panel .item { position: relative; padding: 9px 11px 8px; border-radius: 10px; box-shadow: none; animation: none; }
@@ -51,7 +51,7 @@ body.panel .todo-head { margin: 0 0 4px; } body.panel .todo-title { font-size: c
 body.panel .todo-e label { padding: 3px 4px; font-size: calc(13px * var(--fs)); }
 body.panel .todo-add, body.panel .todo-x { display: none; }
 body.panel .item:not(.open) .todo .todo-e:nth-child(n+5) { display: none; }
-/* 操作按钮：鼠标移上去或键盘选中时，浮在卡片右上角出现，不占位置、不让列表跳动 */
+/* Action buttons: float in the top right corner of the card on hover or keyboard selection, taking up no space so the list never jumps */
 body.panel .actions { position: absolute; top: 5px; right: 6px; z-index: 2; margin: 0; padding: 2px; gap: 0; border: 0; border-radius: 9px; background: var(--surface); box-shadow: 0 2px 10px rgba(0,0,0,.14); opacity: 0; pointer-events: none; transition: opacity .12s; }
 body.panel .item:hover .actions, body.panel .item.sel .actions, body.panel .item:focus-within .actions { opacity: 1; pointer-events: auto; }
 body.panel .actions .spacer, body.panel .actions .small, body.panel .actions .smart, body.panel .actions [data-act="expiry"], body.panel .actions [data-act="tags"], body.panel .actions [data-act="comments"] { display: none; }
@@ -61,7 +61,7 @@ body.panel .actions .icon-btn svg, body.panel .actions .btn svg { width: 14px; h
 body.panel .empty { padding: 30px 12px; background: transparent; }
 body.panel .list-more { padding: 8px 0 0; }
 
-/* 底部：固定的输入区。剪贴板预览缩成一行，同步状态一行，输入框随内容长高（最多约 4 行） */
+/* Footer: a fixed input area. The clipboard preview shrinks to one line, the sync status takes one line, the input grows with its content (up to about 4 lines) */
 body.panel #listComposerHost { flex: none; display: grid; gap: 6px; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); border-top: .5px solid var(--border); background: var(--bar-bg); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); }
 body.panel .clip-card { display: flex; align-items: center; gap: 8px; margin: 0; padding: 4px 4px 4px 10px; border-radius: 10px; box-shadow: none; }
 body.panel .clip-head, body.panel #clipHint { display: none; }
@@ -86,9 +86,9 @@ body.panel .send-status .delivery-retry { min-height: 22px; padding: 0 8px; font
 body.panel .kbd-hint { display: none !important; }
 body.panel .toast { bottom: 96px; max-width: calc(100vw - 24px); }
 
-/* 每条内容的同步回执：面板里只在“等待确认”“未接收”时显示一小行，正常情况不占位置 */
+/* Sync receipt per entry: in the panel a small row is shown only for "waiting for confirmation" and "not received", otherwise it takes no space */
 body.panel .delivery-row { display: none; }
 body.panel .delivery-row:has(.pending), body.panel .delivery-row:has(.failed) { display: flex; margin: 4px 0 0; font-size: calc(11px * var(--fs)); }
 body.panel .delivery-row .delivery-retry { padding: 1px 7px; }
-/* 剪贴板是空的：不显示这一行 */
+/* The clipboard is empty: hide this row */
 body.panel .clip-card:has(.clip-text.empty) { display: none; }

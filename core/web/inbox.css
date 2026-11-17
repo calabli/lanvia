@@ -5,7 +5,7 @@ body.inbox { min-width: 320px; }
 body.inbox::before { display: none; }
 body.inbox #app:not([hidden]) { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
 body.inbox .top { position: relative; flex: none; min-height: 64px; gap: 14px; padding: calc(env(safe-area-inset-top) + 12px) 24px 12px; background: var(--surface-solid); }
-/* 黑色顶栏（浅色、深色外观都一样）：在顶栏里把配色变量换成深色，按钮、标签、窗口按钮跟着变 */
+/* Black top bar (same for the light and dark appearance): swap the color variables for dark ones inside the top bar; buttons, labels and window buttons follow along */
 body.inbox .top {
   --text: #f5f5f7; --muted: #c7c7cc; --surface: #272729; --surface-solid: #272729; --surface-2: #2c2c2e;
   --fill: rgba(255,255,255,.14); --border: rgba(255,255,255,.12); --accent: #2997ff; --accent-soft: rgba(41,151,255,.18);
@@ -45,7 +45,7 @@ body.inbox .inbox-navigation .filter-btn.active { background: var(--surface-soli
 body.inbox .inbox-sidebar .tag-bar { display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin: 8px 0 0; }
 body.inbox .inbox-sidebar .tag-bar .tag { justify-content: space-between; padding: 7px 11px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: calc(12px * var(--fs)); }
 body.inbox .inbox-sidebar .tag-bar .tag.on { background: var(--accent-soft); color: var(--accent); }
-/* 侧栏的设备：在线的实心蓝点，离线的空心圆 */
+/* Devices in the sidebar: a filled blue dot when online, a hollow circle when offline */
 .inbox-sidebar-devices { margin-top: 20px; }
 .side-devices { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
 .side-device { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 40px; padding: 6px 11px; border: 0; border-radius: 9px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
@@ -57,7 +57,7 @@ body.inbox .inbox-sidebar .tag-bar .tag.on { background: var(--accent-soft); col
 .side-dev-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side-dev-name small { color: var(--muted); font-size: calc(10px * var(--fs)); }
 .side-device .nav-count { margin-left: auto; color: var(--muted); font: calc(11px * var(--fs)) var(--mono); }
-/* 侧栏可见时用它筛选设备，列表上方只留时间筛选 */
+/* While the sidebar is visible it filters the devices, so only the time filter is left above the list */
 @media (min-width: 651px) {
   body.inbox:not(.sidebar-collapsed):has(#sideDevicesBox:not([hidden])) #fromFilter { display: none; }
   body.inbox:not(.sidebar-collapsed):has(#sideDevicesBox:not([hidden])) .inbox-list-filters #timeFilter { width: 100%; }
@@ -88,7 +88,7 @@ body.inbox #list > .item.latest::before { display: none; }
 body.inbox #list > .item.is-reading { border-color: color-mix(in srgb, var(--accent) 18%, transparent); background: var(--accent-soft); }
 .inbox-entry { display: block; width: 100%; min-width: 0; padding: 14px 12px 13px; border: 0; border-radius: inherit; background: transparent; text-align: left; cursor: pointer; }
 .inbox-entry:hover { background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
-/* 批量选择：条目左边一个勾选框，选中的条目淡蓝底 */
+/* Batch selection: a checkbox on the left of each entry, selected entries get a light blue background */
 .select-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: -8px 16px 14px; padding: 6px 6px 6px 14px; border-radius: 12px; background: var(--surface-2); }
 .select-count { flex: 1 1 auto; min-width: 70px; font-size: calc(12px * var(--fs)); font-weight: 600; }
 .select-bar .btn.sm { min-height: 32px; }
@@ -149,7 +149,7 @@ body.inbox dialog.inline-preview.with-hist .pv-main { flex-direction: column; }
 body.inbox dialog.inline-preview.with-hist .pv-hist { width: 100%; max-height: 135px; border-right: 0; border-bottom: 1px solid var(--border); }
 body.inbox dialog.inline-preview .hv { padding: 7px 9px; }
 body.inbox dialog.inline-preview .pv-com { border-radius: 10px; max-height: 40%; }
-/* 阅读区标签页：内容 / 评论 / 历史版本 */
+/* Reader tabs: content / comments / history */
 .pv-tabs { display: flex; flex-wrap: wrap; gap: 6px; flex: none; padding: 0 0 6px; }
 .pv-tab { min-height: 32px; padding: 0 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-solid); color: var(--text); font-size: calc(12px * var(--fs)); cursor: pointer; }
 .pv-tab:hover { background: var(--surface-2); }

@@ -102,16 +102,6 @@ function signedURL(path, params = {}, method = 'GET') {
   out.set('_v', '2'); out.set('_t', ts); out.set('_n', n); out.set('_s', sig);
   return path + '?' + out;
 }
-// URLs for images and the like in the list: the same URL reuses the same signature within 4 minutes (signatures stay valid for 5 minutes),
-// otherwise every render produces a different signature, the card is treated as "changed" and rebuilt, and the image reloads.
-const URLS = new Map();
-function stableURL(path) {
-  const hit = URLS.get(path);
-  if (hit && Date.now() - hit.t < 4 * 60e3) return hit.url;
-  const url = signedURL(path);
-  URLS.set(path, { url, t: Date.now() });
-  return url;
-}
 
 // Prepare a request: sign it, encrypt the query parameters and the request body. body can be an object (JSON) or a Uint8Array. Returns the arguments for fetch
 function prepare(method, path, body) {

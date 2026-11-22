@@ -359,6 +359,9 @@ func (s *Store) Clear(ts int64) bool {
 			s.dropFiles(x.ID)
 		}
 	}
+	for i := len(kept); i < len(s.items); i++ {
+		s.items[i] = nil // release the cleared items
+	}
 	s.items = kept
 	s.markDirty()
 	return true

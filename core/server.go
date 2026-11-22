@@ -214,7 +214,7 @@ func (a *App) routes(web fs.FS) http.Handler {
 			Fav   bool   `json:"fav"`
 			Title string `json:"title"`
 		}
-		if json.NewDecoder(r.Body).Decode(&req) != nil {
+		if json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&req) != nil {
 			errJSON(w, 400, "bad request")
 			return
 		}
@@ -230,7 +230,7 @@ func (a *App) routes(web fs.FS) http.Handler {
 			TTL  int64 `json:"ttl"` // seconds; 0 means follow the global setting
 			Keep bool  `json:"keep"`
 		}
-		if json.NewDecoder(r.Body).Decode(&req) != nil || req.TTL < 0 || req.TTL > 10*365*86400 {
+		if json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&req) != nil || req.TTL < 0 || req.TTL > 10*365*86400 {
 			errJSON(w, 400, "bad request")
 			return
 		}
@@ -626,7 +626,11 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		errJSON(w, 400, "upload failed")
 		return
 	}
-	os.Rename(part, final)
+	if err := os.Rename(part, final); err != nil {
+		os.Remove(part)
+		errJSON(w, 500, "upload failed")
+		return
+	}
 	ct := r.Header.Get("Content-Type")
 	if t := q.Get("type"); t != "" { // encrypted upload from the web page: the type is put in an encrypted query parameter
 		ct = trimRunes(t, 100)

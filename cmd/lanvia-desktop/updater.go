@@ -31,6 +31,10 @@ type updater struct {
 	pkgTag   string
 	busy     bool // downloading or installing
 	notified string
+	// failedTag is a version whose automatic install failed (e.g. the user cancelled the password dialog).
+	// It is not retried automatically, so the dialog and notification don't pop up every minute;
+	// "Update now" still works, and automatic installs resume once a newer version is released.
+	failedTag string
 }
 
 func newUpdater(d *desktop) *updater {
@@ -81,7 +85,7 @@ func (u *updater) loop() {
 func (u *updater) autoInstallLoop() {
 	for range time.Tick(time.Minute) {
 		u.mu.Lock()
-		ready := u.pkg != "" && !u.busy
+		ready := u.pkg != "" && !u.busy && u.pkgTag != u.failedTag
 		u.mu.Unlock()
 		if ready && u.auto() && !u.d.anyWindowFocused() {
 			u.install()
@@ -234,6 +238,9 @@ func (u *updater) install() {
 	err := u.doInstall(pkg)
 	u.mu.Lock()
 	u.busy = false
+	if err != nil {
+		u.failedTag = tag
+	}
 	u.mu.Unlock()
 	if err != nil {
 		log.Printf("更新失败: %v", err)

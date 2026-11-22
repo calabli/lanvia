@@ -131,9 +131,7 @@ func (d *desktop) build() {
 			d.panel.Hide()
 			d.showMain()
 		case "window-minimise", "window-maximise", "window-close", "window-state":
-			d.winMu.Lock()
-			w := d.main
-			d.winMu.Unlock()
+			w := d.openedWindow(&d.main)
 			if w == nil || runtime.GOOS != "windows" {
 				return false
 			}
@@ -156,12 +154,12 @@ func (d *desktop) build() {
 		case "update-check":
 			go d.update.check(true)
 		case "hide-preview":
-			if d.preview != nil {
-				d.preview.Hide()
+			if w := d.openedWindow(&d.preview); w != nil {
+				w.Hide()
 			}
 		case "pin", "unpin":
-			if d.preview != nil {
-				d.preview.SetAlwaysOnTop(action == "pin")
+			if w := d.openedWindow(&d.preview); w != nil {
+				w.SetAlwaysOnTop(action == "pin")
 			}
 		default:
 			return false
@@ -228,6 +226,14 @@ func (d *desktop) mainWindow() *application.WebviewWindow {
 	return d.main
 }
 
+// openedWindow returns the main or preview window if it has been created, or nil otherwise.
+// Those windows are created on demand, so reads must hold winMu.
+func (d *desktop) openedWindow(p **application.WebviewWindow) *application.WebviewWindow {
+	d.winMu.Lock()
+	defer d.winMu.Unlock()
+	return *p
+}
+
 func syncWindowChrome(w *application.WebviewWindow) {
 	w.ExecJS(fmt.Sprintf("window.setNativeWindowMaximized?.(%t)", w.IsMaximised()))
 }
@@ -271,7 +277,7 @@ func (d *desktop) openPreview(id string) { d.openPreviewMode(id, "view") }
 
 // anyWindowFocused: when a Lanvia window is in the foreground the page already shows a hint, so no system notification is needed.
 func (d *desktop) anyWindowFocused() bool {
-	for _, w := range []*application.WebviewWindow{d.panel, d.main, d.preview} {
+	for _, w := range []*application.WebviewWindow{d.panel, d.openedWindow(&d.main), d.openedWindow(&d.preview)} {
 		if w != nil && w.IsVisible() && w.IsFocused() {
 			return true
 		}

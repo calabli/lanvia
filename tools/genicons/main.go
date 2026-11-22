@@ -5,7 +5,6 @@
 package main
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -32,9 +31,7 @@ func main() {
 	icon := resize(src, art, 1024)
 	roundTile(icon)
 	save("cmd/lanvia-desktop/build/appicon-windows.png", resize(icon, icon.Bounds(), 256))
-	for _, size := range []int{16, 20, 24, 32, 48} {
-		save(filepath.Join("cmd/lanvia-desktop/build", fmt.Sprintf("icon-small-%d.png", size)), smallMark(size, false))
-	}
+	save("cmd/lanvia-desktop/build/icon-small-32.png", smallMark(32, false)) // Windows window icon, see icon_windows.go
 	save("cmd/lanvia-desktop/assets/tray.png", smallMark(32, false))
 	save("core/web/icon.png", resize(icon, icon.Bounds(), 512))
 	save("core/web/icon-192.png", resize(icon, icon.Bounds(), 192))

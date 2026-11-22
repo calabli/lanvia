@@ -31,7 +31,7 @@ Lanvia
 ├── A Connection & pairing   pairing code · scan · discovery · manual add · online devices
 ├── B Clipboard sync         auto copy / auto paste · images · sensitive filter · blocklist · pause · manual send
 ├── C Sending & receiving    text · files · folders · code / link detection · delivery receipts
-├── D Organizing             type navigation · search · filters · sidebar devices · tags · favorites · checklists
+├── D Organizing             Omni-Bar · filters · device beam · click to copy · tags · favorites · checklists
 ├── E Viewing & editing      preview · highlighting · editing · versions · comments · reading pane tabs
 ├── F Retention & storage    retention · item limit · delete / bulk delete / clear · file backup · quota
 ├── G Desktop app            quick panel · tray menu · preview window · main window · notifications · auto-update
@@ -90,15 +90,16 @@ Lanvia
 | ID | Feature | Description | Platforms | Sync | Code |
 | --- | --- | --- | --- | --- | --- |
 | D1 | Type navigation | All / Text & links / Files / Checklists / Favorites, with counts | All | — | `index.html`, `list.js` |
-| D2 | Multi-keyword search | Space-separated, all must match; ⌘K / Ctrl+K focuses search | All | — | `list.js` |
-| D3 | Fuzzy matching | Falls back to fuzzy matching when nothing matches exactly (`wfmm` → "WiFi 密码") | All | — | `list.js` `fuzzyScore` |
+| D2 | Omni-Bar search | One field searches and sends: typing filters the list, Enter sends; space-separated keywords must all match; ⌘K / Ctrl+K focuses it (the tray panel keeps a separate search box) | All | — | `list.js`, `inbox.js` `bindOmni` |
+| D3 | Fuzzy matching | Falls back to fuzzy matching when nothing matches exactly: the letters only need to appear in order (`lnva` → "lanvia") | All | — | `list.js` `fuzzyScore` |
 | D4 | Full-text search of long text | The list only carries the first 16 KB; the rest is searched on the computer | All | — | `core/search.go` |
 | D5 | Filter by device / time | All devices or one; today / last 7 days / last 30 days | All | — | `list.js` |
-| D6 | Sidebar devices | Main window sidebar lists devices (online first, then by item count); click to filter, click again to clear | All (wide layout) | — | `web/inbox.js` `renderSideDevices` |
+| D6 | Device beam | The top bar shows online devices joined by a flowing line (more than 4 fold into `+N`); click one to filter by it, click again to clear; the line stops while paused or offline | All (hidden below 650 px) | — | `web/inbox.js` `renderBeam` |
 | D7 | Tags | Tag items; filter from the tag bar, or `#tag` in the search box | All | Synced | `core/tags.go` |
 | D8 | Favorite snippets | Favorite and name (e.g. "Home Wi-Fi"), names are searchable; never expire, exempt from the item limit | All | Synced | `app.go` `SetFavorite` |
 | D9 | Shared checklists | Create lists; tick, add, edit, delete items, clear done ones; concurrent edits merge per item | All | Synced | `core/todo.go` |
-| D10 | Lines to checklist | Multi-line text in the input box becomes a list in one click | All | Synced | `list.js` |
+| D10 | Lines to checklist | Multi-line text whose lines start with `-` / `*` / `1.` becomes a checklist when sent; the checklist button does it for any multi-line text | All | Synced | `inbox.js` `looksLikeList`, `list.js` `newTodo` |
+| D11 | Click to copy | A single click on a text or checklist card copies it (with a pulse on the card); selecting text or clicking a control inside the card doesn't; file cards open the drawer | All | — | `inbox.js` `cardMainAction` |
 
 ### E. Viewing & editing
 
@@ -110,7 +111,7 @@ Lanvia
 | E4 | Editing | ⌘E edits, ⌘S saves a new version | All | Synced | `core/versions.go` |
 | E5 | Version history | Who changed what and when, line-by-line diff, copy or restore any version; up to 50 per item | All | Synced | `versions.go`, `preview.js` |
 | E6 | Comments | Add / delete comments, live in an open preview; up to 200 per item | All | Synced | `core/comments.go` |
-| E7 | Reading pane tabs | Content / Comments / History tabs in the wide persistent reading pane | All (wide layout) | — | `web/inbox.js` `renderReaderTabs` |
+| E7 | Drawer | “Details” on a card (or double-click) slides in a drawer from the right with Content / History / Comments tabs and a bottom bar (more actions, favorite, edit, copy); Esc or a click outside closes it; full screen on phones | All | — | `web/inbox.js`, `preview.js` |
 
 ### F. Retention & storage
 
@@ -136,7 +137,7 @@ Lanvia
 | G1 | Quick panel | Click the tray icon: type to search, ↑↓, Enter copies and closes, Esc closes; hides when it loses focus | Desk | — | `cmd/lanvia-desktop/main.go`, `web/main.js` |
 | G2 | Tray menu | 6 latest items, Favorites submenu, auto copy / paste, send clipboard, pause, launch at login, pairing code, check for updates, quit | Desk | — | `main.go` `fillMenu` |
 | G3 | Preview window | Space or ⌘Y opens a floating preview; movable, resizable, pin / unpin on top | Desk | — | `main.go` `openPreviewMode` |
-| G4 | Main window | Sidebar navigation and devices, list, persistent reading pane; resizable panes; pairing QR code; settings grouped by category | Desk (wide browsers too) | — | `web/inbox.js`, `splitters.js` |
+| G4 | Main window | Single centered stream: device beam, sync capsule (sync switches, pause, appearance, text size, tags, settings), Omni-Bar, filter pills, cards, drawer; pairing QR code; settings grouped by category | Desk (browsers too) | — | `web/inbox.js`, `inbox.css` |
 | G5 | Notifications | "Copy" for text, "Show in folder" for files, click opens the preview; bursts merged; none while a Lanvia window is in front | Desk | Local setting | `notify.go` |
 | G6 | Launch at login | Toggle in the tray menu | Desk | Local | `main.go` |
 | G7 | Single instance | Launching again just opens the running instance's main window | Desk | — | `main.go` |
@@ -152,9 +153,8 @@ Lanvia
 | ID | Feature | Description | Platforms | Sync | Code |
 | --- | --- | --- | --- | --- | --- |
 | H1 | Interface language | Chinese / English / follow system; shared by local windows, tray menu and logs | All | Local | `web/i18n.js`, `desktop/i18n.go` |
-| H2 | Theme | Follow system / light / dark, cycled from the top bar | All | Per device | `web/main.js`, `base.js` |
-| H3 | Text size | 80%–160% slider; ⌘/Ctrl + − 0 on desktop | All | Per device | `web/features.js` |
-| H4 | Pane widths | Remembers dragged widths; temporarily narrow windows don't overwrite them | All | Per device | `web/splitters.js` |
+| H2 | Theme | Follow system / light / dark, chosen in the sync capsule menu | All | Per device | `web/inbox.js`, `base.js` |
+| H3 | Text size | 80%–160% slider in the sync capsule menu; ⌘/Ctrl + − 0 on desktop | All | Per device | `web/inbox.js`, `features.js` |
 | H5 | Add to home screen | Web App Manifest, opens like an app on phones | Web | — | `web/manifest.webmanifest` |
 | H6 | Device name | Changed in settings, shown on other devices | Desk CLI | Local | `handleSettings` |
 
@@ -199,7 +199,7 @@ Lanvia
 | Clipboard images | ✓ (Mac / Win) | ✓ (Mac / Win) | ✗ |
 | Send / receive text, files, folders | ✓ | ✓ | ✓ |
 | Search, tags, favorites, checklists, editing, history, comments | ✓ | ✓ (local browser) | ✓ |
-| Bulk delete, sidebar devices, reading pane tabs | ✓ | ✓ (local browser) | Wide screens only |
+| Bulk delete, drawer, sync capsule | ✓ | ✓ (local browser) | ✓ (no sync switches) |
 | Local settings, pairing code, manual devices | ✓ | ✓ (local browser) | ✗ |
 | Tray, quick panel, preview window, notifications | ✓ | ✗ | ✗ |
 | Automatic updates | ✓ | ✗ | Not needed (the page comes from the computer) |
@@ -217,7 +217,7 @@ Lanvia
 | Favorites and snippet names | Encrypted connections only, token on/off and reset |
 | Tags | Device name, language, manually added devices |
 | Checklist items (ticks, add / edit / delete, title) | Pairing code (changing it changes the space) |
-| Comments | Theme, text size, pane widths (saved per browser) |
+| Comments | Theme, text size (saved per browser) |
 | | Delivery receipts (only in the sender's memory) |
 
 > File contents are not pushed to every device: the file *entry* syncs, and the content is fetched on demand or backed up in the background within the auto-download limit.
@@ -227,7 +227,11 @@ Lanvia
 | Where | Shortcut | Action |
 | --- | --- | --- |
 | Input box | Enter / ⌘Enter | Send (Shift+Enter for a new line) |
-| List / quick panel | ⌘K / Ctrl+K | Focus search |
+| Main window | ⌘K / Ctrl+K | Focus the Omni-Bar |
+| | Esc (in the Omni-Bar) | Clear the text and the filter |
+| | ↑ ↓ (on a focused card) | Move between cards |
+| | Enter / Space (on a focused card) | Copy / open the drawer |
+| Quick panel | ⌘K / Ctrl+K | Focus search |
 | | ↑ ↓ | Select |
 | | Enter | Copy the selected item (files: save and show in folder) |
 | | Space (empty search box) / ⌘Y | Preview |

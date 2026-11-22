@@ -35,22 +35,17 @@
   </div>
 </section>
 
-<!-- 主界面 -->
+<!-- 主界面：单画布居中流（托盘快捷面板复用同一套元素，见 panel.css） -->
 <div id="app" hidden>
   <header class="top">
-    <div class="brand"><span class="logo" aria-hidden="true"></span><span>Lanvia<span class="brand-caption">你的设备，流畅相连</span></span></div>
-    <button id="sidebarToggle" class="icon-btn sidebar-toggle" aria-label="收起侧边栏" title="收起侧边栏" aria-controls="workspaceSidebar" aria-expanded="true"></button>
-    <button id="listToggle" class="icon-btn list-toggle" aria-label="收起内容列表" title="收起内容列表" aria-controls="inboxListPanel" aria-expanded="true"></button>
+    <div class="brand"><span class="logo" aria-hidden="true"></span><span class="brand-name">Lanvia</span></div>
+    <nav id="beamDevices" class="beam" aria-label="在线设备"></nav>
+    <button id="pairingBtn" class="beam-add" type="button" aria-label="连接新设备" title="连接新设备"></button>
     <div class="top-actions">
-      <span class="top-caption">LOCAL CONNECTION</span>
-      <button id="modeBtn" class="chip mode-chip" hidden title="主动复制 / 主动粘贴" aria-haspopup="dialog"></button>
-      <button id="devicesBtn" class="chip" aria-label="在线设备">
-        <span id="connDot" class="dot"></span><span id="devCount">连接中</span>
-      </button>
-      <button id="pairingBtn" class="btn inbox-pair-button">连接新设备</button>
-      <button id="fontBtn" class="icon-btn theme-btn" aria-label="字体大小" title="字体大小" aria-haspopup="menu"></button>
-      <button id="themeBtn" class="icon-btn theme-btn" aria-label="切换外观" title="切换外观"></button>
-      <button id="settingsBtn" class="icon-btn" aria-label="设置"></button>
+      <button id="syncCapsule" class="sync-capsule glass" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="syncMenu"><span id="connDot" class="dot"></span><span id="syncLabel" class="sync-label" data-raw>SYNC · E2E</span></button>
+      <button id="modeBtn" class="chip mode-chip panel-only" hidden title="主动复制 / 主动粘贴" aria-haspopup="dialog"></button>
+      <button id="devicesBtn" class="chip panel-only" aria-label="在线设备"><span id="devDot" class="dot"></span><span id="devCount">连接中</span></button>
+      <button id="settingsBtn" class="icon-btn panel-only" aria-label="设置"></button>
     </div>
     <div id="windowControls" class="window-controls" role="group" aria-label="窗口操作" hidden>
       <button type="button" data-window-action="minimise" aria-label="最小化" title="最小化"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button>
@@ -59,29 +54,51 @@
     </div>
   </header>
 
-  <main class="workspace inbox-layout">
-    <aside id="workspaceSidebar" class="connection-column inbox-sidebar" aria-label="内容导航">
-      <div class="inbox-sidebar-heading"><div class="inbox-nav-label">我的空间</div><button id="sidebarCollapse" class="icon-btn pane-collapse" aria-label="收起侧边栏" title="收起侧边栏" aria-controls="workspaceSidebar" aria-expanded="true"></button></div>
-      <nav id="kindFilters" class="kind-filters inbox-navigation" aria-label="内容分类">
-        <button class="filter-btn active" data-kind="all" aria-pressed="true"><span class="nav-symbol" aria-hidden="true">▦</span><span>所有内容</span><span class="nav-count" data-kind-count="all">0</span></button>
-        <button class="filter-btn" data-kind="text" aria-pressed="false"><span class="nav-symbol" aria-hidden="true">T</span><span>文本与链接</span><span class="nav-count" data-kind-count="text">0</span></button>
-        <button class="filter-btn" data-kind="file" aria-pressed="false"><span class="nav-symbol" aria-hidden="true">▱</span><span>文件</span><span class="nav-count" data-kind-count="file">0</span></button>
-        <button class="filter-btn" data-kind="todo" aria-pressed="false"><span class="nav-symbol" aria-hidden="true">☷</span><span>清单</span><span class="nav-count" data-kind-count="todo">0</span></button>
-        <button class="filter-btn" data-kind="fav" aria-pressed="false"><span class="nav-symbol" aria-hidden="true">☆</span><span>收藏</span><span class="nav-count" data-kind-count="fav">0</span></button>
-      </nav>
-      <div class="inbox-sidebar-tags"><div id="inboxTagHeading" class="inbox-nav-label" hidden>标签</div><div id="tagBar" class="tag-bar" role="group" aria-label="按标签筛选" hidden></div></div>
-      <div class="inbox-sidebar-devices" id="sideDevicesBox" hidden><div class="inbox-nav-label">设备</div><div id="sideDevices" class="side-devices" role="group" aria-label="按设备筛选"></div></div>
-      <div class="inbox-sidebar-footer">
-        <button id="devicesPeek" class="devices-peek" aria-label="查看所有在线设备"><span id="devicePreview" class="device-preview"></span><span class="inbox-host"><span id="nodeLabel" data-raw>Lanvia</span><span id="spaceStatus" role="status">正在连接你的空间</span></span></button>
-        <button id="sidebarSettings" class="icon-btn" aria-label="设置"></button>
+  <main class="workspace stream">
+    <section class="stream-col inbox-list-column" aria-label="内容">
+      <div id="omniHost" class="omni-host">
+        <section class="composer omni glass" id="composer">
+          <span class="omni-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg></span>
+          <textarea id="input" rows="1" placeholder="输入即搜，回车即发，或 ⌘V 粘贴 / 拖入文件…" aria-label="搜索或发送"></textarea>
+          <div class="composer-bar">
+            <button id="pasteBtn" class="btn ghost" type="button" title="粘贴" hidden><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="6" y="5" width="12" height="16" rx="3"/><path d="M9 5V3h6v2M9 10h6M9 14h4"/></svg><span>粘贴</span></button>
+            <button id="filePicker" class="btn ghost file-picker" type="button" title="添加文件"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 12 5-5a3 3 0 0 1 4 4l-7 7a5 5 0 0 1-7-7l8-8"/></svg><span>文件</span></button>
+            <input id="fileInput" type="file" multiple hidden>
+            <button id="folderPicker" class="btn ghost file-picker" type="button" title="添加文件夹" hidden><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg><span>文件夹</span></button>
+            <input id="folderInput" type="file" webkitdirectory hidden>
+            <button id="todoBtn" class="btn ghost file-picker" type="button" title="新建清单：输入框里有多行文字时，第一行作为标题、其余每行一项"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="4.5" width="16" height="15" rx="3"/><path d="m7.5 10 1.5 1.5 3-3M14 10h3M7.5 15.5h9.5"/></svg><span>清单</span></button>
+            <span class="hint" id="sendHint"></span>
+            <button id="sendBtn" class="btn primary" disabled>发送 <span class="send-key" aria-hidden="true">↩</span></button>
+          </div>
+          <div id="uploads"></div>
+          <div id="sendStatus" class="send-status" role="status" aria-live="polite" hidden></div>
+        </section>
+        <section id="clipCard" class="card clip-card" hidden aria-labelledby="clipTitle">
+          <div class="clip-head">
+            <span class="eyebrow" id="clipTitle">主动复制已关闭 · 本机剪贴板</span>
+            <span id="clipInfo" class="muted small"></span>
+          </div>
+          <div id="clipText" class="clip-text"></div>
+          <div class="clip-bar">
+            <span class="muted small" id="clipHint"></span>
+            <button id="clipSend" class="btn primary sm">发送剪贴板</button>
+          </div>
+        </section>
       </div>
-    </aside>
-
-    <section id="inboxListPanel" class="content-column inbox-list-column" aria-label="内容列表">
-      <div class="inbox-list-heading"><div><h1 id="inboxTitle">所有内容</h1><div class="inbox-list-subtitle"><span id="itemCount">0</span><span> 条内容，随时接续。</span></div></div><div class="inbox-heading-actions"><button id="listCollapse" class="icon-btn pane-collapse" aria-label="收起内容列表" title="收起内容列表" aria-controls="inboxListPanel" aria-expanded="true"></button><button id="selectBtn" class="icon-btn" aria-label="选择多条" title="选择多条" aria-pressed="false"></button><button id="clearBtn" class="icon-btn" aria-label="清空历史" title="清空历史"></button><button id="newShareBtn" class="icon-btn" aria-label="新建分享" title="新建分享"></button></div></div>
-      <div id="selectBar" class="select-bar" role="toolbar" aria-label="批量操作" hidden><span id="selectCount" class="select-count" role="status">已选 0 条</span><button id="selectAll" class="btn ghost sm" type="button">全选</button><button id="selectDelete" class="btn primary danger sm" type="button" disabled>删除</button><button id="selectDone" class="btn sm" type="button">完成</button></div>
       <div class="list-head inbox-search-row"><label class="search-field"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><input id="search" type="search" placeholder="搜索你的内容" aria-label="搜索历史"><kbd class="search-shortcut" aria-hidden="true">⌘ K</kbd></label></div>
-      <div class="inbox-list-filters filter-selects"><select id="fromFilter" class="mini-select" aria-label="按设备筛选"><option value="">所有设备</option></select><select id="timeFilter" class="mini-select" aria-label="按时间筛选"><option value="0">全部时间</option><option value="86400000">今天</option><option value="604800000">最近 7 天</option><option value="2592000000">最近 30 天</option></select></div>
+      <div class="stream-filters">
+        <nav id="kindFilters" class="kind-filters" aria-label="内容分类">
+          <button class="filter-btn active" data-kind="all" aria-pressed="true"><span class="nav-symbol" aria-hidden="true"></span><span>全部</span><span class="nav-count" data-kind-count="all">0</span></button>
+          <button class="filter-btn" data-kind="text" aria-pressed="false"><span class="nav-symbol" aria-hidden="true"></span><span>文本</span><span class="nav-count" data-kind-count="text">0</span></button>
+          <button class="filter-btn" data-kind="file" aria-pressed="false"><span class="nav-symbol" aria-hidden="true"></span><span>文件</span><span class="nav-count" data-kind-count="file">0</span></button>
+          <button class="filter-btn" data-kind="todo" aria-pressed="false"><span class="nav-symbol" aria-hidden="true"></span><span>清单</span><span class="nav-count" data-kind-count="todo">0</span></button>
+          <button class="filter-btn" data-kind="fav" aria-pressed="false"><span class="nav-symbol" aria-hidden="true"></span><span>收藏</span><span class="nav-count" data-kind-count="fav">0</span></button>
+        </nav>
+        <div id="activeFilters" class="active-filters"></div>
+        <div class="filter-selects"><select id="fromFilter" class="mini-select" aria-label="按设备筛选"><option value="">所有设备</option></select><select id="timeFilter" class="mini-select" aria-label="按时间筛选"><option value="0">全部时间</option><option value="86400000">今天</option><option value="604800000">最近 7 天</option><option value="2592000000">最近 30 天</option></select></div>
+        <button id="selectBtn" class="text-btn" type="button" aria-pressed="false">多选</button>
+        <span class="copy-hint mono" aria-hidden="true" data-raw>CLICK TO COPY</span>
+      </div>
       <div class="inbox-results">
         <ul id="list" class="list"></ul>
         <div id="listMore" class="list-more" hidden><button id="listMoreBtn" class="btn ghost"></button></div>
@@ -89,38 +106,8 @@
       </div>
       <div id="listComposerHost"></div>
     </section>
-
-    <section class="inbox-reader-column" aria-label="内容预览">
-      <div id="readerHost" class="reader-host"><div id="readerEmpty" class="reader-empty"><div class="empty-art" aria-hidden="true"></div><h2>留一点空间，接着思考。</h2><p>选择一条内容，在这里阅读、编辑或复制。</p></div></div>
-      <div id="readerComposerHost"><section id="clipCard" class="card clip-card" hidden aria-labelledby="clipTitle">
-      <div class="clip-head">
-        <span class="eyebrow" id="clipTitle">主动复制已关闭 · 本机剪贴板</span>
-        <span id="clipInfo" class="muted small"></span>
-      </div>
-      <div id="clipText" class="clip-text"></div>
-      <div class="clip-bar">
-        <span class="muted small" id="clipHint"></span>
-        <button id="clipSend" class="btn primary sm">发送剪贴板</button>
-      </div>
-    </section><section class="composer card" id="composer">
-      <div class="composer-heading"><span class="composer-mark" aria-hidden="true">↗</span><h2>分享一点灵感</h2><span class="composer-caption">随时，随手。</span></div>
-      <textarea id="input" rows="3" placeholder="粘贴文字、链接，或拖入文件…" aria-label="要分享的内容"></textarea>
-      <div class="composer-bar">
-        <button id="pasteBtn" class="btn ghost" hidden><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="6" y="5" width="12" height="16" rx="3"/><path d="M9 5V3h6v2M9 10h6M9 14h4"/></svg>粘贴</button>
-        <button id="filePicker" class="btn ghost file-picker" type="button"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 12 5-5a3 3 0 0 1 4 4l-7 7a5 5 0 0 1-7-7l8-8"/></svg>添加文件</button>
-        <input id="fileInput" type="file" multiple hidden>
-        <button id="folderPicker" class="btn ghost file-picker" type="button" hidden><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>添加文件夹</button>
-        <input id="folderInput" type="file" webkitdirectory hidden>
-        <button id="todoBtn" class="btn ghost file-picker" type="button" title="新建清单：输入框里有多行文字时，第一行作为标题、其余每行一项"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="4.5" width="16" height="15" rx="3"/><path d="m7.5 10 1.5 1.5 3-3M14 10h3M7.5 15.5h9.5"/></svg>新建清单</button>
-        <span class="hint" id="sendHint"></span>
-        <button id="sendBtn" class="btn primary" disabled>发送 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
-      </div>
-      <div id="uploads"></div>
-      <div id="sendStatus" class="send-status" role="status" aria-live="polite" hidden></div>
-    </section></div>
-      <footer class="content-footer"><span>局域网直连 · 内容留在你的设备上</span></footer>
-    </section>
   </main>
+  <div id="selectBar" class="select-bar glass" role="toolbar" aria-label="批量操作" hidden><span id="selectCount" class="select-count mono" role="status">已选 0 条</span><button id="selectAll" class="btn ghost sm" type="button">全选</button><button id="selectDelete" class="btn primary danger sm" type="button" disabled>批量删除</button><button id="clearBtn" class="btn ghost sm" type="button">清空历史</button><button id="selectDone" class="btn sm" type="button">完成</button></div>
 </div>
 
 <dialog id="pairingDlg" class="sheet pairing-sheet"><div class="sheet-head"><h2>连接新设备</h2><button class="icon-btn close" data-close aria-label="关闭"></button></div><section id="pairCard" class="card pair-card" hidden>
@@ -277,25 +264,17 @@
   </div>
 </dialog>
 
-<div id="kbdHint" class="kbd-hint" hidden><span><kbd>↑</kbd><kbd>↓</kbd> 选择</span><span><kbd>↩</kbd> 复制</span><span><kbd>空格</kbd> 预览</span><span><kbd>esc</kbd> 收起</span></div>
-
-<!-- 预览：浏览器里是弹层，桌面端是独立的悬浮窗口 -->
-<dialog id="previewDlg" class="preview">
+<!-- 预览：主窗口和浏览器里是右侧滑出的抽屉（窄屏为全屏），桌面端是独立的悬浮窗口 -->
+<dialog id="previewDlg" class="preview drawer">
   <div class="pv-head">
     <div id="pvMeta" class="meta pv-meta"></div>
-    <div class="pv-tools"><button id="readerFavorite" class="icon-btn reader-action" aria-label="收藏" title="收藏" aria-pressed="false"></button><button id="readerMore" class="icon-btn reader-action" aria-label="内容操作" title="内容操作" aria-haspopup="menu"></button>
+    <div class="pv-tools">
       <button id="pvWrap" class="icon-btn toggle" title="自动换行" aria-label="自动换行"></button>
       <button id="pvMono" class="icon-btn toggle" title="等宽字体与行号" aria-label="等宽字体与行号"></button>
       <button id="pvFmt" class="btn ghost sm toggle" hidden></button>
       <button id="pvComBtn" class="icon-btn toggle" title="评论" aria-label="评论"></button>
       <button id="pvHist" class="icon-btn toggle" title="历史版本" aria-label="历史版本"></button>
-      <button id="pvEdit" class="icon-btn" title="编辑" aria-label="编辑"></button>
       <button id="pvPin" class="icon-btn toggle" title="悬浮在最上层" aria-label="悬浮在最上层" hidden></button>
-      <button id="pvDiff" class="btn ghost sm" hidden></button>
-      <button id="pvRestore" class="btn sm" hidden>恢复此版本</button>
-      <button id="pvCancel" class="btn ghost sm" hidden>取消</button>
-      <button id="pvSave" class="btn primary sm" hidden>保存</button>
-      <button id="pvCopy" class="btn primary sm"></button>
       <button class="icon-btn close" data-close aria-label="关闭"></button>
     </div>
   </div>
@@ -313,10 +292,35 @@
       <button class="btn primary sm">发送</button>
     </form>
   </section>
+  <div id="pvDelivery" class="pv-delivery" hidden></div>
+  <div class="pv-actions">
+    <button id="readerMore" class="icon-btn reader-action" aria-label="更多操作" title="标签、保留时长、删除等" aria-haspopup="menu"></button>
+    <button id="readerFavorite" class="icon-btn reader-action" aria-label="收藏" title="收藏" aria-pressed="false"></button>
+    <span class="spacer"></span>
+    <button id="pvDiff" class="btn ghost sm" hidden></button>
+    <button id="pvRestore" class="btn sm" hidden>恢复此版本</button>
+    <button id="pvEdit" class="btn sm" title="编辑" aria-label="编辑"></button>
+    <button id="pvCancel" class="btn ghost sm" hidden>取消</button>
+    <button id="pvSave" class="btn primary sm" hidden>保存</button>
+    <button id="pvCopy" class="btn primary sm"></button>
+  </div>
   <div id="pvFoot" class="pv-foot"></div>
 </dialog>
 <div id="expiryMenu" class="pop-menu" role="menu" hidden></div>
-<div id="fontMenu" class="pop-menu" role="menu" hidden></div>
+<div id="syncMenu" class="pop-menu sync-menu" role="dialog" aria-label="同步与外观" hidden>
+  <div id="smStatus" class="sm-status"></div>
+  <div id="smLocal" class="sm-group">
+    <label class="switch"><input type="checkbox" data-mode="watch"><span><b>主动复制</b><small>复制后自动发送到所有设备</small></span></label>
+    <label class="switch"><input type="checkbox" data-mode="autoApply"><span><b>主动粘贴</b><small>收到的文字自动放进本机剪贴板</small></span></label>
+    <div class="sm-row"><span class="sm-label">暂停同步</span><div id="smPause" class="sm-pause"></div></div>
+  </div>
+  <div class="sm-group">
+    <div class="sm-row"><span class="sm-label">外观</span><div id="smTheme" class="sm-seg" role="radiogroup" aria-label="外观"><button type="button" data-theme-set="system" role="radio">跟随系统</button><button type="button" data-theme-set="light" role="radio">浅色</button><button type="button" data-theme-set="dark" role="radio">深色</button></div></div>
+    <div class="sm-row"><span class="sm-label">字体大小</span><div class="sm-font"><input id="smFont" type="range" aria-label="字体大小"><span id="smFontVal" class="sm-val mono"></span></div></div>
+  </div>
+  <div id="smTags" class="sm-group" hidden><span class="sm-label">标签</span><div id="tagBar" class="tag-bar" role="group" aria-label="按标签筛选"></div></div>
+  <div class="sm-links"><button type="button" class="btn ghost sm" data-sm="devices">在线设备…</button><button type="button" class="btn ghost sm" data-sm="settings">更多设置…</button></div>
+</div>
 <div id="modeMenu" class="pop-menu mode-menu" role="dialog" aria-label="主动复制 / 主动粘贴" hidden>
   <div class="pop-title">同步方式 <span class="muted">· 仅本机</span></div>
   <label class="switch"><input type="checkbox" data-mode="watch"><span><b>主动复制</b><small>复制后自动发送到所有设备</small></span></label>
@@ -344,7 +348,6 @@
 <script src="settings.js"></script>
 <script src="updater.js"></script>
 <script src="inbox.js"></script>
-<script src="splitters.js"></script>
 <script src="window-chrome.js"></script>
 <script src="main.js"></script>
 </body>

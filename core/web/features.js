@@ -32,6 +32,8 @@ function renderMode() {
     b.title = `主动复制：${active ? '开' : '关'} · 主动粘贴：${paste ? '开' : '关'}。点击修改`;
   }
   $('#clipCard').hidden = active || PREVIEW;
+  renderSyncCapsule();
+  renderBeam();
   $('#clipHint').textContent = '也可以在托盘菜单里选“发送当前剪贴板”';
   if (!active) refreshClip();
 }
@@ -39,15 +41,16 @@ function renderMode() {
 /* ---- Pause Sync ---- */
 
 function renderPause() {
-  const row = $('#pauseRow');
-  if (!row) return;
+  let html;
   if (isPaused()) {
     const p = pausedUntil();
-    row.innerHTML = `<span class="paused-text">${p > 0 ? `已暂停到 ${hhmm(p)}` : '已暂停，直到手动恢复'}</span><button class="btn sm primary" data-pause="0">恢复同步</button>`;
+    html = `<span class="paused-text">${p > 0 ? `已暂停到 ${hhmm(p)}` : '已暂停，直到手动恢复'}</span><button class="btn sm primary" data-pause="0">恢复同步</button>`;
   } else {
-    row.innerHTML = [[15, '15 分钟'], [60, '1 小时'], [-1, '直到手动恢复']]
+    html = [[15, '15 分钟'], [60, '1 小时'], [-1, '直到手动恢复']]
       .map(([m, l]) => `<button class="btn sm" data-pause="${m}">${l}</button>`).join('');
   }
+  // The settings page and the sync capsule menu both show it
+  ['#pauseRow', '#smPause'].forEach(sel => { const row = $(sel); if (row && row.innerHTML !== html) row.innerHTML = html; });
 }
 
 async function pause(minutes) {
@@ -193,16 +196,32 @@ function toggleFav(it, anchor) {
   ]);
 }
 
+// Mount a popup menu inside an open modal dialog when anchored from it so it renders above the dialog's top layer;
+// because the drawer uses backdrop-filter, fixed positioning inside it is relative to the dialog's rect.
+function placePop(m, anchor) {
+  const dlg = anchor?.closest?.('dialog[open]');
+  const host = dlg || document.body;
+  if (m.parentElement !== host) host.append(m);
+  m.hidden = false;
+  const r = anchor.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
+  const cb = dlg ? dlg.getBoundingClientRect() : { left: 0, top: 0, width: innerWidth, height: innerHeight };
+  const relRight = r.right - cb.left, relLeft = r.left - cb.left;
+  const preferLeft = relRight - w < 8 && relLeft + w <= cb.width - 8;
+  const x = preferLeft ? relLeft : relRight - w;
+  const left = Math.max(8, Math.min(x, cb.width - w - 8));
+  const below = r.bottom - cb.top + 6, above = r.top - cb.top - h - 6;
+  const top = below + h + 8 > cb.height ? Math.max(8, above) : below;
+  m.style.left = left + 'px';
+  m.style.top = top + 'px';
+}
+
 // generic small menu (shares the styling of the retention menu)
 function openMenu(anchor, title, options) {
   const m = $('#expiryMenu');
   menuItem = null;
   m.innerHTML = `<div class="pop-title">${esc(title)}</div>` + options.map((o, i) => `<button role="menuitem" data-m="${i}">${esc(o.label)}</button>`).join('');
   m.onclickMenu = i => options[i].run();
-  m.hidden = false;
-  const r = anchor.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
-  m.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
-  m.style.top = (r.bottom + h + 8 > innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+  placePop(m, anchor);
   $('button', m)?.focus();
 }
 
@@ -238,10 +257,7 @@ function openExpiryMenu(it, anchor) {
     const on = (o.keep && cur === 'keep') || (o.ttl === 0 && !o.keep && cur === 'default');
     return `<button role="menuitem" data-i="${i}" class="${on ? 'on' : ''}">${o.label}${on ? ICON.check : ''}</button>`;
   }).join('') + (cur === 'ttl' ? `<div class="pop-foot">当前：${fmtRemain(it.expiresAt - Date.now() - S.offset)}</div>` : '');
-  m.hidden = false;
-  const r = anchor.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
-  m.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
-  m.style.top = (r.bottom + h + 8 > innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+  placePop(m, anchor);
   $('button', m)?.focus();
 }
 
@@ -266,9 +282,7 @@ function placeTagMenu() {
   // the card may be rebuilt when the tags change, so the button has to be looked up again
   if (!tagAnchor?.isConnected) tagAnchor = $(`.item[data-id="${tagItem?.id}"] [data-act="tags"]`);
   if (!tagAnchor) return;
-  const r = tagAnchor.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
-  m.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
-  m.style.top = (r.bottom + h + 8 > innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+  placePop(m, tagAnchor);
 }
 function renderTagMenu() {
   const m = $('#tagMenu');
@@ -302,44 +316,13 @@ function bindTagMenu() {
     if (rm) changeTags([], [rm.dataset.rm]);
     else if (add) changeTags([add.dataset.add], []);
   });
-  m.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); m.hidden = true; } });
-  document.addEventListener('mousedown', e => { if (!m.hidden && !m.contains(e.target) && !e.target.closest('[data-act="tags"]')) m.hidden = true; });
+  m.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); m.hidden = true; } });
+  document.addEventListener('mousedown', e => { if (!m.hidden && !m.contains(e.target) && !e.target.closest('[data-act="tags"], #readerMore')) m.hidden = true; });
 }
 
-function openFontMenu(anchor) {
-  const m = $('#fontMenu'), cur = applyFont(store.get('fontSize'));
-  m.innerHTML = `<div class="pop-title">字体大小 <span class="muted">· 仅本设备</span></div>
-    <div class="fs-row"><span class="fs-a" aria-hidden="true">A</span>
-      <input id="fsRange" type="range" min="${FS_MIN}" max="${FS_MAX}" step="${FS_STEP}" value="${cur}" aria-label="字体大小">
-      <span class="fs-a big" aria-hidden="true">A</span></div>
-    <div class="fs-foot"><span id="fsVal" class="fs-val"></span><button id="fsReset" class="btn ghost sm">恢复默认</button></div>
-    ${DESKTOP ? `<div class="pop-foot">快捷键：<kbd>${KIND === 'mac' ? '⌘' : 'Ctrl'}</kbd> + <kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd></div>` : ''}`;
-  showFont(cur);
-  m.hidden = false;
-  const r = anchor.getBoundingClientRect(), w = m.offsetWidth;
-  m.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
-  m.style.top = r.bottom + 6 + 'px';
-  $('#fsRange').focus();
-}
-
-function showFont(v) {
-  const val = $('#fsVal'), range = $('#fsRange');
-  if (val) val.textContent = Math.round(v * 100) + '%';
-  if (range && +range.value !== v) range.value = v;
-  if (range) range.style.setProperty('--p', ((v - FS_MIN) / (FS_MAX - FS_MIN) * 100) + '%');
-}
-
-function bindFontMenu() {
-  const m = $('#fontMenu'), btn = $('#fontBtn');
-  btn.innerHTML = ICON.fontSize;
-  btn.onclick = () => (m.hidden ? openFontMenu(btn) : (m.hidden = true));
-  // applies live while dragging (the font size changes, so the menu and button positions change too and are recomputed every time)
-  m.addEventListener('input', e => { if (e.target.id === 'fsRange') { showFont(setFont(e.target.value)); place(); } });
-  m.addEventListener('click', e => { if (e.target.closest('#fsReset')) { showFont(setFont(1)); place(); } });
-  const place = () => { const r = btn.getBoundingClientRect(), w = m.offsetWidth; m.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px'; m.style.top = r.bottom + 6 + 'px'; };
-  m.addEventListener('keydown', e => { if (e.key === 'Escape') { m.hidden = true; btn.focus(); } });
-  document.addEventListener('mousedown', e => { if (!m.hidden && !m.contains(e.target) && !btn.contains(e.target)) m.hidden = true; });
-  // Desktop: ⌘/Ctrl + plus, minus, 0 to change the font size (in the browser we keep the browser's own zoom)
+// Desktop: ⌘/Ctrl + plus, minus, 0 change the font size (in the browser we keep the browser's own zoom);
+// the slider lives in the sync capsule menu
+function bindFontKeys() {
   if (DESKTOP) addEventListener('keydown', e => {
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
     const cur = applyFont(store.get('fontSize'));
@@ -350,12 +333,15 @@ function bindFontMenu() {
     else return;
     e.preventDefault();
     v = setFont(v);
-    showFont(v);
-    if (!m.hidden) place();
+    if (!$('#syncMenu').hidden) renderSyncMenu();
     toast(`字体大小 ${Math.round(v * 100)}%`);
   });
   // several desktop windows share the setting: change it in one window and the others follow
-  addEventListener('storage', e => { if (e.key === 'lanvia.fontSize') showFont(applyFont(e.newValue)); });
+  addEventListener('storage', e => {
+    if (e.key !== 'lanvia.fontSize') return;
+    applyFont(e.newValue);
+    if (!$('#syncMenu').hidden) renderSyncMenu();
+  });
 }
 
 function bindExpiryMenu() {
@@ -373,7 +359,7 @@ function bindExpiryMenu() {
       toast(o.keep ? '已设为永久保留' : o.ttl ? `已设置：${o.label}` : '已恢复跟随全局设置');
     } catch (err) { toast('设置失败：' + err.message); }
   });
-  document.addEventListener('mousedown', e => { if (!m.hidden && !m.contains(e.target) && !e.target.closest('[data-act="expiry"], [data-act="fav"]')) m.hidden = true; });
+  document.addEventListener('mousedown', e => { if (!m.hidden && !m.contains(e.target) && !e.target.closest('[data-act="expiry"], [data-act="fav"], #readerMore')) m.hidden = true; });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !m.hidden) { e.stopPropagation(); m.hidden = true; } }, true);
 }
 

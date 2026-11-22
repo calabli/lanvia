@@ -12,7 +12,8 @@ function handleItemAction(e) {
     const it = S.items.find(x => x.id === li.dataset.id);
     if (!it) return;
     switch (el.dataset.act) {
-      case 'select': selectInboxItem(it); break;
+      case 'main': cardMainAction(it, li, e); break;
+      case 'detail': openPreview(it); break;
       case 'pick': togglePick(it.id); break;
       case 'copy':
         if (el.classList.contains('text') && getSelection().toString()) return; // text is being selected
@@ -59,23 +60,19 @@ function bind() {
   bindWindowChrome();
   applyTheme(store.get('theme') || 'system');
   applyFont(store.get('fontSize'));
-  bindFontMenu();
-  $('#themeBtn').onclick = () => {
-    const current = document.documentElement.dataset.theme || 'system';
-    applyTheme({ system: 'light', light: 'dark', dark: 'system' }[current]);
-  };
+  bindFontKeys();
   $('#settingsBtn').innerHTML = ICON.gear;
   $('#pairCollapse').innerHTML = ICON.chevron;
   document.querySelectorAll('[data-close]').forEach(b => { b.innerHTML = ICON.close; b.onclick = () => b.closest('dialog').close(); });
-  document.querySelectorAll('dialog:not(#previewDlg)').forEach(d => d.addEventListener('click', e => { if (e.target === d) d.close(); }));
+  document.querySelectorAll('dialog:not(#previewDlg)').forEach(d => d.addEventListener('click', e => { if (clickedBackdrop(e, d)) d.close(); }));
 
   const ta = $('#input');
   ta.addEventListener('input', () => { autosize(); updateSend(); });
   ta.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || (!isTouch && !e.shiftKey && !e.isComposing))) { e.preventDefault(); sendText(); }
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || (!isTouch && !e.shiftKey && !e.isComposing))) { e.preventDefault(); inboxListMode() ? omniSubmit() : sendText(); }
   });
   $('#sendHint').textContent = isTouch ? '' : 'Enter 发送 · Shift+Enter 换行';
-  $('#sendBtn').onclick = sendText;
+  $('#sendBtn').onclick = () => (inboxListMode() ? omniSubmit() : sendText());
 
   if (navigator.clipboard?.readText && window.isSecureContext) {
     $('#pasteBtn').hidden = false;
@@ -150,7 +147,7 @@ function bind() {
   $('#list').addEventListener('dblclick', e => {
     const li = e.target.closest('.item');
     const it = li && S.items.find(x => x.id === li.dataset.id);
-    if (it && !e.target.closest('a, button, video')) { getSelection()?.removeAllRanges(); openPreview(it); }
+    if (it && !e.target.closest('a, button, video, input, label, form')) { getSelection()?.removeAllRanges(); openPreview(it); }
   });
   bindPreview();
   $('#kindFilters').addEventListener('click', e => {
@@ -169,13 +166,11 @@ function bind() {
   document.addEventListener('keydown', e => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && !$('#app').hidden && !blockingDialog()) {
       e.preventDefault();
-      if (inboxListMode() && document.body.classList.contains('list-collapsed')) setInboxListCollapsed(false);
-      $('#search').focus();
+      (inboxListMode() ? $('#input') : $('#search')).focus();
     }
   });
 
   $('#devicesBtn').onclick = () => { $('#myName').value = myName(); $('#devicesDlg').showModal(); };
-  $('#devicesPeek').onclick = () => $('#devicesBtn').click();
   $('#myName').addEventListener('change', e => {
     const v = e.target.value.trim();
     v ? store.set('name', v) : store.del('name');

@@ -72,17 +72,19 @@ Requirements: macOS 13+; Windows 10/11 (WebView2 is built in); on Linux the clip
 
 | Feature | Description |
 | --- | --- |
-| Search | Space-separated keywords must all match; with no exact match it falls back to fuzzy matching (`wfmm` finds "WiFi 密码"); filter by type, device and time; `#tag` filters by tag; long text is searched in full on the computer |
-| Sidebar devices | In the main window, click a device in the sidebar to show only what came from it; click again to clear (in sync with the device filter above the list) |
+| Omni-Bar | One field for searching and sending: typing filters the list, Enter sends (several `-` / `*` lines become a checklist), ⌘V anywhere sends, files can be dropped anywhere. Space-separated keywords must all match; with no exact match it falls back to fuzzy matching (`lnva` finds "lanvia"); `#tag` filters by tag; long text is searched in full on the computer |
+| Cards | A single click copies a text or checklist card; hovering shows only ★ and “Details”; checklist items can be ticked right on the card |
+| Device beam | The top bar shows the online devices joined by a flowing line; click one to show only what it sent, click again to clear |
+| Sync capsule | The `SYNC · E2E` pill opens one panel for auto copy / auto paste, pause, appearance, text size, tags and settings (phones only see appearance and their own settings) |
 | Preview | Read long content in full; JSON, JavaScript, Go, Python, Shell, SQL, HTML, CSS and YAML are detected and highlighted, JSON can be formatted; select part to copy just that |
-| Reading pane tabs | In the wide main window, the reading pane has Content / Comments / History tabs |
+| Drawer | “Details” or a double-click slides in a drawer with Content / History / Comments tabs; edit, copy, tags, retention and delete live in its bottom bar |
 | Editing and versions | Saving an edit creates a new version that syncs to every device; see who changed what and when, compare line by line, copy or restore any version (up to 50 versions per item) |
 | Favorites | Save as a named snippet; never expires and doesn't count against the item limit; copy it from the tray's Favorites menu |
 | Tags | Tag items (e.g. `#work`), synced to every device; the tag bar above the list filters by tag |
 | Comments | Comment on items, synced to every device, appearing live in an open preview; up to 200 per item |
 | Per-item retention | Delete after 1 hour / 1 day / 7 days / 30 days, or keep forever; synced to every device |
 | Delivery receipts | After sending, shows states such as "Waiting for confirmation · 1/2" or "Received · 2 devices"; unconfirmed sends can be retried. A receipt only means the other side received the item — not that it went into their clipboard or that the file was downloaded |
-| Bulk delete | In the main window, "Select" enters multi-select mode; tick items, "Select all" (also loads the pages not yet shown) and delete up to 5,000 items in one go, on every device |
+| Bulk delete | "Select" enters multi-select mode; tick cards, then use the floating bar: select all (also loads the pages not yet shown), delete up to 5,000 items at once, or clear history — on every device |
 | Delete / clear | Deleting syncs to every device. "Clear" keeps favorites and checklists by default (the rest are deleted item by item); untick the option to clear everything |
 
 ### 3.5 Storage and retention
@@ -100,8 +102,8 @@ Requirements: macOS 13+; Windows 10/11 (WebView2 is built in); on Linux the clip
 | Right-click the tray icon | Copy any of the 6 latest items (files are saved and shown in Finder / Explorer), favorites, auto copy / auto paste, send clipboard, pause syncing, launch at login, check for updates, quit |
 | **Space** or **⌘Y** in the panel | Floating preview window (pin / unpin on top) |
 | **⌘E** in the panel | Edit; ⌘S saves a new version |
-| Aa button / ⌘ + − 0 | Text size 80%–160%, saved per device |
-| Tray menu → Open main window | Sidebar navigation and devices, list, persistent reading pane; pairing QR code, settings (grouped into General, Sync, Storage, Devices & pairing, Security, Automation, About & updates), full history |
+| Sync capsule / ⌘ + − 0 | Text size 80%–160%, saved per device |
+| Tray menu → Open main window | Single centered stream with the device beam, sync capsule, Omni-Bar and cards; details in a drawer; pairing QR code (the + next to the beam), settings (grouped into General, Sync, Storage, Devices & pairing, Security, Automation, About & updates), full history |
 
 - On first launch (no content yet) the main window opens so you can pair by scanning. Closing a window doesn't quit; syncing continues in the background.
 - **Notifications**: shown when another device sends something; text has a "Copy" button, files have "Show in folder", clicking opens the preview. Several arriving together are merged; none are shown while a Lanvia window is in front.

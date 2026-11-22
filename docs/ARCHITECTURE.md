@@ -331,10 +331,12 @@ No framework, no build step. `index.html` loads the scripts in order; later scri
 | `preview.js` | preview: view, highlight, edit, version history and diff |
 | `features.js` | send mode, dialogs, favorites, per-item retention, storage and manual devices, text size |
 | `settings.js` / `updater.js` | settings, pairing QR code and flow; About & updates |
-| `inbox.js` / `splitters.js` | main window layout (sidebar devices, multi-select, bulk delete and clear, reading pane tabs, settings categories), resizable panes |
+| `inbox.js` | main window and browsers: stream cards (click to copy), device beam, sync capsule menu, Omni-Bar (type to filter, Enter to send, list detection), drawer tabs and actions, multi-select / bulk delete / clear, settings categories |
 | `window-chrome.js` | Windows integrated title bar |
 | `main.js` | event wiring, quick panel, language and startup (loaded last) |
-| `style.css` / `inbox.css` / `panel.css` | base styles / main window / tray panel |
+| `style.css` / `inbox.css` / `panel.css` | design tokens and base components / single-canvas stream layout and drawer / tray panel |
+
+**Layout** (see [FRONTEND_GUIDE.md](FRONTEND_GUIDE.md)): the main window and browsers show one centered stream — a frosted top bar with the device beam and the `SYNC · E2E` capsule, a sticky Omni-Bar, filter pills and cards; `#previewDlg` opens as a right-hand drawer (full screen below 650 px, where the Omni-Bar floats at the bottom). The tray panel and the standalone preview window reuse the same elements with their own CSS.
 
 **Mode** comes from the query string: none = browser (phone or local dashboard); `?desktop=panel` tray quick panel; `?desktop=main` main window (plus `&chrome=windows` on Windows); `?desktop=preview&id=…&mode=view|edit|history|comments` preview window. The page asks the desktop shell for window actions via `POST /api/desktop/{action}`.
 

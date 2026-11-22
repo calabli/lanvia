@@ -29,7 +29,8 @@ function linkify(text) {
 function findCode(text) {
   if (text.length > 160) return null;
   if (!/验证码|校验码|动态码|code|otp|码/i.test(text)) return null;
-  const m = text.match(/(?:^|\D)(\d{4,8})(?!\d)/);
+  // The digits must stand alone: not part of a word, a version or a hyphenated name such as lanvia-2026
+  const m = text.match(/(?:^|[^0-9A-Za-z_.-])(\d{4,8})(?![0-9A-Za-z_-]|\.\d)/);
   return m ? m[1] : null;
 }
 
@@ -321,8 +322,9 @@ function renderList() {
   items.slice(0, S.limit).forEach((it, i) => {
     const prev = ROWS.get(it.id);
     const latest = i === 0 && !f;
-    const cls = `item card${latest ? ' latest' : ''}${prev?.el.classList.contains('open') ? ' open' : ''}${PANEL && i === S.sel ? ' sel' : ''}${isLong(it) ? ' long' : ''}${inboxListMode() && inboxSelection === it.id ? ' is-reading' : ''}`;
-    const html = (inboxListMode() ? inboxItemHTML(it) : itemHTML(it, latest)) + deliveryBadge(it.id);
+    const stream = inboxListMode();
+    const cls = `item${stream ? '' : ' card'}${latest ? ' latest' : ''}${prev?.el.classList.contains('open') ? ' open' : ''}${PANEL && i === S.sel ? ' sel' : ''}${isLong(it) ? ' long' : ''}`;
+    const html = stream ? streamItemHTML(it) : itemHTML(it, latest) + deliveryBadge(it.id);
     const key = cls + '\u0001' + terms + '\u0001' + html;
     let el = prev?.el;
     if (!prev || prev.key !== key) {
@@ -355,14 +357,13 @@ function renderList() {
   const rest = items.length - Math.min(items.length, S.limit);
   $('#listMore').hidden = rest <= 0;
   $('#listMoreBtn').textContent = `显示更多（还有 ${rest} 条）`;
-  $('#itemCount').textContent = String(items.length);
-  const cap = $('.history-caption');
-  if (cap) { cap.textContent = S.fuzzy ? '没有完全匹配的内容，以下是相近的结果' : '每一份灵感，都有迹可循。'; cap.classList.toggle('fuzzy', S.fuzzy); }
   $('#empty').hidden = items.length > 0;
   const filtered = !!f || S.kind !== 'all';
-  $('#emptyTitle').textContent = filtered ? '还没有找到这份灵感。' : '好想法，从这里开始。';
-  $('#emptyDescription').textContent = filtered ? '试试其他关键词，或切换内容类型。' : '在已连接的设备上复制文字，或发送你的第一条内容。';
-  syncInboxReader(items);
+  // In the Omni-Bar the same text is both a search and a message: offer to send it when nothing matches
+  const typed = inboxListMode() && S.filter.trim();
+  $('#emptyTitle').textContent = typed ? '没有匹配的内容。' : filtered ? '还没有找到这份灵感。' : '好想法，从这里开始。';
+  $('#emptyDescription').textContent = typed ? (isTouch ? '点“发送”把这段内容发到所有设备。' : '按回车把这段内容发到所有设备。') : filtered ? '试试其他关键词，或切换内容类型。' : '在已连接的设备上复制文字，或发送你的第一条内容。';
+  syncStream();
 }
 
 function renderDevices() {
@@ -370,13 +371,10 @@ function renderDevices() {
   const n = S.devices.length;
   $('#devCount').textContent = S.connected ? (others.length ? `${others.length + 1} 台设备` : '仅本机') : '重新连接中';
   $('#connDot').classList.toggle('on', S.connected);
+  $('#devDot').classList.toggle('on', S.connected);
   document.body.dataset.connected = String(S.connected);
-  $('#spaceStatus').textContent = S.connected ? '你的空间，已连接' : '正在重新连接';
-  $('#nodeLabel').textContent = S.node?.name || 'Lanvia';
-  const preview = S.devices.filter(d => d.id !== S.you);
-  $('#devicePreview').innerHTML = preview.slice(0, 4).map(d =>
-    `<span class="preview-device${d.host ? ' host' : ''}" title="${esc(d.name)}">${kindIcon(d.kind)}</span>`).join('') +
-    (preview.length > 4 ? `<span class="preview-device">+${preview.length - 4}</span>` : '');
+  renderSyncCapsule();
+  renderBeam();
   $('#deviceList').innerHTML = S.devices.map(d => {
     const me = d.id === S.you || (S.local && d.host);
     const enc = d.node && !d.host ? (d.enc ? ' · 已加密' : ' · 未加密（旧版本）') : '';
@@ -395,9 +393,15 @@ function renderDevices() {
 }
 
 let toastTimer;
+// Mount toast inside the topmost open modal dialog so it stays visible above the dialog's backdrop
+function mountToast(t) {
+  const host = [...document.querySelectorAll('dialog[open]')].at(-1) || document.body;
+  if (t.parentElement !== host) host.append(t);
+}
 // Progress toast that stays visible (while downloading a large file) with a "Cancel" button; call toast() afterwards to switch to a normal toast
 function toastProgress(msg, onCancel) {
   const t = $('#toast');
+  mountToast(t);
   t.innerHTML = `<span class="t-msg">${esc(msg)}</span>` + (onCancel ? '<button>取消</button>' : '');
   if (onCancel) $('button', t).onclick = onCancel;
   t.classList.add('show');
@@ -406,6 +410,7 @@ function toastProgress(msg, onCancel) {
 
 function toast(msg, action) {
   const t = $('#toast');
+  mountToast(t);
   t.innerHTML = `<span class="t-msg">${esc(msg)}</span>` + (action ? `<button>${esc(action.label)}</button>` : '');
   if (action) $('button', t).onclick = () => { action.run(); t.classList.remove('show'); };
   t.classList.add('show');
@@ -586,7 +591,7 @@ async function sendText() {
   try {
     const it = await api('POST', '/api/clip', { text, from: myName() });
     lastDelivery = it.id;
-    if (ta.value === text) ta.value = '';
+    if (ta.value === text || ta.value.trim() === text.trim()) ta.value = '';
     autosize(); sendBusy = false; renderDelivery();
     if (isTouch) ta.blur();
   } catch (e) {
@@ -668,7 +673,10 @@ async function sendFolder(name, entries) {
 
 function autosize() {
   const ta = $('#input');
+  if (!ta.value) { ta.style.height = ''; ta.style.overflowY = 'hidden'; return; }
   ta.style.height = 'auto';
-  ta.style.height = Math.min(ta.scrollHeight, innerHeight * 0.4) + 'px';
+  const max = Math.min(innerHeight * 0.4, parseFloat(getComputedStyle(ta).maxHeight) || Infinity);
+  ta.style.height = Math.min(ta.scrollHeight, max) + 'px';
+  ta.style.overflowY = ta.scrollHeight > max + 1 ? 'auto' : 'hidden';
 }
 function updateSend() { $('#sendBtn').disabled = sendBusy || !$('#input').value.trim(); }

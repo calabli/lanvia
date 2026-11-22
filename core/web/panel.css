@@ -12,16 +12,17 @@ body.panel .top-actions { gap: 4px; min-width: 0; }
 body.panel .chip { min-height: 26px; padding: 0 9px; font-size: calc(12px * var(--fs)); gap: 5px; }
 body.panel .top-actions .icon-btn { width: 26px; height: 26px; }
 body.panel .top-actions .icon-btn svg { width: 15px; height: 15px; }
-body.panel #fontBtn, body.panel #themeBtn, body.panel #pairingBtn, body.panel .sidebar-toggle, body.panel .list-toggle, body.panel .window-controls { display: none !important; }
+/* The main window's beam, capsule, filter row and Omni-Bar icon are not part of the panel */
+body.panel #pairingBtn, body.panel .beam, body.panel #syncCapsule, body.panel .window-controls, body.panel .stream-filters, body.panel .omni-icon, body.panel .copy-hint, body.panel #selectBar { display: none !important; }
 
 /* Body: stacked vertically, only the list scrolls */
 body.panel .workspace { display: flex; flex-direction: column; flex: 1; min-height: 0; margin: 0; padding: 0; max-width: none; }
-body.panel .inbox-sidebar, body.panel .inbox-reader-column, body.panel .workspace-intro, body.panel .connection-column { display: none !important; }
 body.panel .inbox-list-column { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
-body.panel .inbox-list-heading, body.panel .inbox-list-filters { display: none; }
+body.panel #omniHost { display: none; }
 body.panel .inbox-search-row { position: static; flex: none; margin: 0; padding: 0 10px 6px; }
 body.panel .search-field { width: 100%; height: 32px; }
 body.panel #search { font-size: calc(14px * var(--fs)); }
+body.panel #search:focus-visible, body.panel .composer textarea:focus-visible { outline: none; box-shadow: none; }
 
 /* Categories: a row of small tabs, swipeable sideways when they do not fit, but no scrollbar is shown */
 body.panel #kindFilters { flex: none; display: flex; flex-direction: row; flex-wrap: nowrap; gap: 4px; margin: 0; padding: 0 10px 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
@@ -68,7 +69,7 @@ body.panel .clip-head, body.panel #clipHint { display: none; }
 body.panel .clip-text { flex: 1; min-width: 0; max-height: none; padding: 0; background: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: calc(13px * var(--fs)); }
 body.panel .clip-bar { flex: none; display: contents; }
 body.panel #clipSend { min-height: 26px; padding: 0 10px; font-size: calc(12px * var(--fs)); }
-body.panel .composer { margin: 0; padding: 4px 6px 4px 10px; border-radius: 12px; box-shadow: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; column-gap: 4px; }
+body.panel .composer { margin: 0; padding: 4px 6px 4px 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; column-gap: 4px; }
 body.panel .composer > #uploads, body.panel .composer > #sendStatus, body.panel .composer > .send-status { grid-column: 1 / -1; }
 body.panel .composer-heading, body.panel .hint { display: none; }
 body.panel .composer textarea { grid-column: 1; min-width: 0; width: 100%; min-height: 32px; max-height: 96px; padding: 6px 0; font-size: calc(14px * var(--fs)); line-height: 1.4; }
@@ -78,12 +79,11 @@ body.panel .composer-bar .btn.ghost:hover { color: var(--accent); }
 body.panel .composer-bar .btn.ghost svg { width: 17px; height: 17px; }
 body.panel #folderPicker { display: none !important; }
 body.panel #sendBtn { min-width: 0; min-height: 30px; margin-left: 2px; padding: 0 12px; font-size: calc(13px * var(--fs)); }
-body.panel #sendBtn svg { display: none; }
+body.panel #sendBtn svg, body.panel #sendBtn .send-key { display: none; }
 body.panel #uploads { padding: 0; gap: 4px; }
 body.panel .send-status { margin: 0; font-size: calc(12px * var(--fs)); }
 body.panel .send-status .delivery-summary { padding: 4px 8px; gap: 6px; border-radius: 8px; }
 body.panel .send-status .delivery-retry { min-height: 22px; padding: 0 8px; font-size: calc(12px * var(--fs)); }
-body.panel .kbd-hint { display: none !important; }
 body.panel .toast { bottom: 96px; max-width: calc(100vw - 24px); }
 
 /* Sync receipt per entry: in the panel a small row is shown only for "waiting for confirmation" and "not received", otherwise it takes no space */

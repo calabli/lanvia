@@ -28,7 +28,6 @@ function looksLikeCode(t) {
 function openPreview(it, mode = 'view') {
   // The quick panel is too narrow, let the desktop open a separate draggable, always-on-top window
   if (PANEL) return desktop(mode === 'view' ? 'preview' : mode, it.id);
-  if (inboxListMode()) return selectInboxItem(it, mode, true);
   showPreview(it, mode);
 }
 
@@ -48,16 +47,13 @@ async function showPreview(it, mode = 'view', focus = true) {
   PVS.fmt = PVS.lang === 'json' && !it.text.trim().includes('\n') && it.text.length > 80;
   PVS.mode = 'view';
   // Comment panel: opened from the comment button, or expanded by default when the item already has comments; the wide reading area uses tabs and starts on "Content"
-  PVS.com = mode === 'comments' || (!!it.comments && !inboxWide());
+  PVS.com = mode === 'comments';
   PVS.coms = null; PVS.comFor = null;
   $('#pvWarn').hidden = true;
   renderPreview();
   const d = $('#previewDlg');
-  if (!d.open) PREVIEW || inboxWide() ? d.show() : d.showModal();
-  if (inboxWide() && !focus) {
-    if (previousFocus?.isConnected && previousFocus !== document.body) previousFocus.focus({ preventScroll: true });
-    else if (d.contains(document.activeElement)) document.activeElement.blur();
-  }
+  if (!d.open) PREVIEW ? d.show() : d.showModal();
+  if (!focus && previousFocus?.isConnected && previousFocus !== document.body) previousFocus.focus({ preventScroll: true });
   if (mode === 'edit') startEdit();
   else if (mode === 'history') openHistory();
   else if (mode === 'comments') $('#pvComInput').focus();
@@ -212,7 +208,6 @@ function renderPreviewBody() {
   }
   if (PVS.mode === 'history') return renderHistory();
   let text = pvText();
-  if (inboxWide() && !$('#readerTitle').hidden && !it.title && !PVS.mono && !PVS.fmt && text.split('\n', 1)[0] === inboxTitle(it)) text = text.slice(text.indexOf('\n') + 1).replace(/^\n+/, '');
   body.innerHTML = textHTML(text);
 }
 
@@ -231,12 +226,12 @@ function showPreviewMissing() {
 
 async function closePreview() {
   if (PVS.mode === 'edit' && !(await cancelEdit())) return;
+  $('#expiryMenu').hidden = true;
+  $('#tagMenu').hidden = true;
   if (PREVIEW) return desktop('hide-preview');
-  if (inboxWide()) {
-    (document.body.classList.contains('list-collapsed') ? $('#listToggle') : $(`.item[data-id="${PV?.id}"] .inbox-entry`))?.focus();
-    return;
-  }
+  const id = PV?.id;
   $('#previewDlg').close();
+  $(`.item[data-id="${id}"] .s-card`)?.focus({ preventScroll: true });
 }
 
 async function previewCopyAll(andClose) {
@@ -428,6 +423,7 @@ async function onItemUpdated(it) {
   if (it.comments !== PV.comments && it.rev === PV.rev && it.fav === PV.fav && it.metaTs === PV.metaTs) {
     PV.comments = it.comments; // keep the same object: images that are still loading still recognize it
     $('#pvComBtn').innerHTML = ICON.comment + (it.comments ? `<span class="count">${it.comments}</span>` : '');
+    renderReaderTabs();
     if (!$('#pvCom').hidden) loadComments();
     return;
   }
@@ -451,7 +447,7 @@ function bindPreview() {
   $('#pvWrap').innerHTML = ICON.wrap;
   $('#pvMono').innerHTML = ICON.code;
   $('#pvPin').innerHTML = ICON.pin;
-  $('#pvEdit').innerHTML = ICON.pencil;
+  $('#pvEdit').innerHTML = ICON.pencil + '<span>编辑</span>';
   $('#pvBody').addEventListener('scroll', moreRows, { passive: true });
   $('#pvWrap').onclick = () => { PVS.wrap = !PVS.wrap; store.set('pv.wrap', PVS.wrap ? '1' : '0'); renderPreviewBody(); };
   $('#pvFmt').onclick = () => { PVS.fmt = !PVS.fmt; renderPreview(); };
@@ -473,8 +469,19 @@ function bindPreview() {
   $('#pvPin').classList.toggle('on', pinned);
   $('#pvPin').onclick = () => { pinned = !pinned; $('#pvPin').classList.toggle('on', pinned); desktop(pinned ? 'pin' : 'unpin'); };
   $('[data-close]', d).onclick = closePreview;
-  d.addEventListener('cancel', e => { e.preventDefault(); closePreview(); });
-  d.addEventListener('click', e => { if (e.target === d && !PREVIEW && !inboxWide() && PVS.mode !== 'edit') d.close(); });
+  d.addEventListener('cancel', e => {
+    e.preventDefault();
+    if (!$('#tagMenu').hidden) { $('#tagMenu').hidden = true; return; }
+    if (!$('#expiryMenu').hidden) { $('#expiryMenu').hidden = true; return; }
+    closePreview();
+  });
+  d.addEventListener('close', () => {
+    $('#expiryMenu').hidden = true;
+    $('#tagMenu').hidden = true;
+    const t = $('#toast');
+    if (d.contains(t)) document.body.append(t);
+  });
+  d.addEventListener('click', e => { if (clickedBackdrop(e, d) && !PREVIEW && PVS.mode !== 'edit') closePreview(); });
   $('#pvComBtn').onclick = () => {
     PVS.com = !PVS.com;
     renderComPanel();

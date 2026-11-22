@@ -77,6 +77,13 @@ const S = {
   info: null, filter: '', tag: '', kind: 'all', from: '', since: 0, fuzzy: false, es: null, connected: false, retry: 0, unseen: 0,
   view: [], sel: 0, // list currently shown and keyboard selection (quick panel)
 };
+// A click on a modal dialog's backdrop also targets the dialog itself, and so does a click on a gap between its children;
+// only a click outside the dialog's box is a backdrop click
+const clickedBackdrop = (e, d) => {
+  if (e.target !== d) return false;
+  const r = d.getBoundingClientRect();
+  return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+};
 const desktop = (action, id) => api('POST', '/api/desktop/' + action + (id ? '?id=' + id : '')).catch(() => {});
 
 function setCode(code) {
@@ -266,9 +273,6 @@ const isTouch = matchMedia('(pointer: coarse)').matches;
 
 const I = (d, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
 const ICON = {
-  sidebar: I('<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/>'),
-  listPane: I('<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M8 4v16M11 8h6M11 12h6M11 16h4"/>'),
-  collapsePane: I('<path d="m14 6-6 6 6 6"/>'),
   more: I('<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>'),
   copy: I('<rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H15"/>'),
   check: I('<path d="m5 12.5 4.5 4.5L19 7.5"/>'),
@@ -281,7 +285,6 @@ const ICON = {
   close: I('<path d="M6 6l12 12M18 6 6 18"/>'),
   chevron: I('<path d="m6 15 6-6 6 6"/>'),
   comment: I('<path d="M4.5 6.5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H10l-4 3.5V16.5h.5a2 2 0 0 1-2-2z"/>'),
-  fontSize: I('<path d="M3.5 18 8 6l4.5 12M5.3 13.5h5.4"/><path d="m14 18 3.25-8.5L20.5 18M15.3 15.4h3.9"/>'),
   tag: I('<path d="M3.5 12.2V5a1.5 1.5 0 0 1 1.5-1.5h7.2a1.5 1.5 0 0 1 1 .44l7.3 7.3a1.5 1.5 0 0 1 0 2.12l-7.2 7.2a1.5 1.5 0 0 1-2.12 0l-7.3-7.3a1.5 1.5 0 0 1-.38-1.06z"/><circle cx="8.2" cy="8.2" r="1.4"/>'),
   play: I('<path fill="currentColor" d="M8 5.5v13l10.5-6.5z"/>'),
   phone: I('<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 18h2"/>'),
@@ -297,9 +300,6 @@ const ICON = {
   timer: I('<circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 1.5M9.5 3h5"/>'),
   pin: I('<path d="M9 4h6l-1 6 4 3v2H6v-2l4-3z"/><path d="M12 15v5"/>'),
   globe: I('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.7 2.5 14.3 0 17M12 3.5c-2.5 2.7-2.5 14.3 0 17"/>'),
-  sun: I('<circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
-  moon: I('<path d="M20.5 13.2A8.5 8.5 0 0 1 10.8 3.5a8.5 8.5 0 1 0 9.7 9.7Z"/>'),
-  auto: I('<rect x="3" y="4" width="18" height="13" rx="3"/><path d="M8 21h8M12 17v4M12 4v13"/>'),
 };
 const kindIcon = k => ({ ios: ICON.phone, android: ICON.phone, ipad: ICON.tablet, mac: ICON.laptop, windows: ICON.laptop, linux: ICON.laptop }[k] || ICON.globe);
 
@@ -322,12 +322,6 @@ function applyTheme(theme) {
   if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
   else { theme = 'system'; delete document.documentElement.dataset.theme; }
   store.set('theme', theme);
-  const names = { system: '跟随系统', light: '浅色', dark: '深色' };
-  const next = { system: '浅色', light: '深色', dark: '跟随系统' };
-  const button = $('#themeBtn');
-  button.innerHTML = { system: ICON.auto, light: ICON.sun, dark: ICON.moon }[theme];
-  button.setAttribute('aria-label', `外观：${names[theme]}，切换为${next[theme]}`);
-  button.title = `外观：${names[theme]}，点击切换`;
 }
 
 /* ================= Clipboard ================= */

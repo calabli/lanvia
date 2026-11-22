@@ -20,12 +20,20 @@ function deliveryBadge(id) {
   const retry = !d.targets.some(t => t.state === 'pending') && (!d.targets.length || d.targets.some(t => t.state !== 'received'));
   return `<div class="delivery-row"><span class="delivery-badge ${deliveryClass(d)}">${esc(deliveryLabel(d))}</span>${retry ? `<button type="button" class="delivery-retry" data-delivery-retry="${d.id}">重试同步</button>` : ''}</div>`;
 }
+// Compact receipt for the card's meta row: "● 2/3" (the drawer shows the full state and the retry button)
+function deliveryDot(id) {
+  const d = DELIVERIES.get(id);
+  if (!d || !d.targets.length) return '';
+  const r = d.targets.filter(t => t.state === 'received').length;
+  return `<span class="s-dlv ${deliveryClass(d)}" title="${esc(deliveryLabel(d))}"><i aria-hidden="true"></i><span class="mono">${r}/${d.targets.length}</span></span>`;
+}
 function receiveDelivery(d) {
   if (!d?.id || !Array.isArray(d.targets)) return;
   DELIVERIES.set(d.id, d);
   if (DELIVERIES.size > 128) DELIVERIES.delete(DELIVERIES.keys().next().value);
   if (!lastDelivery || d.ts >= (DELIVERIES.get(lastDelivery)?.ts || 0)) lastDelivery = d.id;
   renderList(); renderDelivery();
+  if (PV?.id === d.id) renderInboxTools();
 }
 function renderDelivery() {
   const box = $('#sendStatus');
